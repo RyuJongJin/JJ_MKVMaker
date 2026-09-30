@@ -13,6 +13,7 @@ import 'app/download_manager.dart';
 import 'app/settings.dart';
 import 'core/app_update.dart';
 import 'core/playlist.dart';
+import 'platform/windows/com_guard.dart';
 import 'platform/windows/desktop_shell.dart';
 import 'platform/windows/exit_trace.dart';
 import 'platform/windows/single_instance.dart';
@@ -20,6 +21,7 @@ import 'platform/windows/window_memory.dart';
 import 'services/platform_services.dart';
 import 'ui/ai_dialog.dart';
 import 'ui/app_actions.dart';
+import 'ui/app_drop.dart';
 import 'ui/browser_page.dart';
 import 'ui/downloads_page.dart';
 import 'ui/exit_dialog.dart';
@@ -181,6 +183,13 @@ Future<void> main(List<String> args) async {
     await controller.updateSettings((x) => x.addFinishedDownloads = on);
     downloads.refresh();
   };
+  // COM 준비 상태 지킴이: 풀려 있으면 (앱 안 브라우저가 "CoInitialize 가 호출되지 않았습니다" 로 안 뜨는 원인)
+  // 다시 준비하고 작업 기록에 남긴다. 바로 앞의 기록을 보면 무엇을 한 뒤에 풀렸는지 알 수 있다.
+  Timer.periodic(const Duration(seconds: 3), (_) {
+    if (ComGuard.repairIfNeeded()) {
+      controller.note('⚠ Windows COM 준비 상태가 풀려 있어 다시 준비했습니다 (브라우저 · 끌어다 놓기에 필요)');
+    }
+  });
   downloads.addToEditList = controller.addDownloaded;
   unawaited(downloads.startClipboardWatch());
 
@@ -316,7 +325,11 @@ class JjCapCutApp extends StatelessWidget {
         theme: buildTheme(),
         navigatorKey: navigatorKey,
         scaffoldMessengerKey: messengerKey,
-        builder: (context, child) => AppScope(controller: controller, onExit: onExit, child: child!),
+        // 모든 화면에: 환경 설정 · 종료 버튼이 쓸 것 + 끌어다 놓은 동영상을 목록에 추가
+        builder: (context, child) => AppScope(
+            controller: controller,
+            onExit: onExit,
+            child: AppDropArea(c: controller, child: UiScaler(c: controller, child: child!))),
         home: HomePage(c: controller, downloads: downloads, onExit: onExit, bookmarks: bookmarks),
       );
 }

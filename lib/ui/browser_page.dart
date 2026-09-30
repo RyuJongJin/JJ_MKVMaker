@@ -10,6 +10,7 @@ import '../app/download_manager.dart';
 import '../core/bookmarks.dart';
 import '../core/download_detect.dart' show CookieRecord, toNetscapeCookies;
 import '../core/web_address.dart';
+import '../platform/windows/com_guard.dart';
 import 'app_actions.dart';
 import 'downloads_page.dart';
 import 'theme.dart';
@@ -341,9 +342,26 @@ Future<WebViewEnvironment?>? _env;
 
 /// 로그인 · 쿠키가 유지되는 데이터 폴더를 쓰는 브라우저 환경 (한 번만 만들어 재사용)
 Future<WebViewEnvironment?> browserEnvironment(String dir) =>
-    _env ??= Platform.isWindows
-        ? WebViewEnvironment.create(settings: WebViewEnvironmentSettings(userDataFolder: dir.isEmpty ? null : dir))
-        : Future.value(null);
+    _env ??= Platform.isWindows ? _createEnvironment(dir) : Future.value(null);
+
+Future<WebViewEnvironment?> _createEnvironment(String dir) async {
+  Future<WebViewEnvironment> create() =>
+      WebViewEnvironment.create(settings: WebViewEnvironmentSettings(userDataFolder: dir.isEmpty ? null : dir));
+  try {
+    // COM 이 풀려 있으면 "CoInitialize 가 호출되지 않았습니다" 로 실패한다 → 만들기 전에 다시 준비
+    ComGuard.ensure();
+    try {
+      return await create();
+    } catch (_) {
+      ComGuard.ensure();
+      return await create();
+    }
+  } catch (_) {
+    // 실패한 결과를 붙들고 있지 않는다: 브라우저를 다시 열면 새로 시도
+    _env = null;
+    rethrow;
+  }
+}
 
 class _EdgeViewState extends State<_EdgeView> {
   @override

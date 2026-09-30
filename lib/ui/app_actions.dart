@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../app/app_controller.dart';
+import '../app/settings.dart';
 import '../services/system_usage.dart';
 import 'settings_page.dart';
 import 'theme.dart';
@@ -86,6 +87,90 @@ class UsageView extends StatelessWidget {
       );
 }
 
+/// 화면 크기 조절: [−] [100%] [+]. 10% 씩 바꾸고, 가운데 숫자를 누르면 환경 설정의 기본 크기로.
+class ScaleButtons extends StatelessWidget {
+  final AppController c;
+  const ScaleButtons({super.key, required this.c});
+
+  void _set(double v) => c.updateSettings((s) => s.uiScale = AppSettings.clampUiScale(v));
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+        listenable: c,
+        builder: (context, _) {
+          final s = c.settings.uiScale;
+          Widget btn(IconData icon, String tip, VoidCallback? f) => SizedBox(
+                width: 26,
+                height: 32,
+                child: IconButton(
+                  tooltip: tip,
+                  padding: EdgeInsets.zero,
+                  iconSize: 16,
+                  icon: Icon(icon),
+                  onPressed: f,
+                ),
+              );
+          return Padding(
+            padding: const EdgeInsets.only(left: 6),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              btn(Icons.remove, '화면 작게', s <= AppSettings.uiScaleMin + 0.001 ? null : () => _set(s - 0.1)),
+              Tooltip(
+                message: '기본 크기 (${(c.settings.uiScaleDefault * 100).round()}%) 로 · 기본 크기는 환경 설정 > 화면 에서',
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(4),
+                  onTap: () => _set(c.settings.uiScaleDefault),
+                  child: SizedBox(
+                    width: 40,
+                    height: 28,
+                    child: Center(
+                      child: Text('${(s * 100).round()}%',
+                          style: const TextStyle(fontSize: 11, fontFamily: 'Consolas', fontWeight: FontWeight.w600)),
+                    ),
+                  ),
+                ),
+              ),
+              btn(Icons.add, '화면 크게', s >= AppSettings.uiScaleMax - 0.001 ? null : () => _set(s + 0.1)),
+            ]),
+          );
+        },
+      );
+}
+
+/// 화면 전체를 [AppSettings.uiScale] 배로 그린다 (안쪽은 그만큼 작은 · 큰 화면이라고 여기고 배치).
+/// 앱의 builder 에서 한 번 감싼다 - 대화 상자 · 메뉴 · 안내 글까지 모두 같은 배율.
+class UiScaler extends StatelessWidget {
+  final AppController c;
+  final Widget child;
+  const UiScaler({super.key, required this.c, required this.child});
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+        listenable: c,
+        builder: (context, _) {
+          final s = c.settings.uiScale;
+          if ((s - 1).abs() < 0.001) return child;
+          return LayoutBuilder(builder: (context, box) {
+            final size = box.biggest / s;
+            final mq = MediaQuery.of(context);
+            return ClipRect(
+              child: OverflowBox(
+                alignment: Alignment.topLeft,
+                minWidth: size.width,
+                maxWidth: size.width,
+                minHeight: size.height,
+                maxHeight: size.height,
+                child: Transform.scale(
+                  scale: s,
+                  alignment: Alignment.topLeft,
+                  child: MediaQuery(data: mq.copyWith(size: size), child: child),
+                ),
+              ),
+            );
+          });
+        },
+      );
+}
+
 /// 환경 설정 · 종료 버튼. 모든 화면의 위쪽 막대 맨 오른쪽에 같은 크기로 놓는다.
 class AppActions extends StatelessWidget {
   /// 직접 주지 않으면 [AppScope] 의 것을 쓴다
@@ -95,7 +180,10 @@ class AppActions extends StatelessWidget {
   /// 환경 설정 화면 자신: 설정 버튼을 "지금 여기" 로 표시하고 누를 수 없게
   final bool onSettingsPage;
 
-  const AppActions({super.key, this.c, this.onExit, this.onSettingsPage = false});
+  /// 창이 좁을 때 CPU · MEM · DISK 를 숨긴다 (버튼 자리는 그대로)
+  final bool showUsage;
+
+  const AppActions({super.key, this.c, this.onExit, this.onSettingsPage = false, this.showUsage = true});
 
   @override
   Widget build(BuildContext context) {
@@ -106,7 +194,9 @@ class AppActions extends StatelessWidget {
     final usage = controller?.usage;
     return Row(mainAxisSize: MainAxisSize.min, children: [
       // CPU · MEM: 변환 · AI 작업이 PC 를 얼마나 쓰는지 (PC 전체 기준)
-      if (usage != null) UsageView(usage: usage),
+      if (usage != null && showUsage) UsageView(usage: usage),
+      // 화면 크기: −  100%  +
+      if (controller != null) ScaleButtons(c: controller),
       const SizedBox(width: 4),
       if (controller != null)
         IconButton(

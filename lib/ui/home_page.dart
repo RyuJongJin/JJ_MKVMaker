@@ -1,6 +1,3 @@
-import 'dart:io';
-
-import 'package:desktop_drop/desktop_drop.dart';
 import 'package:flutter/material.dart';
 
 import '../app/app_controller.dart';
@@ -11,7 +8,6 @@ import '../core/encode_options.dart';
 import '../core/languages.dart';
 import '../core/models.dart';
 import '../core/output_paths.dart';
-import '../core/playlist.dart';
 import 'ai_dialog.dart';
 import 'app_actions.dart';
 import 'browser_page.dart';
@@ -42,21 +38,8 @@ class HomePage extends StatelessWidget {
     return ListenableBuilder(
       listenable: c,
       builder: (context, _) => Scaffold(
-        // 탐색기에서 동영상 · 폴더를 끌어다 놓으면 동영상만 추가
-        body: DropTarget(
-          onDragDone: (d) async {
-            final videos = await collectVideos(d.files.map((f) => f.path),
-                isDirectory: (x) => FileSystemEntity.isDirectory(x),
-                listDir: (x) async => Directory(x).list().map((e) => e.path).toList());
-            if (videos.isEmpty) {
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('끌어다 놓은 항목에 동영상이 없습니다.')));
-              }
-              return;
-            }
-            await c.addVideos(videos);
-          },
+        // 끌어다 놓기는 앱 전체에서 받는다 (ui/app_drop.dart 의 AppDropArea - 어느 화면에서 놓아도 이 목록에 추가)
+        body: SizedBox(
           child: Column(
           children: [
             _TopBar(c: c, downloads: downloads, onExit: onExit, bookmarks: bookmarks),
@@ -119,106 +102,133 @@ class _TopBar extends StatelessWidget {
     final batch = c.batchTargets;
     final canBatch = batch.isNotEmpty && c.ffmpegVersion != null;
     final count = c.checked.isEmpty ? '' : ' (${c.checked.length})';
-    return Container(
-      height: appBarHeight,
-      color: JjColors.panel,
-      padding: const EdgeInsets.only(left: 16, right: appBarRightPadding),
-      child: Row(
-        children: [
-          // 프로그램 아이콘 (tool/make_icon.py 로 생성)
-          Image.asset('assets/icon/app_icon_256.png', width: 28, height: 28, filterQuality: FilterQuality.medium),
-          const SizedBox(width: 8),
-          const Text('JJ_MKVMaker',
-              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
-          const SizedBox(width: 24),
-          // 왼쪽 묶음: 창이 좁으면 옆으로 밀어 볼 수 있게 (오른쪽 버튼이 밀려나지 않도록)
-          Expanded(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(children: [
-                OutlinedButton.icon(
-                  onPressed: c.pickVideos,
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('동영상 추가'),
-                ),
-                if (c.aiAvailable) ...[
-                  const SizedBox(width: 8),
-                  Tooltip(
-                    message: _batchHint(c, 'AI 자막을 만듭니다'),
-                    child: OutlinedButton.icon(
-                      onPressed: canBatch ? () => showAiDialog(context, c, batch.first, targets: batch) : null,
-                      icon: const Icon(Icons.auto_awesome, size: 18),
-                      label: Text('자막 만들기$count'),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Tooltip(
-                    message: _batchHint(c, 'AI 자막을 만들고 이어서 MKV 로 만듭니다'),
-                    child: OutlinedButton.icon(
-                      onPressed: canBatch
-                          ? () => showAiDialog(context, c, batch.first, targets: batch, thenBuild: true)
-                          : null,
-                      icon: const Icon(Icons.auto_mode, size: 18),
-                      label: Text('자막 만들기 & MKV 만들기$count'),
-                    ),
-                  ),
-                ],
-              ]),
-            ),
-          ),
-          const SizedBox(width: 8),
-          if (c.busy) ...[
-            JobIndicator(c: c),
+    // 창 너비에 맞춰 차례로 줄인다: 제목 글 → 왼쪽 버튼을 아이콘만 → 재생 · 브라우저를 아이콘만 → CPU · MEM 숨김.
+    // (오른쪽의 화면 크기 · 환경 설정 · 종료 버튼은 어떤 너비에서도 밀려나지 않게)
+    return LayoutBuilder(builder: (context, box) {
+      final hasAi = c.aiAvailable;
+      final hasPlayer = c.services.createMediaPlayer != null;
+      var title = true, leftText = true, rightText = true, usage = c.usage != null, jobText = true;
+      // 각 부분의 너비 (실제 화면에서 잰 값)
+      double need() =>
+          16 + appBarRightPadding + 36 + (title ? 126 : 0) + 24 +
+          (leftText ? 153 + (hasAi ? 161 + 298 : 0) : 40 + (hasAi ? 96 : 0)) + 8 +
+          (c.busy ? (jobText ? 350 : 60) : 0) +
+          (hasPlayer ? (rightText ? 201 : 48) : 0) +
+          166 + (c.busy && jobText ? 60 : 0) +
+          (bookmarks != null ? (rightText ? 138 : 48) : 0) +
+          (downloads != null ? 162 : 0) +
+          (usage ? 220 : 0) + 96 + 92 +
+          (c.checked.isEmpty ? 0 : 3 * 26) +
+          8; // 여유
+      final w = box.maxWidth;
+      if (need() > w) title = false;
+      if (need() > w) jobText = false;
+      if (need() > w) leftText = false;
+      if (need() > w) rightText = false;
+      if (need() > w) usage = false;
+
+      // 글이 있는 버튼, 또는 (좁을 때) 아이콘만 있는 버튼
+      Widget action(IconData icon, String label, VoidCallback? onPressed,
+          {required bool text, required String tip, Color? color}) {
+        return Tooltip(
+          message: tip,
+          child: text
+              ? OutlinedButton.icon(
+                  onPressed: onPressed, icon: Icon(icon, size: 18, color: color), label: Text(label))
+              : IconButton.outlined(
+                  onPressed: onPressed,
+                  icon: Icon(icon, size: 20, color: onPressed == null ? null : color),
+                  style: IconButton.styleFrom(
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      side: const BorderSide(color: JjColors.border))),
+        );
+      }
+
+      return Container(
+        height: appBarHeight,
+        color: JjColors.panel,
+        padding: const EdgeInsets.only(left: 16, right: appBarRightPadding),
+        child: Row(
+          children: [
+            // 프로그램 아이콘 (tool/make_icon.py 로 생성)
+            Image.asset('assets/icon/app_icon_256.png', width: 28, height: 28, filterQuality: FilterQuality.medium),
             const SizedBox(width: 8),
-            OutlinedButton.icon(
-              onPressed: c.cancel,
-              icon: const Icon(Icons.stop, size: 18, color: JjColors.danger),
-              label: const Text('취소'),
-            ),
-            const SizedBox(width: 8),
-          ],
-          // 체크한 동영상을 목록에 보이는 순서대로 이어서 재생 (체크가 없으면 보고 있는 한 개)
-          if (c.services.createMediaPlayer != null) ...[
-            Tooltip(
-              message: c.checked.isEmpty
-                  ? '지금 보고 있는 동영상을 재생합니다 (여러 개는 목록에서 체크)'
-                  : '체크한 동영상 ${c.checked.length}개를 목록 순서대로 이어서 재생합니다',
-              child: OutlinedButton.icon(
-                onPressed: batch.isEmpty
-                    ? null
-                    : () => playFiles(context, c, [for (final v in batch) v.path], keepOrder: true),
-                icon: const Icon(Icons.playlist_play, size: 20),
-                label: Text('선택한 파일 재생$count'),
+            if (title) const Text('JJ_MKVMaker', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+            const SizedBox(width: 24),
+            // 왼쪽 묶음: 그래도 모자라면 옆으로 밀어 볼 수 있게
+            Expanded(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(children: [
+                  action(Icons.add, '동영상 추가', c.pickVideos,
+                      text: leftText, tip: '동영상 추가 (탐색기에서 끌어다 놓아도 됩니다)'),
+                  if (hasAi) ...[
+                    const SizedBox(width: 8),
+                    action(Icons.auto_awesome, '자막 만들기$count',
+                        canBatch ? () => showAiDialog(context, c, batch.first, targets: batch) : null,
+                        text: leftText, tip: '자막 만들기: ${_batchHint(c, 'AI 자막을 만듭니다')}'),
+                    const SizedBox(width: 8),
+                    action(
+                        Icons.auto_mode,
+                        '자막 만들기 & MKV 만들기$count',
+                        canBatch
+                            ? () => showAiDialog(context, c, batch.first, targets: batch, thenBuild: true)
+                            : null,
+                        text: leftText,
+                        tip: '자막 만들기 & MKV 만들기: ${_batchHint(c, 'AI 자막을 만들고 이어서 MKV 로 만듭니다')}'),
+                  ],
+                ]),
               ),
             ),
             const SizedBox(width: 8),
-          ],
-          FilledButton.icon(
-            // 체크한 동영상이 있으면 그것만, 없으면 목록 전체
-            onPressed: !canBuild ? null : (c.checked.isEmpty ? c.buildAll : () => c.buildVideos(batch)),
-            icon: Icon(c.busy ? Icons.playlist_add : Icons.play_arrow, size: 20),
-            label: Text('MKV 만들기$count${c.busy ? ' (대기열)' : ''}'),
-          ),
-          if (bookmarks != null) ...[
-            const SizedBox(width: 8),
-            OutlinedButton.icon(
-              onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute<void>(
-                      builder: (_) => BrowserPage(c: c, downloads: downloads, bookmarks: bookmarks!))),
-              icon: const Icon(Icons.public, size: 18),
-              label: const Text('브라우저'),
+            if (c.busy) ...[
+              JobIndicator(c: c, compact: !jobText, iconOnly: !jobText),
+              const SizedBox(width: 8),
+              action(Icons.stop, '취소', c.cancel, text: jobText, tip: '작업 취소', color: JjColors.danger),
+              const SizedBox(width: 8),
+            ],
+            // 체크한 동영상을 목록에 보이는 순서대로 이어서 재생 (체크가 없으면 보고 있는 한 개)
+            if (hasPlayer) ...[
+              action(
+                  Icons.playlist_play,
+                  '선택한 파일 재생$count',
+                  batch.isEmpty
+                      ? null
+                      : () => playFiles(context, c, [for (final v in batch) v.path], keepOrder: true),
+                  text: rightText,
+                  tip: c.checked.isEmpty
+                      ? '선택한 파일 재생: 지금 보고 있는 동영상 (여러 개는 목록에서 체크)'
+                      : '선택한 파일 재생: 체크한 동영상 ${c.checked.length}개를 목록 순서대로 이어서'),
+              const SizedBox(width: 8),
+            ],
+            FilledButton.icon(
+              // 체크한 동영상이 있으면 그것만, 없으면 목록 전체
+              onPressed: !canBuild ? null : (c.checked.isEmpty ? c.buildAll : () => c.buildVideos(batch)),
+              icon: Icon(c.busy ? Icons.playlist_add : Icons.play_arrow, size: 20),
+              label: Text('MKV 만들기$count${c.busy && jobText ? ' (대기열)' : ''}'),
             ),
+            if (bookmarks != null) ...[
+              const SizedBox(width: 8),
+              action(
+                  Icons.public,
+                  '브라우저',
+                  () => Navigator.push(
+                      context,
+                      MaterialPageRoute<void>(
+                          builder: (_) => BrowserPage(c: c, downloads: downloads, bookmarks: bookmarks!))),
+                  text: rightText,
+                  tip: '웹 브라우저'),
+            ],
+            if (downloads != null) ...[
+              const SizedBox(width: 12),
+              _DownloadBox(d: downloads!),
+            ],
+            // 화면 크기 · 환경 설정 · 종료: 모든 화면에서 같은 자리
+            AppActions(c: c, onExit: onExit, showUsage: usage),
           ],
-          if (downloads != null) ...[
-            const SizedBox(width: 12),
-            _DownloadBox(d: downloads!),
-          ],
-          // 환경 설정 · 종료: 모든 화면에서 같은 자리
-          AppActions(c: c, onExit: onExit),
-        ],
-      ),
-    );
+        ),
+      );
+    });
   }
 }
 
@@ -434,6 +444,55 @@ class _VideoTile extends StatelessWidget {
   final VideoItem v;
   const _VideoTile({required this.c, required this.v});
 
+  Future<void> _menu(BuildContext context, Offset global) async {
+    c.select(v);
+    final busy = v.status == JobStatus.running;
+    PopupMenuItem<String> item(String id, IconData icon, String label, {bool enabled = true}) => PopupMenuItem(
+          value: id,
+          enabled: enabled,
+          height: 36,
+          child: Row(children: [
+            Icon(icon, size: 18, color: enabled ? JjColors.text : JjColors.textDim),
+            const SizedBox(width: 10),
+            Text(label, style: const TextStyle(fontSize: 13)),
+          ]),
+        );
+    // 화면 크기 배율이 걸려 있어도 누른 자리에 뜨도록 메뉴가 그려질 곳 기준으로 바꾼다
+    final overlay = Overlay.of(context).context.findRenderObject()! as RenderBox;
+    final at = overlay.globalToLocal(global);
+    final pick = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(at.dx, at.dy, overlay.size.width - at.dx, overlay.size.height - at.dy),
+      items: [
+        item('folder', Icons.folder_open, '대상 폴더 열기'),
+        if (c.services.createMediaPlayer != null) item('play', Icons.play_arrow, '재생'),
+        const PopupMenuDivider(),
+        if (c.aiAvailable)
+          item('ai', Icons.auto_awesome, 'AI 자막 만들기', enabled: !busy && c.ffmpegVersion != null),
+        if (c.subtitleProvider != null)
+          item('search', Icons.travel_explore, '인터넷 자막 찾기', enabled: !busy),
+        item('subtitle', Icons.subtitles_outlined, '자막 파일 추가', enabled: !busy),
+        const PopupMenuDivider(),
+        item('remove', Icons.close, '삭제 (목록에서 제거)', enabled: !busy),
+      ],
+    );
+    if (pick == null || !context.mounted) return;
+    switch (pick) {
+      case 'folder':
+        await c.services.shell.revealFile(v.path);
+      case 'play':
+        await playFiles(context, c, [v.path]);
+      case 'ai':
+        await showAiDialog(context, c, v, targets: [v]);
+      case 'search':
+        await showSubtitleSearch(context, c, v);
+      case 'subtitle':
+        await c.pickSubtitlesFor(v);
+      case 'remove':
+        c.removeVideo(v);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isSel = c.selected == v;
@@ -441,6 +500,8 @@ class _VideoTile extends StatelessWidget {
     return InkWell(
       onTap: () => c.select(v),
       onDoubleTap: () => playFiles(context, c, [v.path]),
+      // 오른쪽 클릭: 이 동영상으로 할 수 있는 일
+      onSecondaryTapDown: (d) => _menu(context, d.globalPosition),
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         padding: const EdgeInsets.fromLTRB(2, 10, 4, 10),
@@ -579,6 +640,12 @@ class _VideoDetail extends StatelessWidget {
               label: const Text('재생'),
             ),
           ],
+          const SizedBox(width: 8),
+          OutlinedButton.icon(
+            onPressed: () => c.services.shell.revealFile(v.path),
+            icon: const Icon(Icons.folder_open, size: 18),
+            label: const Text('폴더 열기'),
+          ),
         ]),
         const SizedBox(height: 4),
         SelectableText(v.path,

@@ -51,6 +51,9 @@ abstract class AppShell {
   /// 웹 주소를 외부 브라우저로 열기. [browser]: 'system' · 'chrome' · 'firefox' · 'edge' · 'whale'
   Future<void> openUrl(String url, {String browser = 'system'});
 
+  /// 파일이 있는 폴더를 파일 관리자(탐색기)로 열고 그 파일을 선택해 보여 준다
+  Future<void> revealFile(String path);
+
   /// 설치된 외부 브라우저 ('chrome', 'firefox', 'edge', 'whale' 중)
   List<String> installedBrowsers();
 
@@ -104,6 +107,8 @@ class NoopShell implements AppShell {
   String? get vlcPath => null;
   @override
   Future<void> openUrl(String url, {String browser = 'system'}) async {}
+  @override
+  Future<void> revealFile(String path) async {}
   @override
   List<String> installedBrowsers() => const [];
   @override

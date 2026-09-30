@@ -1100,6 +1100,9 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 작업 기록에 한 줄 남기기 (앱의 다른 부분에서 알릴 것이 있을 때)
+  void note(String msg) => _log(msg);
+
   void _log(String msg) {
     final t = DateTime.now();
     String two(int n) => n.toString().padLeft(2, '0');

@@ -268,6 +268,20 @@ class DesktopShell with WindowListener implements AppShell {
   @override
   Future<void> openUrl(String url, {String browser = 'system'}) => openInBrowser(url, browser);
 
+  /// 탐색기로 폴더를 열고 파일을 선택. 파일이 없으면 폴더만 (그것도 없으면 가장 가까운 위 폴더).
+  @override
+  Future<void> revealFile(String path) async {
+    if (File(path).existsSync()) {
+      await Process.start('explorer.exe', ['/select,', path], mode: ProcessStartMode.detached);
+      return;
+    }
+    var dir = Directory(path).existsSync() ? Directory(path) : File(path).parent;
+    while (!dir.existsSync() && dir.parent.path != dir.path) {
+      dir = dir.parent;
+    }
+    await Process.start('explorer.exe', [dir.path], mode: ProcessStartMode.detached);
+  }
+
   @override
   List<String> installedBrowsers() => [
         for (final b in browserExecutables.keys)

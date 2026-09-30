@@ -12,6 +12,7 @@ import '../core/subtitle_detector.dart';
 import '../services/app_shell.dart';
 import 'setup_dialog.dart';
 import 'update_dialog.dart';
+import '../app/settings.dart';
 import 'app_actions.dart';
 import 'theme.dart';
 
@@ -260,6 +261,29 @@ class _SettingsPageState extends State<SettingsPage> {
               child: ListView(
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
                 children: [
+                  _section('화면'),
+                  ListTile(
+                    title: const Text('기본 화면 크기'),
+                    subtitle: Text('글자 · 버튼 크기입니다. 위쪽 막대의 − · + 로 그때그때 바꿀 수 있고, 가운데 숫자를 누르면 이 크기로 돌아갑니다 '
+                        '(지금 ${(s.uiScale * 100).round()}%)'),
+                    trailing: DropdownButton<double>(
+                      value: s.uiScaleDefault,
+                      items: [
+                        for (var v = AppSettings.uiScaleMin; v <= AppSettings.uiScaleMax + 0.001; v += 0.1)
+                          DropdownMenuItem(
+                              value: AppSettings.clampUiScale(v),
+                              child: Text('${(v * 100).round()}%${(v - 1).abs() < 0.001 ? ' (보통)' : ''}')),
+                        // 5% 단위로 저장된 값이 목록에 없을 때
+                        if (((s.uiScaleDefault * 100).round() % 10) != 0)
+                          DropdownMenuItem(
+                              value: s.uiScaleDefault, child: Text('${(s.uiScaleDefault * 100).round()}%')),
+                      ],
+                      // 기본 크기를 바꾸면 지금 크기도 그 크기로
+                      onChanged: (v) => c.updateSettings((x) => x
+                        ..uiScaleDefault = v!
+                        ..uiScale = v),
+                    ),
+                  ),
                   _section('시작 · 웹 브라우저'),
                   ListTile(
                     title: const Text('처음 화면'),

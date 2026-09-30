@@ -63,6 +63,14 @@ class AppSettings {
   /// 처음 화면: 'home' = 지금처럼 MKV 화면 (기본), 'browser' = 웹 브라우저 ([homeUrl])
   String startScreen = 'home';
 
+  /// 화면 (글자 · 버튼) 크기 배율. [uiScale] 은 지금 크기 (위쪽 막대의 − · + 로 바꿈),
+  /// [uiScaleDefault] 는 기본 크기 (환경 설정에서 정함, 가운데 숫자를 누르면 이 크기로 돌아감)
+  double uiScale = 1.0;
+  double uiScaleDefault = 1.0;
+  static const double uiScaleMin = 0.7, uiScaleMax = 1.6;
+  static double clampUiScale(num? v) =>
+      ((v ?? 1.0).toDouble().clamp(uiScaleMin, uiScaleMax) * 20).round() / 20;
+
   /// 탐색기에서 동영상을 열었을 때 (더블클릭 · 연결 프로그램): 'play' 바로 재생 / 'add' 편집 목록에 추가
   String openFileAction = 'play';
 
@@ -123,6 +131,8 @@ class AppSettings {
         'maxParallelJobs': maxParallelJobs,
         'showLog': showLog,
         'startScreen': startScreen,
+        'uiScale': uiScale,
+        'uiScaleDefault': uiScaleDefault,
         'openFileAction': openFileAction,
         'openFileWindow': openFileWindow,
         'homeUrl': homeUrl,
@@ -168,6 +178,8 @@ class AppSettings {
       ..maxParallelJobs = (j['maxParallelJobs'] as num?)?.toInt() ?? 5
       ..showLog = j['showLog'] as bool? ?? true
       ..startScreen = j['startScreen'] as String? ?? 'home'
+      ..uiScale = clampUiScale(j['uiScale'] as num?)
+      ..uiScaleDefault = clampUiScale(j['uiScaleDefault'] as num?)
       ..openFileAction = j['openFileAction'] == 'add' ? 'add' : 'play'
       ..openFileWindow = j['openFileWindow'] == 'new' ? 'new' : 'same'
       ..homeUrl = j['homeUrl'] as String? ?? 'https://www.youtube.com/'
