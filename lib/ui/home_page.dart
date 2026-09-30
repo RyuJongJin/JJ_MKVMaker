@@ -13,10 +13,10 @@ import '../core/models.dart';
 import '../core/output_paths.dart';
 import '../core/playlist.dart';
 import 'ai_dialog.dart';
+import 'app_actions.dart';
 import 'browser_page.dart';
 import 'downloads_page.dart';
 import 'player_page.dart';
-import 'settings_page.dart';
 import 'subtitle_editor_page.dart';
 import 'subtitle_search_dialog.dart';
 import 'theme.dart';
@@ -108,13 +108,21 @@ class _TopBar extends StatelessWidget {
   final BookmarksController? bookmarks;
   const _TopBar({required this.c, this.downloads, this.onExit, this.bookmarks});
 
+  static String _batchHint(AppController c, String what) => c.checked.isEmpty
+      ? '지금 보고 있는 동영상의 $what (여러 개는 목록에서 체크)'
+      : '체크한 동영상 ${c.checked.length}개의 $what';
+
   @override
   Widget build(BuildContext context) {
     final canBuild = c.videos.isNotEmpty && c.ffmpegVersion != null;
+    // 일괄 작업 대상: 체크한 동영상, 없으면 지금 보고 있는 한 개
+    final batch = c.batchTargets;
+    final canBatch = batch.isNotEmpty && c.ffmpegVersion != null;
+    final count = c.checked.isEmpty ? '' : ' (${c.checked.length})';
     return Container(
-      height: 56,
+      height: appBarHeight,
       color: JjColors.panel,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.only(left: 16, right: appBarRightPadding),
       child: Row(
         children: [
           // 프로그램 아이콘 (tool/make_icon.py 로 생성)
@@ -123,18 +131,42 @@ class _TopBar extends StatelessWidget {
           const Text('JJ_MKVMaker',
               style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
           const SizedBox(width: 24),
-          OutlinedButton.icon(
-            onPressed: c.pickVideos,
-            icon: const Icon(Icons.add, size: 18),
-            label: const Text('동영상 추가'),
+          // 왼쪽 묶음: 창이 좁으면 옆으로 밀어 볼 수 있게 (오른쪽 버튼이 밀려나지 않도록)
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(children: [
+                OutlinedButton.icon(
+                  onPressed: c.pickVideos,
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('동영상 추가'),
+                ),
+                if (c.aiAvailable) ...[
+                  const SizedBox(width: 8),
+                  Tooltip(
+                    message: _batchHint(c, 'AI 자막을 만듭니다'),
+                    child: OutlinedButton.icon(
+                      onPressed: canBatch ? () => showAiDialog(context, c, batch.first, targets: batch) : null,
+                      icon: const Icon(Icons.auto_awesome, size: 18),
+                      label: Text('자막 만들기$count'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Tooltip(
+                    message: _batchHint(c, 'AI 자막을 만들고 이어서 MKV 로 만듭니다'),
+                    child: OutlinedButton.icon(
+                      onPressed: canBatch
+                          ? () => showAiDialog(context, c, batch.first, targets: batch, thenBuild: true)
+                          : null,
+                      icon: const Icon(Icons.auto_mode, size: 18),
+                      label: Text('자막 만들기 & MKV 만들기$count'),
+                    ),
+                  ),
+                ],
+              ]),
+            ),
           ),
           const SizedBox(width: 8),
-          OutlinedButton.icon(
-            onPressed: c.busy || c.videos.isEmpty ? null : c.clearVideos,
-            icon: const Icon(Icons.clear_all, size: 18),
-            label: const Text('모두 지우기'),
-          ),
-          const Spacer(),
           if (c.busy) ...[
             JobIndicator(c: c),
             const SizedBox(width: 8),
@@ -145,10 +177,27 @@ class _TopBar extends StatelessWidget {
             ),
             const SizedBox(width: 8),
           ],
+          // 체크한 동영상을 목록에 보이는 순서대로 이어서 재생 (체크가 없으면 보고 있는 한 개)
+          if (c.services.createMediaPlayer != null) ...[
+            Tooltip(
+              message: c.checked.isEmpty
+                  ? '지금 보고 있는 동영상을 재생합니다 (여러 개는 목록에서 체크)'
+                  : '체크한 동영상 ${c.checked.length}개를 목록 순서대로 이어서 재생합니다',
+              child: OutlinedButton.icon(
+                onPressed: batch.isEmpty
+                    ? null
+                    : () => playFiles(context, c, [for (final v in batch) v.path], keepOrder: true),
+                icon: const Icon(Icons.playlist_play, size: 20),
+                label: Text('선택한 파일 재생$count'),
+              ),
+            ),
+            const SizedBox(width: 8),
+          ],
           FilledButton.icon(
-            onPressed: canBuild ? c.buildAll : null,
+            // 체크한 동영상이 있으면 그것만, 없으면 목록 전체
+            onPressed: !canBuild ? null : (c.checked.isEmpty ? c.buildAll : () => c.buildVideos(batch)),
             icon: Icon(c.busy ? Icons.playlist_add : Icons.play_arrow, size: 20),
-            label: Text(c.busy ? 'MKV 만들기 (대기열)' : 'MKV 만들기'),
+            label: Text('MKV 만들기$count${c.busy ? ' (대기열)' : ''}'),
           ),
           if (bookmarks != null) ...[
             const SizedBox(width: 8),
@@ -165,19 +214,8 @@ class _TopBar extends StatelessWidget {
             const SizedBox(width: 12),
             _DownloadBox(d: downloads!),
           ],
-          const SizedBox(width: 4),
-          IconButton(
-            tooltip: '환경 설정',
-            icon: const Icon(Icons.settings_outlined),
-            onPressed: () => Navigator.push(
-                context, MaterialPageRoute<void>(builder: (_) => SettingsPage(c: c))),
-          ),
-          if (onExit != null)
-            IconButton(
-              tooltip: '종료',
-              icon: const Icon(Icons.power_settings_new, color: JjColors.danger),
-              onPressed: onExit,
-            ),
+          // 환경 설정 · 종료: 모든 화면에서 같은 자리
+          AppActions(c: c, onExit: onExit),
         ],
       ),
     );
@@ -313,6 +351,23 @@ class _VideoList extends StatelessWidget {
   final AppController c;
   const _VideoList({required this.c});
 
+  /// 정렬 아이콘: 지금 적용된 정렬은 강조색 + 방향 화살표
+  Widget _sortButton(String by, IconData icon, String name) {
+    final on = c.sortedBy == by;
+    return IconButton(
+      tooltip: '$name 순으로 정렬'
+          '${on ? (c.sortAscending ? ' (지금: 오름차순 · 다시 누르면 내림차순)' : ' (지금: 내림차순 · 다시 누르면 오름차순)') : ''}',
+      iconSize: 18,
+      visualDensity: VisualDensity.compact,
+      onPressed: c.videos.length < 2 ? null : () => c.sortVideos(by),
+      icon: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(icon, color: on ? JjColors.accent : JjColors.textDim),
+        if (on)
+          Icon(c.sortAscending ? Icons.arrow_upward : Icons.arrow_downward, size: 12, color: JjColors.accent),
+      ]),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -320,10 +375,47 @@ class _VideoList extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // 전체 선택 · 선택 개수 · 선택 제거 · 모두 지우기
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-            child: Text('동영상 ${c.videos.length}개',
-                style: const TextStyle(color: JjColors.textDim, fontSize: 12)),
+            padding: const EdgeInsets.fromLTRB(8, 6, 4, 2),
+            child: Row(children: [
+              Checkbox(
+                visualDensity: VisualDensity.compact,
+                tristate: true,
+                value: c.videos.isEmpty || c.checked.isEmpty
+                    ? false
+                    : (c.checked.length == c.videos.length ? true : null),
+                onChanged: c.videos.isEmpty ? null : (_) => c.toggleAllChecked(),
+              ),
+              Expanded(
+                child: InkWell(
+                  onTap: c.videos.isEmpty ? null : c.toggleAllChecked,
+                  child: Text(
+                      c.checked.isEmpty
+                          ? '동영상 ${c.videos.length}개 · 전체 선택'
+                          : '선택 ${c.checked.length} / ${c.videos.length}개',
+                      style: const TextStyle(color: JjColors.textDim, fontSize: 12)),
+                ),
+              ),
+              // 정렬: 같은 것을 다시 누르면 반대 순서
+              _sortButton('name', Icons.sort_by_alpha, '파일 이름'),
+              _sortButton('date', Icons.calendar_month, '날짜'),
+              if (c.checked.isNotEmpty)
+                IconButton(
+                  tooltip: '선택한 동영상을 목록에서 제거',
+                  iconSize: 18,
+                  visualDensity: VisualDensity.compact,
+                  icon: const Icon(Icons.playlist_remove, color: JjColors.textDim),
+                  onPressed: c.removeChecked,
+                ),
+              IconButton(
+                tooltip: '모두 지우기',
+                iconSize: 18,
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.clear_all, color: JjColors.textDim),
+                onPressed: c.busy || c.videos.isEmpty ? null : c.clearVideos,
+              ),
+            ]),
           ),
           Expanded(
             child: ListView.builder(
@@ -351,7 +443,7 @@ class _VideoTile extends StatelessWidget {
       onDoubleTap: () => playFiles(context, c, [v.path]),
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        padding: const EdgeInsets.fromLTRB(12, 10, 4, 10),
+        padding: const EdgeInsets.fromLTRB(2, 10, 4, 10),
         decoration: BoxDecoration(
           color: isSel ? JjColors.panelHigh : Colors.transparent,
           borderRadius: BorderRadius.circular(8),
@@ -360,8 +452,14 @@ class _VideoTile extends StatelessWidget {
         ),
         child: Row(
           children: [
+            // 체크: 여러 개를 골라 일괄 작업 (줄을 누르면 지금처럼 한 개 보기)
+            Checkbox(
+              visualDensity: VisualDensity.compact,
+              value: c.checked.contains(v),
+              onChanged: (_) => c.toggleChecked(v),
+            ),
             _StatusIcon(v.status),
-            const SizedBox(width: 10),
+            const SizedBox(width: 8),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,

@@ -10,6 +10,7 @@ import '../app/download_manager.dart';
 import '../core/bookmarks.dart';
 import '../core/download_detect.dart' show CookieRecord, toNetscapeCookies;
 import '../core/web_address.dart';
+import 'app_actions.dart';
 import 'downloads_page.dart';
 import 'theme.dart';
 import 'work_panel.dart';
@@ -179,7 +180,9 @@ class _BrowserPageState extends State<BrowserPage> {
         child: Scaffold(
           body: ListenableBuilder(
             listenable: Listenable.merge([bm, widget.c]),
-            builder: (context, _) => Row(children: [
+            builder: (context, _) => Column(children: [
+              _toolbar(),
+              Expanded(child: Row(children: [
               if (_panel)
                 SizedBox(
                   width: 320,
@@ -195,7 +198,6 @@ class _BrowserPageState extends State<BrowserPage> {
               if (_panel) const VerticalDivider(width: 1),
               Expanded(
                 child: Column(children: [
-                  _toolbar(),
                   _BookmarkBar(bm: bm, onOpen: _go, onOpenExternal: _openExternal),
                   SizedBox(
                     height: 2,
@@ -222,6 +224,7 @@ class _BrowserPageState extends State<BrowserPage> {
                   ),
                 ),
               ],
+              ])),
             ]),
           ),
         ),
@@ -238,9 +241,9 @@ class _BrowserPageState extends State<BrowserPage> {
           onPressed: f,
         );
     return Container(
-      height: 48,
+      height: appBarHeight,
       color: JjColors.panel,
-      padding: const EdgeInsets.symmetric(horizontal: 6),
+      padding: const EdgeInsets.only(left: 6, right: appBarRightPadding),
       child: Row(children: [
         btn(Icons.video_library_outlined, 'MKV 화면으로', () => Navigator.maybePop(context), color: JjColors.accent),
         const SizedBox(width: 4),
@@ -295,6 +298,7 @@ class _BrowserPageState extends State<BrowserPage> {
             _toggleWork, color: widget.c.busy ? JjColors.accent : null),
         btn(_panel ? Icons.bookmarks : Icons.bookmarks_outlined, '즐겨찾기 관리 (Ctrl+Shift+B)',
             () => setState(() => _panel = !_panel)),
+        AppActions(c: widget.c),
       ]),
     );
   }

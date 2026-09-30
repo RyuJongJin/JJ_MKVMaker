@@ -34,6 +34,28 @@ class DownloadManager extends ChangeNotifier {
   Timer? _clipTimer;
   String? _lastClip;
 
+  /// 받은 동영상을 편집 목록(MKV 만들기)에 넣는 함수 (새로 넣은 개수를 돌려줌). 앱이 연결해 준다.
+  Future<int> Function(List<String> files)? addToEditList;
+
+  /// "완료시 자동 동영상추가" 를 켜고 끄는 함수 (설정에 저장). 앱이 연결해 준다.
+  Future<void> Function(bool on)? setAutoAdd;
+
+  /// 설정이 바뀌었을 때 화면 갱신
+  void refresh() => notifyListeners();
+
+  /// 목록에서만 뺀다 (받은 파일은 그대로)
+  void dropFromList(DownloadTask t) {
+    tasks.remove(t);
+    selected.remove(t.id);
+    notifyListeners();
+  }
+
+  /// 고른 다운로드 중 다 받은 것의 동영상 파일
+  List<String> get selectedVideoFiles => [
+        for (final t in _sel)
+          if (t.state == DownloadState.done) ...videoFilesOf(t),
+      ];
+
   /// 새로 추가된 다운로드 알림 (화면에 안내 표시용)
   final _added = StreamController<DownloadTask>.broadcast();
   Stream<DownloadTask> get onAdded => _added.stream;
@@ -180,7 +202,7 @@ class DownloadManager extends ChangeNotifier {
       holder
         ..expanding = false
         ..state = DownloadState.failed
-        ..error = '$e';
+        ..error = e is ProcessException ? e.message : '$e';
       notifyListeners();
     }
   }

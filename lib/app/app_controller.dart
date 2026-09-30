@@ -23,6 +23,7 @@ import '../services/ai_services.dart';
 import '../services/media_tool.dart';
 import '../services/model_store.dart';
 import '../services/platform_services.dart';
+import '../services/system_usage.dart';
 import 'settings.dart';
 
 extension<T> on Set<T> {
@@ -70,6 +71,54 @@ class AppController extends ChangeNotifier {
   Future<bool> Function()? confirmQuit;
 
   /// 설정 변경 후 저장·적용
+  /// 위쪽 막대의 CPU · MEM 표시 (2초마다, 보는 화면이 있을 때만 잰다). 지원하지 않으면 null.
+  late final UsageMonitor? usage =
+      services.usage == null ? null : UsageMonitor(services.usage!, diskPath: _downloadDisk);
+
+  /// 다운로드 폴더가 있는 드라이브 (예: "M:\\"). 설정이 바뀔 때만 다시 알아낸다.
+  String? _diskFor, _diskRoot;
+  String _downloadDisk() {
+    final key = settings.downloadRoot ?? '';
+    if (_diskRoot == null || _diskFor != key) {
+      _diskFor = key;
+      try {
+        _diskRoot = p.rootPrefix(p.absolute(settings.resolvedDownloadRoot()));
+      } catch (_) {
+        _diskRoot = '';
+      }
+    }
+    return _diskRoot!;
+  }
+
+  // ───────── 목록 정렬 ─────────
+
+  /// 마지막으로 누른 정렬 ('name' · 'date') 과 방향. 같은 것을 다시 누르면 반대로.
+  String? sortedBy;
+  bool sortAscending = true;
+
+  /// 동영상 목록을 파일 이름 ('name') 또는 파일 날짜 ('date') 순으로 정렬
+  void sortVideos(String by) {
+    sortAscending = sortedBy == by ? !sortAscending : true;
+    sortedBy = by;
+    final dates = <VideoItem, DateTime>{};
+    if (by == 'date') {
+      for (final v in videos) {
+        try {
+          dates[v] = File(v.path).lastModifiedSync();
+        } catch (_) {
+          dates[v] = DateTime.fromMillisecondsSinceEpoch(0);
+        }
+      }
+    }
+    videos.sort((a, b) {
+      var d = by == 'date' ? dates[a]!.compareTo(dates[b]!) : 0;
+      if (d == 0) d = naturalCompare(a.fileName.toLowerCase(), b.fileName.toLowerCase());
+      return sortAscending ? d : -d;
+    });
+    _saveVideoList();
+    notifyListeners();
+  }
+
   Future<void> updateSettings(void Function(AppSettings s) change) async {
     change(settings);
     _applySettings();
@@ -296,6 +345,52 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ───────── 여러 개 선택 (일괄 작업) ─────────
+
+  /// 체크한 동영상 (일괄 자막 만들기 · MKV 만들기 · 제거 대상)
+  final Set<VideoItem> checked = {};
+
+  void toggleChecked(VideoItem v) {
+    if (!checked.remove(v)) checked.add(v);
+    notifyListeners();
+  }
+
+  /// 모두 체크되어 있으면 모두 해제, 아니면 모두 체크
+  void toggleAllChecked() {
+    if (checked.length == videos.length) {
+      checked.clear();
+    } else {
+      checked
+        ..clear()
+        ..addAll(videos);
+    }
+    notifyListeners();
+  }
+
+  /// 일괄 작업 대상: 체크한 동영상 (목록 순서대로). 체크한 것이 없으면 지금 보고 있는 한 개.
+  List<VideoItem> get batchTargets {
+    checked.retainAll(videos);
+    if (checked.isNotEmpty) return videos.where(checked.contains).toList();
+    return [?selected];
+  }
+
+  /// 체크한 동영상을 목록에서 제거 (작업 중인 것은 남긴다)
+  void removeChecked() {
+    final gone = checked.where((v) => v.status != JobStatus.running).toList();
+    videos.removeWhere(gone.contains);
+    checked.removeAll(gone);
+    if (selected != null && !videos.contains(selected)) selected = videos.firstOrNull;
+    _saveVideoList();
+    notifyListeners();
+  }
+
+  /// [targets] 의 AI 자막을 만들고, 이어서 그 동영상들만 MKV 로 만든다 (자막 만들기를 취소하면 거기서 멈춤)
+  Future<void> aiThenBuild(List<VideoItem> targets, AiOptions opts) async {
+    await generateAiSubtitles(targets, opts);
+    if (_aiCancelled) return;
+    await buildVideos(targets);
+  }
+
   /// 다 받은 동영상을 편집 목록에 추가 (이미 있으면 건너뜀). 새로 넣은 개수.
   Future<int> addDownloaded(List<String> files) async {
     final before = videos.length;
@@ -310,6 +405,7 @@ class AppController extends ChangeNotifier {
   void removeVideo(VideoItem v) {
     if (v.status == JobStatus.running) return;
     videos.remove(v);
+    checked.remove(v);
     if (selected == v) selected = videos.isEmpty ? null : videos.first;
     _saveVideoList();
     notifyListeners();
@@ -318,6 +414,7 @@ class AppController extends ChangeNotifier {
   void clearVideos() {
     if (busy) return;
     videos.clear();
+    checked.clear();
     selected = null;
     _saveVideoList();
     notifyListeners();
@@ -864,7 +961,8 @@ class AppController extends ChangeNotifier {
 
   /// 재생 준비. 확장자에 외부 프로그램이 지정되어 있으면 그것으로 열고 null,
   /// 아니면 내장 플레이어용 (목록, 시작 위치).
-  Future<(List<String>, int)?> preparePlayback(List<String> files) async {
+  /// [keepOrder]: 여러 개를 줄 때 이름순으로 다시 정렬하지 않고 준 순서대로 재생
+  Future<(List<String>, int)?> preparePlayback(List<String> files, {bool keepOrder = false}) async {
     final videos = files.where(isVideoFile).toList();
     if (videos.isEmpty) return null;
     final ext = p.extension(videos.first).replaceFirst('.', '').toLowerCase();
@@ -875,7 +973,7 @@ class AppController extends ChangeNotifier {
       return null;
     }
     if (videos.length > 1) {
-      videos.sort((a, b) => naturalCompare(p.basename(a), p.basename(b)));
+      if (!keepOrder) videos.sort((a, b) => naturalCompare(p.basename(a), p.basename(b)));
       return (videos, 0);
     }
     final siblings = await services.storage.listFiles(p.dirname(videos.first));
@@ -905,11 +1003,20 @@ class AppController extends ChangeNotifier {
     return _enqueue('MKV 만들기', _runBuildAll);
   }
 
-  Future<void> _runBuildAll() async {
+  /// 고른 동영상만 MKV 로 (이미 만든 것도 다시 만든다 - 자막이 바뀌었을 수 있으므로)
+  Future<void> buildVideos(List<VideoItem> targets) async {
+    if (ffmpegVersion == null || targets.isEmpty) return;
+    final label = targets.length == 1 ? 'MKV 만들기: ${targets.first.fileName}' : 'MKV 만들기 ${targets.length}개';
+    return _enqueue(label, () => _runBuildAll(targets));
+  }
+
+  Future<void> _runBuildAll([List<VideoItem>? only]) async {
     _buildCancelled = false;
     try {
       // 동시에 [maxParallelJobs] 개씩 (0 = 무제한). 작업자가 목록에서 하나씩 가져가 처리한다.
-      final queue = videos.where((v) => v.status != JobStatus.done).toList();
+      final queue = only?.where(videos.contains).toList() ??
+          videos.where((v) => v.status != JobStatus.done).toList();
+      if (queue.isEmpty) return;
       final limit = settings.maxParallelJobs <= 0 ? queue.length : settings.maxParallelJobs;
       if (queue.length > 1) _log('MKV 만들기: ${queue.length}개, 동시에 ${limit.clamp(1, queue.length)}개씩');
       var next = 0;

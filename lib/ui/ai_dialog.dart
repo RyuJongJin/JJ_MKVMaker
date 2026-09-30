@@ -7,28 +7,36 @@ import '../services/model_store.dart';
 import 'theme.dart';
 
 /// AI 자막 만들기 설정 창
-/// [targets] 를 주면 그 동영상들만 (탐색기 "자막 만들기" 메뉴)
+/// [targets] 를 주면 그 동영상들만 (탐색기 "자막 만들기" 메뉴 · 여러 개 선택)
+/// [thenBuild]: 자막을 만든 뒤 그 동영상들을 이어서 MKV 로 만든다
 Future<void> showAiDialog(BuildContext context, AppController c, VideoItem current,
-    {List<VideoItem>? targets}) async {
+    {List<VideoItem>? targets, bool thenBuild = false}) async {
   final list = targets ?? [current];
+  Future<void> run(List<VideoItem> v, AiOptions o) =>
+      thenBuild ? c.aiThenBuild(v, o) : c.generateAiSubtitles(v, o);
   // 환경 설정에서 "매번 묻기" 를 끄면 마지막 설정으로 바로 시작
   if (!c.settings.askAiOptions) {
-    await c.generateAiSubtitles(list, c.aiOptions);
+    await run(list, c.aiOptions);
     return;
   }
   final result = await showDialog<(AiOptions, bool)>(
     context: context,
-    builder: (_) => _AiDialog(c: c, videoCount: targets == null ? c.videos.length : 1),
+    builder: (_) => _AiDialog(
+        c: c, videoCount: targets == null ? c.videos.length : 1, targetCount: list.length, thenBuild: thenBuild),
   );
   if (result == null) return;
   final (opts, all) = result;
-  await c.generateAiSubtitles(all ? List.of(c.videos) : list, opts);
+  await run(all ? List.of(c.videos) : list, opts);
 }
 
 class _AiDialog extends StatefulWidget {
   final AppController c;
   final int videoCount;
-  const _AiDialog({required this.c, required this.videoCount});
+
+  /// 이번에 자막을 만들 동영상 수 · 이어서 MKV 도 만드는지 (제목에 표시)
+  final int targetCount;
+  final bool thenBuild;
+  const _AiDialog({required this.c, required this.videoCount, this.targetCount = 1, this.thenBuild = false});
 
   @override
   State<_AiDialog> createState() => _AiDialogState();
@@ -60,7 +68,8 @@ class _AiDialogState extends State<_AiDialog> {
   Widget build(BuildContext context) {
     final extra = languages.where((l) => !_o.targets.contains(l)).toList();
     return AlertDialog(
-      title: const Text('AI 자막 만들기'),
+      title: Text('AI 자막 만들기${widget.thenBuild ? ' → MKV 만들기' : ''}'
+          '${widget.targetCount > 1 ? ' (동영상 ${widget.targetCount}개)' : ''}'),
       content: SizedBox(
         width: 520,
         child: SingleChildScrollView(

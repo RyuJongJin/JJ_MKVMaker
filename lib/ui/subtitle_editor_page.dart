@@ -10,6 +10,7 @@ import '../core/models.dart';
 import '../core/srt.dart';
 import '../core/text_codec.dart';
 import '../services/preview_player.dart';
+import 'app_actions.dart';
 import 'theme.dart';
 import 'timeline.dart';
 
@@ -471,9 +472,9 @@ class _SubtitleEditorPageState extends State<SubtitleEditorPage> {
   }
 
   Widget _toolbar(BuildContext context) => Container(
-        height: 56,
+        height: appBarHeight,
         color: JjColors.panel,
-        padding: const EdgeInsets.symmetric(horizontal: 8),
+        padding: const EdgeInsets.only(left: 8, right: appBarRightPadding),
         child: Row(
           children: [
             IconButton(
@@ -536,6 +537,7 @@ class _SubtitleEditorPageState extends State<SubtitleEditorPage> {
               icon: const Icon(Icons.save, size: 18),
               label: Text(e.dirty ? '저장 (MKV 반영) *' : '저장 (MKV 반영)'),
             ),
+            const AppActions(),
           ],
         ),
       );

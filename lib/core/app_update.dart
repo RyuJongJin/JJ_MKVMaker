@@ -1,10 +1,22 @@
 /// GitHub 저장소 (업데이트 확인)
 const updateRepo = 'RyuJongJin/JJ_MKVMaker';
 
-/// "v1.2.3" · "1.2.3+4" → [1, 2, 3] (숫자가 아닌 부분 무시)
+/// 버전 글 → 숫자 목록. 버전은 "년.월.일_순번" (예: 2026.09.30_001) 이고,
+/// 같은 날 다시 내면 순번이 늘고 날이 바뀌면 001 부터 다시 시작한다.
+///   "v2026.09.30_001" · "2026.9.30+1" → [2026, 9, 30, 1]
+///   예전 방식 "v1.2.3" → [1, 2, 3]  (년도가 훨씬 크므로 새 방식이 항상 더 최신)
 List<int> parseVersion(String v) {
-  final core = v.trim().replaceFirst(RegExp(r'^[vV]'), '').split(RegExp(r'[+\-\s]')).first;
-  return [for (final part in core.split('.')) int.tryParse(part) ?? 0];
+  final core = v.trim().replaceFirst(RegExp(r'^[vV]'), '').split(RegExp(r'[\-\s]')).first;
+  return [for (final part in core.split(RegExp(r'[._+]'))) int.tryParse(part) ?? 0];
+}
+
+/// 화면 · 태그에 쓰는 글: [2026, 9, 30, 1] → "2026.09.30_001", 예전 방식은 "1.2.3"
+String formatVersion(String v) {
+  final n = parseVersion(v);
+  if (n.length < 3 || n[0] < 2000) return n.join('.');
+  String two(int x) => x.toString().padLeft(2, '0');
+  final seq = n.length > 3 ? n[3] : 1;
+  return '${n[0]}.${two(n[1])}.${two(n[2])}_${seq.toString().padLeft(3, '0')}';
 }
 
 /// a < b 면 음수, 같으면 0, a > b 면 양수
@@ -19,8 +31,8 @@ int compareVersions(String a, String b) {
 
 /// GitHub Release 정보
 class ReleaseInfo {
-  final String version; // 1.0.1
-  final String tag; // v1.0.1
+  final String version; // 2026.09.30_001
+  final String tag; // v2026.09.30_001
   final String name;
   final String notes;
   final String pageUrl;
@@ -69,7 +81,7 @@ ReleaseInfo? parseLatestRelease(Map<String, dynamic> j) {
     sha = RegExp(r'\b([0-9a-fA-F]{64})\b').firstMatch(j['body'] as String? ?? '')?.group(1)?.toLowerCase();
   }
   return ReleaseInfo(
-    version: parseVersion(tag).join('.'),
+    version: formatVersion(tag),
     tag: tag,
     name: j['name'] as String? ?? tag,
     notes: j['body'] as String? ?? '',

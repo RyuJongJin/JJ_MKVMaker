@@ -65,4 +65,22 @@ void main() {
     expect(t.state, DownloadState.done, reason: t.error);
     expect(t.extra['cookieStage'], 2);
   }, timeout: const Timeout(Duration(minutes: 3)));
+
+  test('실제 재생목록: 고른 브라우저의 쿠키를 못 읽어도 목록을 읽는다', () async {
+    if (Platform.environment['JJ_NET_TESTS'] != '1') return markTestSkipped('JJ_NET_TESTS=1 일 때만');
+    final tools = p.join(Directory.current.path, 'third_party', 'tools', 'windows');
+    final dir = Directory.systemTemp.createTempSync('jj_ytnet3_');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final backend = YtDlpBackend(
+      ytdlp: p.join(tools, 'yt-dlp.exe'),
+      deno: p.join(tools, 'deno.exe'),
+      cookieArgs: () => ['--cookies-from-browser', 'firefox:${p.join(dir.path, 'no_such_profile')}'],
+    );
+    final r = await backend.expandPlaylist(
+        'https://www.youtube.com/watch?v=sreCHQ6TxRU&list=PLJE1o6D6cpQ3v1uqaCD59Zffu7FGgQOhc');
+    // ignore: avoid_print
+    print('RESULT 재생목록 "${r?.$1}" 영상 ${r?.$2.length}개');
+    expect(r, isNotNull);
+    expect(r!.$2, isNotEmpty);
+  }, timeout: const Timeout(Duration(minutes: 3)));
 }

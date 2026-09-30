@@ -11,12 +11,14 @@ import '../app/app_controller.dart';
 import '../core/playlist.dart';
 import '../core/srt.dart' show formatSrtTime;
 import '../services/media_player.dart';
+import 'app_actions.dart';
 import 'theme.dart';
 
 /// 파일들을 재생 (외부 프로그램이 지정된 확장자면 그 프로그램으로)
-Future<void> playFiles(BuildContext context, AppController c, List<String> files) async {
+Future<void> playFiles(BuildContext context, AppController c, List<String> files,
+    {bool keepOrder = false}) async {
   final create = c.services.createMediaPlayer;
-  final plan = await c.preparePlayback(files);
+  final plan = await c.preparePlayback(files, keepOrder: keepOrder);
   if (plan == null || create == null || !context.mounted) return;
   final (list, start) = plan;
   await Navigator.of(context).push(MaterialPageRoute<void>(
@@ -246,9 +248,9 @@ class _PlayerPageState extends State<PlayerPage> {
   }
 
   Widget _header() => Container(
-        height: 44,
+        height: appBarHeight,
         color: JjColors.panel,
-        padding: const EdgeInsets.symmetric(horizontal: 4),
+        padding: const EdgeInsets.only(left: 4, right: appBarRightPadding),
         child: Row(children: [
           IconButton(
             tooltip: '돌아가기',
@@ -265,6 +267,7 @@ class _PlayerPageState extends State<PlayerPage> {
               ),
             ),
           ),
+          AppActions(c: c),
         ]),
       );
 

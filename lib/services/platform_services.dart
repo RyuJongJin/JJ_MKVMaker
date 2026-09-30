@@ -14,6 +14,7 @@ import '../platform/windows/desktop_shell.dart';
 import '../platform/windows/desktop_storage_service.dart';
 import '../platform/windows/github_updater.dart';
 import '../platform/windows/process_media_tool.dart';
+import '../platform/windows/windows_usage.dart';
 import '../platform/windows/ytdlp_backend.dart';
 import 'ai_services.dart';
 import 'app_shell.dart';
@@ -24,6 +25,7 @@ import 'model_store.dart';
 import 'preview_player.dart';
 import 'storage_service.dart';
 import 'subtitle_provider.dart';
+import 'system_usage.dart';
 import 'updater.dart';
 
 /// 플랫폼별 구현을 한 곳에서 고른다.
@@ -52,6 +54,9 @@ class PlatformServices {
   /// 새 버전 확인 · 설치 (없으면 업데이트 기능 숨김)
   final Updater? updater;
 
+  /// PC 의 CPU · 메모리 사용량 (없으면 표시 숨김)
+  final SystemUsage? usage;
+
   /// 인터넷 자막 사이트 (설정값을 읽는 함수를 받아 만든다)
   final List<SubtitleProvider> Function(AppSettings Function() settings)? createSubtitleProviders;
 
@@ -65,6 +70,7 @@ class PlatformServices {
     this.createDownloadBackends,
     this.createSubtitleProviders,
     this.updater,
+    this.usage,
     ModelStore? models,
     AppShell? shell,
   })  : models = models ?? ModelStore(),
@@ -99,6 +105,7 @@ class PlatformServices {
         ],
         shell: DesktopShell(),
         updater: GitHubUpdater(),
+        usage: Platform.isWindows ? WindowsUsage() : null,
         createSubtitleProviders: (s) => [
           OpenSubtitlesProvider(
             apiKey: () => s().openSubtitlesKey,

@@ -12,6 +12,7 @@ import '../core/subtitle_detector.dart';
 import '../services/app_shell.dart';
 import 'setup_dialog.dart';
 import 'update_dialog.dart';
+import 'app_actions.dart';
 import 'theme.dart';
 
 /// 동시 작업 수 고르기: 1 · 5 · 10 · 무한(0) · 직접 입력
@@ -239,9 +240,9 @@ class _SettingsPageState extends State<SettingsPage> {
         return Scaffold(
           body: Column(children: [
             Container(
-              height: 56,
+              height: appBarHeight,
               color: JjColors.panel,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
+              padding: const EdgeInsets.only(left: 8, right: appBarRightPadding),
               child: Row(children: [
                 IconButton(
                   tooltip: '돌아가기',
@@ -251,7 +252,8 @@ class _SettingsPageState extends State<SettingsPage> {
                 const Text('환경 설정', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
                 const Spacer(),
                 const Text('바꾸면 바로 저장됩니다', style: TextStyle(fontSize: 12, color: JjColors.textDim)),
-                const SizedBox(width: 12),
+                const SizedBox(width: 8),
+                AppActions(c: c, onSettingsPage: true),
               ]),
             ),
             Expanded(
@@ -507,8 +509,8 @@ class _SettingsPageState extends State<SettingsPage> {
                   SwitchListTile(
                     value: s.addFinishedDownloads,
                     onChanged: (v) => c.updateSettings((x) => x.addFinishedDownloads = v),
-                    title: const Text('다 받은 동영상을 편집 목록에 자동 추가'),
-                    subtitle: const Text('브라우저에서 받은 영상도 바로 자막 만들기 · MKV 만들기를 할 수 있게 목록에 넣습니다'),
+                    title: const Text('완료시 자동 동영상추가'),
+                    subtitle: const Text('다 받는 대로 MKV 만들기의 동영상 목록에 넣고, 다운로드 목록에서는 뺍니다 (다운로드 화면의 체크 상자와 같음)'),
                   ),
                   _section('AI 자막'),
                   SwitchListTile(

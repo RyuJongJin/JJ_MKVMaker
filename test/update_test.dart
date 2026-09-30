@@ -34,6 +34,24 @@ void main() {
       expect(compareVersions('1.10.0', '1.9.9'), greaterThan(0));
       expect(compareVersions('1.0.0+5', 'v1.0.1'), lessThan(0));
     });
+    test('버전: 년.월.일_순번', () {
+      expect(parseVersion('v2026.09.30_001'), [2026, 9, 30, 1]);
+      expect(formatVersion('2026.9.30+1'), '2026.09.30_001'); // pubspec 의 표기 → 보이는 글
+      expect(formatVersion('v2026.09.30_012'), '2026.09.30_012');
+      expect(formatVersion('2026.10.1+3'), '2026.10.01_003');
+      expect(formatVersion('v1.2.3'), '1.2.3'); // 예전 방식은 그대로
+      // 같은 날: 순번이 크면 최신. 날이 바뀌면 001 이어도 최신.
+      expect(compareVersions('2026.09.30_002', '2026.9.30+1'), greaterThan(0));
+      expect(compareVersions('v2026.09.30_001', '2026.9.30+1'), 0);
+      expect(compareVersions('2026.10.01_001', '2026.09.30_015'), greaterThan(0));
+      expect(compareVersions('2027.01.01_001', '2026.12.31_009'), greaterThan(0));
+      // 예전 1.x 에서 쓰던 사람도 새 방식을 업데이트로 받는다
+      expect(compareVersions('v2026.09.30_001', '1.1.1'), greaterThan(0));
+      final r = parseLatestRelease(_release('v2026.09.30_002'))!;
+      expect(r.version, '2026.09.30_002');
+      expect(r.isNewerThan('2026.09.30_001'), isTrue);
+      expect(r.isNewerThan('2026.09.30_002'), isFalse);
+    });
     test('releases/latest 해석', () {
       final r = parseLatestRelease(_release('v1.2.0', digest: 'sha256:${'A' * 64}'))!;
       expect([r.version, r.tag, r.zipName, r.sha256], ['1.2.0', 'v1.2.0', 'JJ_MKVMaker_v1.2.0_win64.zip', 'a' * 64]);

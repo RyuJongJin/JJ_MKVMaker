@@ -11,6 +11,7 @@ import 'app/app_controller.dart';
 import 'app/bookmarks_controller.dart';
 import 'app/download_manager.dart';
 import 'app/settings.dart';
+import 'core/app_update.dart';
 import 'core/playlist.dart';
 import 'platform/windows/desktop_shell.dart';
 import 'platform/windows/exit_trace.dart';
@@ -18,6 +19,7 @@ import 'platform/windows/single_instance.dart';
 import 'platform/windows/window_memory.dart';
 import 'services/platform_services.dart';
 import 'ui/ai_dialog.dart';
+import 'ui/app_actions.dart';
 import 'ui/browser_page.dart';
 import 'ui/downloads_page.dart';
 import 'ui/exit_dialog.dart';
@@ -33,7 +35,8 @@ String appTitle = 'JJ_MKVMaker';
 /// 버전을 읽어 제목을 정하고, 설정 폴더를 돌려준다
 Future<String> _prepare() async {
   try {
-    appTitle = 'JJ_MKVMaker v${(await PackageInfo.fromPlatform()).version}';
+    final info = await PackageInfo.fromPlatform();
+    appTitle = 'JJ_MKVMaker v${formatVersion('${info.version}+${info.buildNumber}')}';
   } catch (_) {}
   return (await getApplicationSupportDirectory()).path;
 }
@@ -166,10 +169,19 @@ Future<void> main(List<String> args) async {
   downloads.onFinished.listen((t) async {
     if (!controller.settings.addFinishedDownloads) return;
     final files = DownloadManager.videoFilesOf(t);
-    if (files.isNotEmpty && await controller.addDownloaded(files) > 0) {
-      messengerKey.currentState?.showSnackBar(SnackBar(content: Text('편집 목록에 추가: ${t.title}')));
+    if (files.isEmpty) return;
+    final n = await controller.addDownloaded(files);
+    // MKV 만들기 목록으로 넘어갔으므로 다운로드 목록에서는 뺀다 (받은 파일은 그대로)
+    downloads.dropFromList(t);
+    if (n > 0) {
+      messengerKey.currentState?.showSnackBar(SnackBar(content: Text('동영상 목록에 추가: ${t.title}')));
     }
   });
+  downloads.setAutoAdd = (on) async {
+    await controller.updateSettings((x) => x.addFinishedDownloads = on);
+    downloads.refresh();
+  };
+  downloads.addToEditList = controller.addDownloaded;
   unawaited(downloads.startClipboardWatch());
 
   // 탐색기 메뉴 · 두 번째 실행에서 온 요청 처리
@@ -270,7 +282,7 @@ Future<void> runSecondWindow(List<String> files, String dataDir) async {
   await controller.init();
   controller.settings = await SettingsStore().load();
   final navigatorKey = GlobalKey<NavigatorState>();
-  runApp(JjCapCutApp(controller: controller, navigatorKey: navigatorKey));
+  runApp(JjCapCutApp(controller: controller, navigatorKey: navigatorKey, onExit: () => exit(0)));
   WidgetsBinding.instance.addPostFrameCallback((_) async {
     await controller.shareVideoList(p.join(dataDir, 'videos.json'));
     unawaited(controller.addVideos(files, allowOutputFolder: true));
@@ -304,6 +316,7 @@ class JjCapCutApp extends StatelessWidget {
         theme: buildTheme(),
         navigatorKey: navigatorKey,
         scaffoldMessengerKey: messengerKey,
+        builder: (context, child) => AppScope(controller: controller, onExit: onExit, child: child!),
         home: HomePage(c: controller, downloads: downloads, onExit: onExit, bookmarks: bookmarks),
       );
 }

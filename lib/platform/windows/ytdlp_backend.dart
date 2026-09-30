@@ -69,18 +69,28 @@ class YtDlpBackend implements DownloadBackend {
     final listId = youtubePlaylistId(url);
     if (listId == null) return null;
     // 영상은 받지 않고 목록만 빠르게 읽는다
-    final r = await Process.run(
-      ytdlp,
-      [
-        '--flat-playlist', '-J', '--no-warnings', '--encoding', 'utf-8',
-        if (deno != null) ...['--js-runtimes', 'deno:$deno'],
-        ...cookieArgs(),
-        'https://www.youtube.com/playlist?list=$listId',
-      ],
-      environment: _env,
-      stdoutEncoding: utf8,
-      stderrEncoding: utf8,
-    );
+    Future<ProcessResult> read(List<String> cookies) => Process.run(
+          ytdlp,
+          [
+            '--flat-playlist', '-J', '--no-warnings', '--encoding', 'utf-8',
+            if (deno != null) ...['--js-runtimes', 'deno:$deno'],
+            ...cookies,
+            'https://www.youtube.com/playlist?list=$listId',
+          ],
+          environment: _env,
+          stdoutEncoding: utf8,
+          stderrEncoding: utf8,
+        );
+    // 고른 브라우저의 쿠키를 못 읽으면: 앱 안 브라우저의 쿠키 → 쿠키 없이 (영상 받기와 같은 순서)
+    final tries = <List<String>>[];
+    for (final c in [cookieArgs(), fallbackCookieArgs(), const <String>[]]) {
+      if (!tries.any((t) => t.join(' ') == c.join(' '))) tries.add(c);
+    }
+    late ProcessResult r;
+    for (final cookies in tries) {
+      r = await read(cookies);
+      if (r.exitCode == 0 || !isCookieReadError(r.stderr as String)) break;
+    }
     if (r.exitCode != 0) {
       throw ProcessException(
           ytdlp, [url], '재생목록을 읽을 수 없습니다: ${friendlyYtDlpError((r.stderr as String).trim())}', r.exitCode);

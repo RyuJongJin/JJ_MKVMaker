@@ -27,8 +27,12 @@ class GitHubUpdater implements Updater {
   }) : appDir = appDir ?? p.dirname(Platform.resolvedExecutable);
 
   @override
-  Future<String> currentVersion() async =>
-      versionOverride ?? (await PackageInfo.fromPlatform()).version;
+  Future<String> currentVersion() async {
+    if (versionOverride != null) return versionOverride!;
+    // pubspec 의 "2026.9.30+1" → "2026.09.30_001"
+    final info = await PackageInfo.fromPlatform();
+    return formatVersion('${info.version}+${info.buildNumber}');
+  }
 
   @override
   Future<ReleaseInfo?> latest() async {

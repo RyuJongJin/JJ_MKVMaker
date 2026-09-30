@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../app/download_manager.dart';
 import '../core/download_detect.dart';
 import '../services/downloader.dart';
+import 'app_actions.dart';
 import 'theme.dart';
 
 /// 다운로드 목록
@@ -45,9 +46,9 @@ class _DownloadsPageState extends State<DownloadsPage> {
         return Scaffold(
           body: Column(children: [
             Container(
-              height: 56,
+              height: appBarHeight,
               color: JjColors.panel,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
+              padding: const EdgeInsets.only(left: 8, right: appBarRightPadding),
               child: Row(children: [
                 IconButton(
                   tooltip: '돌아가기',
@@ -71,6 +72,7 @@ class _DownloadsPageState extends State<DownloadsPage> {
                 ),
                 const SizedBox(width: 8),
                 FilledButton(onPressed: _add, child: const Text('추가')),
+                const AppActions(),
               ]),
             ),
             Container(
@@ -94,6 +96,30 @@ class _DownloadsPageState extends State<DownloadsPage> {
                   ]),
                 ),
                 const Spacer(),
+                if (d.addToEditList != null) ...[
+                  _btn(Icons.playlist_add, '동영상 추가',
+                      hasSel && d.selectedVideoFiles.isNotEmpty ? () => _addToEditList(context) : null),
+                  // 켜면: 다 받는 대로 MKV 만들기 목록에 넣고 이 목록에서는 뺀다
+                  if (d.setAutoAdd != null)
+                    Tooltip(
+                      message: '다 받으면 MKV 만들기의 동영상 목록에 자동으로 넣고, 이 다운로드 목록에서는 뺍니다 (받은 파일은 그대로)',
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(4),
+                        onTap: () => d.setAutoAdd!(!d.settings().addFinishedDownloads),
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          Checkbox(
+                            visualDensity: VisualDensity.compact,
+                            value: d.settings().addFinishedDownloads,
+                            onChanged: (v) => d.setAutoAdd!(v ?? false),
+                          ),
+                          const Padding(
+                            padding: EdgeInsets.only(right: 8),
+                            child: Text('완료시 자동 동영상추가', style: TextStyle(fontSize: 12)),
+                          ),
+                        ]),
+                      ),
+                    ),
+                ],
                 _btn(Icons.pause, '일시정지', hasSel ? d.pauseSelected : null),
                 _btn(Icons.play_arrow, '재개', hasSel ? d.resumeSelected : null),
                 _btn(Icons.stop, '취소', hasSel ? d.cancelSelected : null),
@@ -128,6 +154,17 @@ class _DownloadsPageState extends State<DownloadsPage> {
           label: Text(label, style: const TextStyle(fontSize: 12)),
         ),
       );
+
+  /// 고른 (다 받은) 동영상을 MKV 만들기의 동영상 목록에 추가
+  Future<void> _addToEditList(BuildContext context) async {
+    final files = widget.d.selectedVideoFiles;
+    final m = ScaffoldMessenger.of(context);
+    final n = await widget.d.addToEditList!(files);
+    m.showSnackBar(SnackBar(
+        content: Text(n > 0
+            ? 'MKV 만들기 목록에 동영상 $n개를 추가했습니다.'
+            : '이미 목록에 있는 동영상입니다 (${files.length}개).')));
+  }
 
   Future<void> _confirmRemove(BuildContext context) async {
     final n = widget.d.selected.length;
