@@ -1,0 +1,147 @@
+import 'package:flutter/material.dart';
+
+import '../app/app_controller.dart';
+import '../core/app_update.dart';
+import 'theme.dart';
+
+/// 새 버전 확인 → 알림 → 받기 · 검증 → 종료 후 설치 · 다시 시작
+///
+/// [manual]: 환경 설정에서 "지금 확인" 을 누른 경우 (최신이어도 알려 주고, 건너뛴 버전도 보여 줌)
+Future<void> checkForUpdate(BuildContext context, AppController c, {bool manual = false}) async {
+  final up = c.services.updater;
+  if (up == null) return;
+  final s = c.settings;
+  if (!manual && (!s.autoCheckUpdates || !updateCheckDue(s.lastUpdateCheck, DateTime.now()))) return;
+
+  void snack(String t) {
+    if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(t)));
+  }
+
+  final String current;
+  final ReleaseInfo? r;
+  try {
+    current = await up.currentVersion();
+    r = await up.latest();
+  } catch (e) {
+    if (manual) snack('새 버전을 확인할 수 없습니다: $e');
+    return;
+  }
+  await c.updateSettings((x) => x.lastUpdateCheck = DateTime.now().toIso8601String());
+  if (r == null || !r.isNewerThan(current)) {
+    if (manual) snack('최신 버전입니다 (v$current)');
+    return;
+  }
+  if (!manual && s.skippedVersion == r.version) return;
+  if (!context.mounted) return;
+
+  final choice = await showDialog<String>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Text('새 버전 v${r!.version}'),
+      content: SizedBox(
+        width: 560,
+        height: 380,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('지금 쓰는 버전: v$current  →  새 버전: v${r.version}'),
+          if (r.zipSize > 0)
+            Text('받는 크기: 약 ${(r.zipSize / 1e6).round()}MB · 받은 파일 · AI 모델 · 설정은 그대로 둡니다',
+                style: const TextStyle(fontSize: 12, color: JjColors.textDim)),
+          const SizedBox(height: 12),
+          const Text('바뀐 내용', style: TextStyle(fontWeight: FontWeight.w600)),
+          const SizedBox(height: 4),
+          Expanded(
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(color: JjColors.bg, borderRadius: BorderRadius.circular(6)),
+              child: SingleChildScrollView(
+                child: SelectableText(r.notes.isEmpty ? '(설명 없음)' : r.notes,
+                    style: const TextStyle(fontSize: 12, height: 1.5)),
+              ),
+            ),
+          ),
+        ]),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx, 'skip'), child: const Text('이 버전 건너뛰기')),
+        TextButton(onPressed: () => Navigator.pop(ctx, 'page'), child: const Text('페이지 열기')),
+        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('나중에')),
+        FilledButton.icon(
+          onPressed: () => Navigator.pop(ctx, 'update'),
+          icon: const Icon(Icons.system_update_alt, size: 18),
+          label: const Text('업데이트'),
+        ),
+      ],
+    ),
+  );
+  switch (choice) {
+    case 'skip':
+      await c.updateSettings((x) => x.skippedVersion = r!.version);
+      return;
+    case 'page':
+      await up.openPage(r);
+      return;
+    case 'update':
+      break;
+    default:
+      return;
+  }
+
+  if (c.busy) {
+    snack('MKV 만들기 · AI 자막 작업이 끝난 뒤 업데이트하세요.');
+    return;
+  }
+  // 프로그램 폴더에 쓸 수 없으면 (예: Program Files) 페이지에서 직접 받도록
+  if (r.zipUrl == null || !await up.canInstall()) {
+    snack('자동 설치를 할 수 없는 위치입니다. 페이지에서 직접 받아 주세요.');
+    await up.openPage(r);
+    return;
+  }
+  if (!context.mounted) return;
+
+  final progress = ValueNotifier<double>(0);
+  showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    builder: (_) => AlertDialog(
+      title: Text('v${r!.version} 받는 중'),
+      content: ValueListenableBuilder<double>(
+        valueListenable: progress,
+        builder: (_, v, _) => Column(mainAxisSize: MainAxisSize.min, children: [
+          Text(v >= 1 ? '확인 · 압축 푸는 중…' : '${(v * 100).round()}%'),
+          const SizedBox(height: 12),
+          LinearProgressIndicator(value: v >= 1 ? null : v),
+        ]),
+      ),
+    ),
+  );
+  String dir;
+  try {
+    dir = await up.download(r, (x) => progress.value = x);
+  } catch (e) {
+    if (context.mounted) Navigator.of(context).pop();
+    snack('업데이트 실패: $e');
+    return;
+  }
+  if (!context.mounted) return;
+  Navigator.of(context).pop();
+
+  final go = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('설치 준비 완료'),
+      content: Text('v${r!.version} 을 받았고 파일 검증(SHA256)을 마쳤습니다.\n'
+          '프로그램을 종료하고 설치한 뒤 자동으로 다시 시작합니다.'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('나중에')),
+        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('지금 설치')),
+      ],
+    ),
+  );
+  if (go != true) return;
+  // 다운로드 중이면 기존 종료 확인 절차
+  final ok = await (c.confirmQuit?.call() ?? Future.value(true));
+  if (!ok) return;
+  await up.scheduleInstall(dir);
+  await c.services.shell.quit();
+}

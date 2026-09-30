@@ -1,0 +1,1003 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as p;
+
+import '../core/charset_detector.dart';
+import '../core/encode_options.dart';
+import '../core/languages.dart';
+import '../core/mkv_command_builder.dart';
+import '../core/models.dart';
+import '../core/output_paths.dart';
+import '../core/playlist.dart';
+import '../core/srt.dart';
+import '../core/subtitle_detector.dart';
+import '../core/subtitle_search.dart';
+import '../services/subtitle_provider.dart';
+import '../core/text_codec.dart';
+import '../core/ai_subtitle.dart';
+import '../services/ai_services.dart';
+import '../services/media_tool.dart';
+import '../services/model_store.dart';
+import '../services/platform_services.dart';
+import 'settings.dart';
+
+extension<T> on Set<T> {
+  Set<T> ifEmpty(Set<T> other) => isEmpty ? other : this;
+}
+
+/// AI 자막 설정
+class AiOptions {
+  /// 원어 (undetermined = 자동 감지)
+  final Language source;
+
+  /// 만들 언어 (기본: 한국어·영어·일본어)
+  final Set<Language> targets;
+  final ModelSpec whisper;
+
+  const AiOptions({
+    this.source = undetermined,
+    required this.targets,
+    required this.whisper,
+  });
+
+  /// 기본값: 한국어·영어·일본어
+  static AiOptions defaults() =>
+      AiOptions(targets: {for (final c in defaultTargetLanguages) languageOf(c)}, whisper: whisperModels.first);
+
+  /// 원어와 다른 언어가 있으면 번역 모델 필요 (원어 자동이면 필요하다고 봄)
+  bool get needsTranslation =>
+      source == undetermined || targets.any((t) => t.code != source.code);
+
+  AiOptions copyWith({Language? source, Set<Language>? targets, ModelSpec? whisper}) => AiOptions(
+      source: source ?? this.source, targets: targets ?? this.targets, whisper: whisper ?? this.whisper);
+}
+
+/// 화면 상태와 작업 흐름 (플랫폼 무관)
+class AppController extends ChangeNotifier {
+  final PlatformServices services;
+
+  /// 설정 저장소 (null 이면 저장하지 않음 - 테스트용)
+  final SettingsStore? settingsStore;
+  AppSettings settings = AppSettings();
+
+  AppController(this.services, {this.settingsStore});
+
+  /// 종료 전 확인 (다운로드 중이면 목록 확인). main 에서 연결, 업데이트 설치 때 사용
+  Future<bool> Function()? confirmQuit;
+
+  /// 설정 변경 후 저장·적용
+  Future<void> updateSettings(void Function(AppSettings s) change) async {
+    change(settings);
+    _applySettings();
+    notifyListeners();
+    await settingsStore?.save(settings);
+  }
+
+  void _applySettings() {
+    outputRootOverride =
+        (settings.mkvOutputRoot?.isNotEmpty ?? false) ? settings.mkvOutputRoot : null;
+  }
+
+  void _saveSettings() => settingsStore?.save(settings);
+
+  MediaTool get _tool => services.mediaTool;
+
+  final List<VideoItem> videos = [];
+  final List<String> logs = [];
+  VideoItem? selected;
+  String? ffmpegVersion;
+  bool busy = false;
+
+  /// 화면 크기 · 코덱 · 화질 (모든 동영상에 적용)
+  EncodeSettings encode = const EncodeSettings();
+
+  /// FFmpeg 가 지원하는 영상 인코더
+  Set<String> encoders = {};
+
+  Future<void> init() async {
+    if (settingsStore != null) {
+      settings = await settingsStore!.load();
+      // 앱 안 브라우저의 로그인 · 쿠키 폴더 (yt-dlp 가 같은 쿠키를 읽음)
+      try {
+        settings.webViewDataDir = p.join((await getApplicationSupportDirectory()).path, 'webview');
+      } catch (_) {}
+      encode = settings.encode;
+      aiOptions = AiOptions(
+        source: languageOf(settings.aiSource),
+        targets: {
+          for (final c in settings.aiTargets)
+            if (languageOf(c) != undetermined) languageOf(c),
+        }.ifEmpty({for (final c in defaultTargetLanguages) languageOf(c)}),
+        whisper: whisperModels.firstWhere((m) => m.id == settings.aiWhisper,
+            orElse: () => whisperModels.first),
+      );
+      _applySettings();
+    }
+    ffmpegVersion = await _tool.version();
+    if (ffmpegVersion == null) {
+      _log('⚠ FFmpeg 를 찾을 수 없습니다. MKV 만들기를 사용할 수 없습니다.');
+      return;
+    }
+    encoders = await _tool.encoders();
+    final missing = [
+      for (final c in VideoCodecChoice.values)
+        if (c != VideoCodecChoice.copy && !isCodecAvailable(c)) c.label,
+    ];
+    _log('FFmpeg 준비됨: $ffmpegVersion'
+        '${missing.isEmpty ? '' : ' ⚠ 사용할 수 없는 코덱: ${missing.join(', ')}'}');
+  }
+
+  bool isCodecAvailable(VideoCodecChoice c) =>
+      c == VideoCodecChoice.copy || c.pickEncoder(encoders) != null;
+
+  void setCodec(VideoCodecChoice c) {
+    // 원본 유지(복사)는 크기를 바꿀 수 없으므로 원본 크기로
+    encode = encode.copyWith(
+        codec: c,
+        resolution: c == VideoCodecChoice.copy ? ResolutionChoice.original : null);
+    _encodeChanged();
+  }
+
+  void _encodeChanged() {
+    settings.encode = encode;
+    _saveSettings();
+    notifyListeners();
+  }
+
+  void setResolution(ResolutionChoice r) {
+    // 크기를 바꾸려면 재인코딩이 필요하므로 기본 H.264 로
+    final needCodec =
+        r != ResolutionChoice.original && encode.codec == VideoCodecChoice.copy;
+    encode = encode.copyWith(
+        resolution: r, codec: needCodec ? VideoCodecChoice.h264 : null);
+    _encodeChanged();
+  }
+
+  void setQuality(QualityChoice q) {
+    encode = encode.copyWith(quality: q);
+    _encodeChanged();
+  }
+
+  /// 원본보다 큰 크기로 인코딩하게 되는 동영상 수
+  int get upscaleCount => videos
+      .where((v) => isUpscale(encode.resolution, v.info?.ofType('video').firstOrNull))
+      .length;
+
+  // ───────── 동영상 ─────────
+
+  Future<void> pickVideos() async {
+    final paths = await services.storage.pickVideos();
+    await addVideos(paths);
+  }
+
+  /// [allowOutputFolder]: 탐색기에서 직접 연 파일은 jj_mkv 폴더 안에 있어도 넣는다
+  Future<void> addVideos(List<String> paths, {bool allowOutputFolder = false}) async {
+    for (final path in paths) {
+      if (videos.any((v) => p.equals(v.path, path))) continue;
+      // jj_mkv 출력 폴더 안의 파일은 제외 (폴더째 넣을 때 만든 결과물이 다시 들어가지 않게)
+      if (!allowOutputFolder && p.basename(p.dirname(path)) == outputFolderName) {
+        _log('건너뜀 (출력 폴더의 파일): ${p.basename(path)}');
+        continue;
+      }
+      final v = VideoItem(path);
+      videos.add(v);
+      selected ??= v;
+      notifyListeners();
+      await _loadVideo(v);
+    }
+    _saveVideoList();
+  }
+
+  // ───────── 동영상 목록 저장 · 창끼리 공유 ─────────
+  //
+  // 목록(경로)을 파일 하나에 적어 둔다. 다시 켜면 그대로 불러오고, 창이 여러 개면
+  // 1초마다 파일을 보고 다른 창에서 넣거나 지운 것을 따라 한다.
+
+  String? _videoListFile;
+  String _videoListSaved = '[]';
+  Timer? _videoListTimer;
+  bool _videoListSyncing = false;
+
+  /// 목록 저장 · 공유 시작 ([file] 을 먼저 불러온다)
+  Future<void> shareVideoList(String file) async {
+    _videoListFile = file;
+    await syncVideoList();
+    _videoListTimer?.cancel();
+    _videoListTimer = Timer.periodic(const Duration(seconds: 1), (_) => syncVideoList());
+  }
+
+  void stopVideoListShare() {
+    _videoListTimer?.cancel();
+    _videoListTimer = null;
+  }
+
+  void _saveVideoList() {
+    final file = _videoListFile;
+    if (file == null || _videoListSyncing) return;
+    final text = jsonEncode([for (final v in videos) v.path]);
+    if (text == _videoListSaved) return;
+    _videoListSaved = text;
+    try {
+      // 다른 창이 읽는 중에 반쯤 쓴 파일을 보지 않도록: 임시 파일 → 이름 바꾸기
+      final tmp = File('$file.$pid.tmp')..writeAsStringSync(text, flush: true);
+      tmp.renameSync(file);
+    } catch (_) {}
+  }
+
+  /// 파일이 바뀌었으면 (다른 창에서 넣거나 지움) 이 창의 목록을 맞춘다
+  Future<void> syncVideoList() async {
+    final file = _videoListFile;
+    if (file == null || _videoListSyncing) return;
+    String text;
+    try {
+      final f = File(file);
+      if (!f.existsSync()) return;
+      text = f.readAsStringSync();
+    } catch (_) {
+      return;
+    }
+    if (text == _videoListSaved) return;
+    List<String> want;
+    try {
+      want = (jsonDecode(text) as List).cast<String>();
+    } catch (_) {
+      return;
+    }
+    _videoListSyncing = true;
+    try {
+      _videoListSaved = text;
+      bool inWant(VideoItem v) => want.any((w) => p.equals(w, v.path));
+      // 작업 중인 동영상은 지우지 않는다
+      videos.removeWhere((v) => !inWant(v) && v.status != JobStatus.running);
+      if (selected != null && !videos.contains(selected)) selected = videos.firstOrNull;
+      notifyListeners();
+      await addVideos([for (final w in want) if (File(w).existsSync()) w], allowOutputFolder: true);
+    } finally {
+      _videoListSyncing = false;
+      _saveVideoList(); // 없는 파일을 뺐거나 맞추는 동안 이 창에서 바꾼 것이 있으면 다시 적는다
+    }
+  }
+
+  Future<void> _loadVideo(VideoItem v) async {
+    try {
+      v.info = await _tool.probe(v.path);
+      // 내장 자막 (mkv 등)
+      for (final s in v.info!.ofType('subtitle')) {
+        v.subtitles.add(SubtitleEntry.embedded(
+          streamIndex: s.index,
+          codec: s.codec,
+          language: languageOf(s.language),
+          title: s.title,
+        ));
+      }
+    } on MediaToolException catch (e) {
+      v.message = e.message;
+      _log('분석 실패: ${v.fileName} - ${e.message}');
+    }
+
+    // 같은 폴더의 자막 자동 추가 (기능 4)
+    final siblings = findSiblingSubtitles(
+        v.path, await services.storage.listFiles(v.directory));
+    for (final d in siblings) {
+      await _addExternal(v, d.path, d.language);
+    }
+    final embeddedCount =
+        v.subtitles.where((s) => s.kind == SubtitleKind.embedded).length;
+    _log('추가: ${v.fileName} (내장 자막 $embeddedCount개, 같은 폴더 자막 ${siblings.length}개)');
+    notifyListeners();
+  }
+
+  void select(VideoItem v) {
+    selected = v;
+    notifyListeners();
+  }
+
+  /// 다 받은 동영상을 편집 목록에 추가 (이미 있으면 건너뜀). 새로 넣은 개수.
+  Future<int> addDownloaded(List<String> files) async {
+    final before = videos.length;
+    await addVideos(files);
+    final n = videos.length - before;
+    for (final v in videos.skip(before)) {
+      _log('받은 동영상을 편집 목록에 추가: ${v.fileName}');
+    }
+    return n;
+  }
+
+  void removeVideo(VideoItem v) {
+    if (v.status == JobStatus.running) return;
+    videos.remove(v);
+    if (selected == v) selected = videos.isEmpty ? null : videos.first;
+    _saveVideoList();
+    notifyListeners();
+  }
+
+  void clearVideos() {
+    if (busy) return;
+    videos.clear();
+    selected = null;
+    _saveVideoList();
+    notifyListeners();
+  }
+
+  // ───────── 자막 ─────────
+
+  Future<void> pickSubtitlesFor(VideoItem v) async {
+    final paths =
+        await services.storage.pickSubtitles(initialDirectory: v.directory);
+    for (final path in paths) {
+      if (v.subtitles.any((s) => s.path != null && p.equals(s.path!, path))) {
+        continue;
+      }
+      final d = findSiblingSubtitles(v.path, [path]);
+      await _addExternal(v, path, d.isEmpty ? undetermined : d.first.language);
+    }
+    notifyListeners();
+  }
+
+  Future<void> _addExternal(VideoItem v, String path, Language lang) async {
+    String charset = 'UTF-8';
+    try {
+      final head = await services.storage.readHead(path, 64 * 1024);
+      charset = detectCharset(Uint8List.fromList(head));
+    } catch (_) {}
+    v.subtitles.add(SubtitleEntry.external(
+        path: path, language: lang, charset: charset));
+  }
+
+  /// 내장 자막은 '삭제' 표시(출력에서 제외), 외부 자막은 목록에서 제거
+  void removeSubtitle(VideoItem v, SubtitleEntry s) {
+    if (s.kind == SubtitleKind.embedded) {
+      s.enabled = !s.enabled;
+    } else {
+      v.subtitles.remove(s);
+    }
+    notifyListeners();
+  }
+
+  void setLanguage(SubtitleEntry s, Language lang) {
+    s.language = lang;
+    notifyListeners();
+  }
+
+  void setCharset(SubtitleEntry s, String charset) {
+    s.charset = charset;
+    notifyListeners();
+  }
+
+  // ───────── 자막 편집 (2단계) ─────────
+
+  /// 편집 가능 여부 (이미지 자막은 불가)
+  bool canEdit(SubtitleEntry s) =>
+      !(s.kind == SubtitleKind.embedded && bitmapSubtitleCodecs.contains(s.codec)) &&
+      (s.kind == SubtitleKind.external || ffmpegVersion != null);
+
+  /// 자막을 큐 목록으로 불러온다.
+  /// - 외부 SRT: 지정 문자셋으로 직접 읽음
+  /// - 외부 SMI/ASS/VTT, 내장 트랙: FFmpeg 로 UTF-8 SRT 변환 후 읽음
+  Future<List<Cue>> loadCues(VideoItem v, SubtitleEntry s) async {
+    final storage = services.storage;
+    if (s.kind == SubtitleKind.external && s.codec == 'srt') {
+      final bytes = await storage.readBytes(s.path!);
+      return parseSrt(decodeText(bytes, s.charset ?? 'UTF-8'));
+    }
+    final tmp = p.join(await storage.tempDirectory(),
+        'edit_${DateTime.now().microsecondsSinceEpoch}.srt');
+    try {
+      await _tool.runFfmpeg(s.kind == SubtitleKind.external
+          ? buildToSrtArgs(input: s.path!, output: tmp, charset: s.charset)
+          : buildToSrtArgs(input: v.path, output: tmp, streamIndex: s.streamIndex));
+      return parseSrt(decodeText(await storage.readBytes(tmp), 'UTF-8'));
+    } finally {
+      await storage.delete(tmp);
+    }
+  }
+
+  /// 편집한 자막을 jj_mkv\파일명_언어코드.srt 로 저장하고 MKV 에 반영되도록 목록을 바꾼다.
+  /// - 내장 자막: 원래 트랙은 '삭제' 표시, 편집본을 외부 자막으로 추가
+  /// - 외부 자막: 같은 자리의 항목을 편집본으로 교체 (원본 파일은 그대로 둠)
+  /// 돌려주는 값: (저장 경로, 표현할 수 없어 '?' 로 바뀐 글자 수)
+  Future<(String, int)> saveEdited(
+      VideoItem v, SubtitleEntry s, List<Cue> cues, String charset) async {
+    final enc = encodeText(formatSrt(cues), charset);
+    final target = await _editedPath(v, s);
+    await services.storage.writeBytes(target, enc.bytes);
+
+    final edited = SubtitleEntry.external(
+      path: target,
+      language: s.language,
+      charset: charset == 'UTF-8-BOM' ? 'UTF-8' : charset,
+      title: s.title,
+    );
+    final i = v.subtitles.indexOf(s);
+    if (s.kind == SubtitleKind.embedded) {
+      s.enabled = false;
+      v.subtitles.insert(i + 1, edited);
+    } else {
+      v.subtitles[i] = edited;
+    }
+    if (v.status == JobStatus.done) v.status = JobStatus.ready;
+    _log('자막 저장: ${p.basename(target)} ($charset, ${cues.length}개 줄)'
+        '${enc.lostChars > 0 ? ' ⚠ 표현할 수 없는 글자 ${enc.lostChars}개' : ''}');
+    notifyListeners();
+    return (target, enc.lostChars);
+  }
+
+  /// 다른 이름으로 저장 (목록은 바꾸지 않음)
+  Future<(String?, int)> saveCuesAs(
+      VideoItem v, List<Cue> cues, String charset, String fileName) async {
+    final enc = encodeText(formatSrt(cues), charset);
+    final path = await services.storage.saveAs(
+        fileName: fileName, bytes: enc.bytes, initialDirectory: v.directory);
+    if (path != null) _log('다른 이름으로 저장: $path ($charset)');
+    return (path, enc.lostChars);
+  }
+
+  Future<String> _editedPath(VideoItem v, SubtitleEntry s) async {
+    // 이미 편집본(jj_mkv 안)을 다시 편집하면 같은 파일에 덮어쓴다
+    if (s.kind == SubtitleKind.external &&
+        p.equals(p.dirname(s.path!), outputDirFor(v.path)) &&
+        p.extension(s.path!).toLowerCase() == '.srt') {
+      return s.path!;
+    }
+    final base = languageSubtitlePath(v.path, s.language);
+    final used = v.subtitles
+        .where((e) => e != s && e.path != null)
+        .map((e) => p.normalize(e.path!).toLowerCase())
+        .toSet();
+    var candidate = base;
+    for (var n = 2; used.contains(p.normalize(candidate).toLowerCase()); n++) {
+      candidate = '${p.withoutExtension(base)}_$n.srt';
+    }
+    return candidate;
+  }
+
+  // ───────── AI 자막 (4단계) ─────────
+
+  bool get aiAvailable =>
+      services.createRecognizer != null && services.createTranslator != null;
+
+  /// 마지막으로 고른 AI 자막 설정
+  AiOptions aiOptions = AiOptions.defaults();
+
+  Translator? _translator;
+  bool _aiCancelled = false;
+
+  // ───────── 작업 대기열 ─────────
+
+  /// 실행 중인 작업 이름 (없으면 null)
+  String? currentJob;
+
+  /// 대기 중인 작업 이름 (차례대로)
+  final List<String> pendingJobs = [];
+  final List<(Future<void> Function(), Completer<void>)> _pendingRuns = [];
+
+  /// 작업 중이면 대기열에 넣고, 아니면 바로 실행한다. 끝나면 다음 작업을 이어서 실행.
+  /// (AI 자막 · 자막 번역 · MKV 만들기 는 CPU · 메모리를 많이 써서 하나씩)
+  /// 돌려주는 Future 는 그 작업이 실제로 끝날 때 (취소로 빠지면 바로) 끝난다.
+  Future<void> _enqueue(String label, Future<void> Function() job) {
+    if (busy) {
+      final done = Completer<void>();
+      pendingJobs.add(label);
+      _pendingRuns.add((job, done));
+      _log('대기열에 추가: $label (대기 ${pendingJobs.length}개)');
+      notifyListeners();
+      return done.future;
+    }
+    return _run(label, job);
+  }
+
+  Future<void> _run(String label, Future<void> Function() job) async {
+    busy = true;
+    currentJob = label;
+    notifyListeners();
+    try {
+      await job();
+    } finally {
+      busy = false;
+      currentJob = null;
+      notifyListeners();
+      if (_pendingRuns.isNotEmpty) {
+        final (next, done) = _pendingRuns.removeAt(0);
+        final nextLabel = pendingJobs.removeAt(0);
+        unawaited(_run(nextLabel, next).then((_) => done.complete(), onError: done.completeError));
+      }
+    }
+  }
+
+  /// [targets] 동영상들의 AI 자막 만들기 (하나씩 차례로). 다른 작업 중이면 대기열로.
+  Future<void> generateAiSubtitles(List<VideoItem> targets, AiOptions opts) async {
+    if (!aiAvailable || ffmpegVersion == null || targets.isEmpty) return;
+    aiOptions = opts;
+    settings
+      ..aiSource = opts.source.code
+      ..aiTargets = [for (final t in opts.targets) t.code]
+      ..aiWhisper = opts.whisper.id;
+    _saveSettings();
+    if (busy) {
+      for (final v in targets) {
+        v.phase = 'AI 자막 대기 중';
+      }
+    }
+    final label = targets.length == 1 ? 'AI 자막: ${targets.first.fileName}' : 'AI 자막 ${targets.length}개';
+    return _enqueue(label, () => _runAi(targets, opts));
+  }
+
+  Future<void> _runAi(List<VideoItem> targets, AiOptions opts) async {
+    _aiCancelled = false;
+    try {
+      // 1. 모델 준비 (없으면 내려받기)
+      for (final m in [opts.whisper, nllbModel]) {
+        if (m == nllbModel && !opts.needsTranslation) continue;
+        if (await services.models.isInstalled(m)) continue;
+        _log('모델 내려받는 중: ${m.label} (${m.sizeLabel})');
+        await services.models.download(m,
+            isCancelled: () => _aiCancelled,
+            onProgress: (x) {
+              for (final v in targets) {
+                v
+                  ..phase = '모델 내려받는 중 ${(x * 100).round()}%'
+                  ..progress = x
+                  ..status = JobStatus.running;
+              }
+              notifyListeners();
+            });
+      }
+      for (final v in targets) {
+        if (_aiCancelled) break;
+        await _generateOne(v, opts);
+      }
+    } catch (e) {
+      _log('AI 자막 중단: $e');
+      for (final v in targets.where((v) => v.status == JobStatus.running)) {
+        v
+          ..status = JobStatus.failed
+          ..message = '$e'
+          ..phase = null;
+      }
+    } finally {
+      await _translator?.dispose();
+      _translator = null;
+      notifyListeners();
+    }
+  }
+
+  Future<void> _generateOne(VideoItem v, AiOptions opts) async {
+    void phase(String text, double p) {
+      v
+        ..status = JobStatus.running
+        ..phase = text
+        ..progress = p;
+      notifyListeners();
+    }
+
+    final storage = services.storage;
+    final tmp = p.join(await storage.tempDirectory(),
+        'ai_${DateTime.now().microsecondsSinceEpoch}');
+    await storage.ensureDirectory(tmp);
+    final wav = p.join(tmp, 'audio.wav');
+    _log('AI 자막 시작: ${v.fileName}');
+    try {
+      // 2. 음성 추출 (전체의 5%)
+      if (v.info?.ofType('audio').isEmpty ?? false) {
+        throw const MediaToolException('음성 트랙이 없습니다.');
+      }
+      phase('음성 추출 중', 0);
+      await _tool.runFfmpeg(buildExtractAudioArgs(v.path, wav),
+          duration: v.info?.duration, onProgress: (x) => phase('음성 추출 중', x * 0.05));
+      if (_aiCancelled) throw const AiCancelled();
+
+      // 3. 음성인식 (5% ~ 50%)
+      phase('음성인식 중', 0.05);
+      final raw = await services.createRecognizer!().transcribe(
+        wav,
+        modelPath: await services.models.pathOf(opts.whisper),
+        language: opts.source == undetermined ? 'auto' : whisperCode(opts.source),
+        onProgress: (x) => phase('음성인식 중 ${(x * 100).round()}%', 0.05 + x * 0.45),
+      );
+      final cues = cleanRecognized(raw);
+      if (cues.isEmpty) throw const MediaToolException('인식된 말이 없습니다.');
+      if (_aiCancelled) throw const AiCancelled();
+
+      // 4. 원어
+      final src = opts.source != undetermined
+          ? opts.source
+          : detectLanguage(cues.map((c) => c.text).join(' '));
+      _log('음성인식 완료: ${cues.length}줄, 원어 ${src.name}(${src.code})');
+
+      // 5. 파일명_AI.srt (원본)
+      await storage.ensureDirectory(outputDirFor(v.path));
+      await storage.writeBytes(
+          aiSubtitlePath(v.path), encodeText(formatSrt(cues), 'UTF-8').bytes);
+
+      // 6. 언어별 파일명_코드.srt (원어도 따로 만듦) → MKV 에 추가
+      final langs = opts.targets.toList();
+      for (var i = 0; i < langs.length; i++) {
+        final tgt = langs[i];
+        final base = 0.5 + 0.5 * i / langs.length;
+        final span = 0.5 / langs.length;
+        List<Cue> out;
+        if (tgt.code == src.code || src == undetermined) {
+          out = [for (final c in cues) c.copy()];
+        } else {
+          if (_translator == null) {
+            phase('번역 모델 불러오는 중', base);
+            _translator = services.createTranslator!();
+            await _translator!.load(await services.models.folderOf(nllbModel));
+          }
+          phase('${tgt.name} 번역 중', base);
+          final texts = await _translator!.translate(
+            [for (final c in cues) c.text.replaceAll('\n', ' ')],
+            source: src.nllb,
+            target: tgt.nllb,
+            onProgress: (x) => phase('${tgt.name} 번역 중 ${(x * 100).round()}%', base + span * x),
+          );
+          out = [
+            for (var k = 0; k < cues.length; k++)
+              Cue(cues[k].start, cues[k].end, cleanRecognized([Cue(cues[k].start, cues[k].end, texts[k])]).firstOrNull?.text ?? texts[k]),
+          ];
+        }
+        final path = languageSubtitlePath(v.path, tgt);
+        await storage.writeBytes(path, encodeText(formatSrt(out), 'UTF-8').bytes);
+        _addOrReplaceExternal(v, path, tgt, tgt.code == src.code ? 'AI 인식' : 'AI 번역');
+        _log('저장: ${p.basename(path)}');
+      }
+      v
+        ..status = JobStatus.ready
+        ..phase = null
+        ..progress = 0;
+      _log('AI 자막 완료: ${v.fileName} → $outputFolderName\\${v.baseName}_AI.srt 외 ${langs.length}개');
+    } on AiCancelled {
+      v
+        ..status = JobStatus.ready
+        ..phase = null
+        ..progress = 0;
+      _aiCancelled = true;
+      _log('AI 자막 취소: ${v.fileName}');
+    } catch (e) {
+      v
+        ..status = JobStatus.failed
+        ..phase = null
+        ..message = e is MediaToolException ? e.message : '$e';
+      _log('AI 자막 실패: ${v.fileName}\n${v.message}');
+    } finally {
+      await storage.delete(wav);
+      notifyListeners();
+    }
+  }
+
+  void _addOrReplaceExternal(VideoItem v, String path, Language lang, String title) {
+    final entry = SubtitleEntry.external(
+        path: path, language: lang, charset: 'UTF-8', title: '${lang.name} ($title)');
+    final i = v.subtitles.indexWhere((s) => s.path != null && p.equals(s.path!, path));
+    if (i >= 0) {
+      v.subtitles[i] = entry;
+    } else {
+      v.subtitles.add(entry);
+    }
+  }
+
+  // ───────── 인터넷 자막 (5단계) ─────────
+
+  late final List<SubtitleProvider> subtitleProviders =
+      services.createSubtitleProviders?.call(() => settings) ?? const [];
+
+  SubtitleProvider? get subtitleProvider =>
+      subtitleProviders.isEmpty ? null : subtitleProviders.first;
+
+  /// 파일명으로 검색 조건 추정 + 영상 해시 계산
+  Future<SubtitleQuery> guessSubtitleQuery(VideoItem v, List<Language> langs) async {
+    final q = guessQuery(v.path, languages: langs);
+    String? hash;
+    try {
+      final s = services.storage;
+      final size = await s.fileSize(v.path);
+      const chunk = 65536;
+      if (size >= chunk) {
+        hash = openSubtitlesHash(size, await s.readRange(v.path, 0, chunk),
+            await s.readRange(v.path, size - chunk, chunk));
+      }
+    } catch (_) {}
+    return SubtitleQuery(
+        title: q.title, year: q.year, season: q.season, episode: q.episode,
+        movieHash: hash, languages: langs);
+  }
+
+  Future<List<SubtitleSearchResult>> searchSubtitles(SubtitleQuery q) async {
+    final p0 = subtitleProvider;
+    if (p0 == null) return const [];
+    final r = await p0.search(q);
+    _log('자막 검색 (${p0.name}): "${q.title}"${q.season != null ? ' S${q.season}E${q.episode}' : ''} → ${r.length}개');
+    return r;
+  }
+
+  /// 고른 자막 받기 → jj_mkv\파일명_언어코드.srt (UTF-8) 저장 → MKV 자막에 추가
+  /// 돌려주는 값: 받은 개수
+  /// [translateTo] 를 주면 받은 자막을 그 언어로 번역해 함께 추가 (대기열, 기다리지 않음)
+  Future<int> downloadSubtitles(VideoItem v, List<SubtitleSearchResult> picks, {Language? translateTo}) async {
+    final provider = subtitleProvider;
+    if (provider == null) return 0;
+    final storage = services.storage;
+    final dir = outputDirFor(v.path);
+    await storage.ensureDirectory(dir);
+    final used = {
+      for (final f in await storage.listFiles(dir)) p.basename(f).toLowerCase(),
+      for (final s in v.subtitles)
+        if (s.path != null) p.basename(s.path!).toLowerCase(),
+    };
+    var ok = 0;
+    var queuedTranslate = false;
+    for (final r in picks) {
+      try {
+        final bytes = await provider.download(r);
+        final text = decodeText(bytes, detectCharset(bytes));
+        final cues = parseSrt(text);
+        if (cues.isEmpty) throw const SubtitleProviderException('SRT 형식이 아니거나 비어 있습니다.');
+        final name = nextFreeName('${v.baseName}_${r.language.code}.srt', used);
+        used.add(name.toLowerCase());
+        final path = p.join(dir, name);
+        await storage.writeBytes(path, encodeText(formatSrt(cues), 'UTF-8').bytes);
+        final entry = SubtitleEntry.external(
+            path: path, language: r.language, charset: 'UTF-8',
+            title: '${r.language.name} (${provider.name})');
+        v.subtitles.add(entry);
+        ok++;
+        if (translateTo != null &&
+            !queuedTranslate &&
+            r.language.code != translateTo.code &&
+            !v.subtitles.any((x) => x.enabled && x.language.code == translateTo.code)) {
+          queuedTranslate = true; // 한 번만 (여러 언어를 받아도 첫 자막에서 번역)
+          unawaited(translateSubtitle(v, entry, {translateTo}));
+        }
+        _log('자막 받음: $name  ← ${r.release}');
+      } catch (e) {
+        _log('자막 받기 실패: ${r.release}\n$e');
+        if (e is SubtitleProviderException && e.message.contains('모두 사용')) break;
+      }
+      notifyListeners();
+    }
+    if (v.status == JobStatus.done && ok > 0) v.status = JobStatus.ready;
+    notifyListeners();
+    return ok;
+  }
+
+  // ───────── 자막 번역 (있는 자막 → 다른 언어) ─────────
+
+  /// 자막 [s] 를 [targets] 언어로 번역해 jj_mkv\파일명_언어코드.srt 로 저장하고 MKV 자막에 추가.
+  /// 원어는 자막의 언어 태그, 없으면 글자로 추정. 이 PC 안에서 NLLB 로 번역 (다른 작업 중이면 대기열로).
+  Future<void> translateSubtitle(VideoItem v, SubtitleEntry s, Set<Language> targets) async {
+    if (services.createTranslator == null || targets.isEmpty) return;
+    if (busy) v.phase = '자막 번역 대기 중';
+    notifyListeners();
+    return _enqueue('자막 번역: ${v.fileName} → ${targets.map((t) => t.code).join('/')}',
+        () => _runTranslate(v, s, targets));
+  }
+
+  Future<void> _runTranslate(VideoItem v, SubtitleEntry s, Set<Language> targets) async {
+    _aiCancelled = false;
+    void phase(String t, double p) {
+      v
+        ..status = JobStatus.running
+        ..phase = t
+        ..progress = p;
+      notifyListeners();
+    }
+
+    Translator? tr;
+    try {
+      phase('자막 불러오는 중', 0);
+      final cues = await loadCues(v, s);
+      if (cues.isEmpty) throw const MediaToolException('자막이 비어 있습니다.');
+      final src = s.language != undetermined
+          ? s.language
+          : detectLanguage(cues.take(200).map((c) => c.text).join(' '));
+      if (src == undetermined) throw const MediaToolException('자막 언어를 알 수 없습니다. 자막 줄에서 언어를 먼저 고르세요.');
+      final langs = targets.where((t) => t.code != src.code).toList();
+      if (langs.isEmpty) throw MediaToolException('원어(${src.name})와 같은 언어로는 번역하지 않습니다.');
+
+      if (!await services.models.isInstalled(nllbModel)) {
+        _log('번역 모델 내려받는 중: ${nllbModel.sizeLabel}');
+        await services.models.download(nllbModel,
+            isCancelled: () => _aiCancelled, onProgress: (x) => phase('번역 모델 내려받는 중 ${(x * 100).round()}%', x * 0.2));
+      }
+      phase('번역 모델 불러오는 중', 0.2);
+      tr = _translator = services.createTranslator!();
+      await tr.load(await services.models.folderOf(nllbModel));
+
+      final dir = outputDirFor(v.path);
+      await services.storage.ensureDirectory(dir);
+      final used = {
+        for (final f in await services.storage.listFiles(dir)) p.basename(f).toLowerCase(),
+        for (final e in v.subtitles)
+          if (e.path != null) p.basename(e.path!).toLowerCase(),
+      };
+      for (var i = 0; i < langs.length; i++) {
+        if (_aiCancelled) throw const AiCancelled();
+        final tgt = langs[i];
+        final base = 0.25 + 0.75 * i / langs.length;
+        final span = 0.75 / langs.length;
+        final texts = await tr.translate(
+          [for (final c in cues) c.text.replaceAll('\n', ' ')],
+          source: src.nllb,
+          target: tgt.nllb,
+          onProgress: (x) => phase('${src.name} → ${tgt.name} 번역 ${(x * 100).round()}%', base + span * x),
+        );
+        final out = [
+          for (var k = 0; k < cues.length; k++)
+            Cue(cues[k].start, cues[k].end,
+                cleanRecognized([Cue(cues[k].start, cues[k].end, texts[k])]).firstOrNull?.text ?? texts[k]),
+        ];
+        final name = nextFreeName('${v.baseName}_${tgt.code}.srt', used);
+        used.add(name.toLowerCase());
+        final path = p.join(dir, name);
+        await services.storage.writeBytes(path, encodeText(formatSrt(out), 'UTF-8').bytes);
+        v.subtitles.add(SubtitleEntry.external(
+            path: path, language: tgt, charset: 'UTF-8', title: '${tgt.name} (AI 번역 ← ${src.code})'));
+        _log('자막 번역 저장: $name (${src.name} → ${tgt.name}, ${cues.length}줄)');
+      }
+      v
+        ..status = JobStatus.ready
+        ..phase = null
+        ..progress = 0;
+    } on AiCancelled {
+      v
+        ..status = JobStatus.ready
+        ..phase = null;
+      _log('자막 번역 취소: ${v.fileName}');
+    } catch (e) {
+      v
+        ..status = JobStatus.failed
+        ..phase = null
+        ..message = e is MediaToolException ? e.message : '$e';
+      _log('자막 번역 실패: ${v.fileName}\n${v.message}');
+    } finally {
+      await tr?.dispose();
+      _translator = null;
+      notifyListeners();
+    }
+  }
+
+  // ───────── 동영상 재생 ─────────
+
+  /// 재생 준비. 확장자에 외부 프로그램이 지정되어 있으면 그것으로 열고 null,
+  /// 아니면 내장 플레이어용 (목록, 시작 위치).
+  Future<(List<String>, int)?> preparePlayback(List<String> files) async {
+    final videos = files.where(isVideoFile).toList();
+    if (videos.isEmpty) return null;
+    final ext = p.extension(videos.first).replaceFirst('.', '').toLowerCase();
+    final program = settings.externalPlayers[ext];
+    if (program != null && program.isNotEmpty) {
+      await services.shell.openExternal(program, videos);
+      _log('외부 프로그램으로 재생: ${program == 'system' ? '기본 연결 프로그램' : p.basename(program)} ← ${videos.length}개');
+      return null;
+    }
+    if (videos.length > 1) {
+      videos.sort((a, b) => naturalCompare(p.basename(a), p.basename(b)));
+      return (videos, 0);
+    }
+    final siblings = await services.storage.listFiles(p.dirname(videos.first));
+    return buildPlaylist(videos.first, siblings, settings.playlistMode);
+  }
+
+  /// 재생 중 고를 수 있는 외부 자막: 같은 폴더의 자막 + jj_mkv 안의 파일명_*.srt
+  Future<List<String>> externalSubtitlesFor(String video) async {
+    final out = <String>[];
+    final storage = services.storage;
+    out.addAll(findSiblingSubtitles(video, await storage.listFiles(p.dirname(video))).map((d) => d.path));
+    final base = p.basenameWithoutExtension(video).toLowerCase();
+    for (final f in await storage.listFiles(outputDirFor(video))) {
+      final n = p.basename(f).toLowerCase();
+      if (n.startsWith('${base}_') && subtitleExtensions.contains(p.extension(n).replaceFirst('.', ''))) {
+        out.add(f);
+      }
+    }
+    return out;
+  }
+
+  // ───────── MKV 만들기 ─────────
+
+  /// 목록의 MKV 만들기 (다른 작업 중이면 대기열로)
+  Future<void> buildAll() async {
+    if (ffmpegVersion == null) return;
+    return _enqueue('MKV 만들기', _runBuildAll);
+  }
+
+  Future<void> _runBuildAll() async {
+    _buildCancelled = false;
+    try {
+      // 동시에 [maxParallelJobs] 개씩 (0 = 무제한). 작업자가 목록에서 하나씩 가져가 처리한다.
+      final queue = videos.where((v) => v.status != JobStatus.done).toList();
+      final limit = settings.maxParallelJobs <= 0 ? queue.length : settings.maxParallelJobs;
+      if (queue.length > 1) _log('MKV 만들기: ${queue.length}개, 동시에 ${limit.clamp(1, queue.length)}개씩');
+      var next = 0;
+      Future<void> worker() async {
+        while (!_buildCancelled && next < queue.length) {
+          await _build(queue[next++]);
+        }
+      }
+
+      await Future.wait([for (var i = 0; i < limit.clamp(1, queue.length); i++) worker()]);
+      final ok = videos.where((v) => v.status == JobStatus.done).length;
+      _log('완료: 성공 $ok / 전체 ${videos.length}');
+    } finally {
+      notifyListeners();
+    }
+  }
+
+  Future<void> _build(VideoItem v) async {
+    final out = outputMkvPath(v.path);
+    v
+      ..status = JobStatus.running
+      ..progress = 0
+      ..message = null;
+    notifyListeners();
+    _log('시작: ${v.fileName} → $outputFolderName\\${p.basename(out)}'
+        '${encode.reencode ? ' [${encode.codec.label} · ${encode.resolution.label} · ${encode.quality.label}]' : ''}');
+    try {
+      await services.storage.ensureDirectory(outputDirFor(v.path));
+      await _tool.runFfmpeg(
+        buildMuxArgs(v, out, encode: encode, encoders: encoders),
+        duration: v.info?.duration,
+        onProgress: (x) {
+          v.progress = x;
+          notifyListeners();
+        },
+      );
+      v
+        ..status = JobStatus.done
+        ..outputPath = out;
+      _log('성공: ${p.basename(out)}');
+    } catch (e) {
+      final msg = e is MediaToolException
+          ? e.message
+          : e is ArgumentError
+              ? '${e.message}'
+              : '$e';
+      v
+        ..status = JobStatus.failed
+        ..message = msg;
+      _log('실패: ${v.fileName}\n$msg');
+    }
+    notifyListeners();
+  }
+
+  bool _buildCancelled = false;
+
+  /// 지금 작업 중단 + 대기 중인 작업 모두 비우기
+  void cancel() {
+    if (pendingJobs.isNotEmpty) _log('대기 중인 작업 ${pendingJobs.length}개 취소');
+    pendingJobs.clear();
+    for (final (_, done) in _pendingRuns) {
+      done.complete();
+    }
+    _pendingRuns.clear();
+    for (final v in videos) {
+      if (v.status != JobStatus.running) v.phase = null;
+    }
+    _buildCancelled = true;
+    _aiCancelled = true;
+    _translator?.cancel();
+    _tool.cancel();
+  }
+
+  /// 완료·실패 상태를 초기화해 다시 만들 수 있게 한다.
+  void resetStatus(VideoItem v) {
+    if (v.status == JobStatus.running) return;
+    v
+      ..status = JobStatus.ready
+      ..progress = 0
+      ..message = null;
+    notifyListeners();
+  }
+
+  void _log(String msg) {
+    final t = DateTime.now();
+    String two(int n) => n.toString().padLeft(2, '0');
+    logs.add('[${two(t.hour)}:${two(t.minute)}:${two(t.second)}] $msg');
+    if (logs.length > 500) logs.removeAt(0);
+    notifyListeners();
+  }
+}

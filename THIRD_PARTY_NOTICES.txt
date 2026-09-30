@@ -1,0 +1,66 @@
+JJ_MKVMaker - 포함된 오픈 소스 구성 요소 및 라이선스 고지
+==========================================================
+
+이 프로그램은 아래 오픈 소스 구성 요소를 포함하거나 내려받아 사용합니다.
+각 구성 요소는 해당 라이선스를 따릅니다. 라이선스 원문은 같은 폴더(또는 ffmpeg\, tools\)의
+*_LICENSE*, *_COPYING* 파일과 프로그램 안의 "환경 설정 > 라이선스" 화면에서 볼 수 있습니다.
+
+[프로그램에 연결된 라이브러리]
+
+- Flutter / Dart                       BSD 3-Clause          https://github.com/flutter/flutter
+- media_kit, media_kit_video           MIT                   https://github.com/media-kit/media-kit
+- libmpv (libmpv-2.dll)                LGPL-2.1+ (-Dgpl=false 빌드)
+                                                             https://github.com/mpv-player/mpv
+                                                             빌드: https://github.com/media-kit/libmpv-win32-video-build
+  · libmpv 안의 FFmpeg                 LGPL-3.0 (--enable-version3, GPL 옵션 없음)
+  · libass, libplacebo 등              ISC / LGPL-2.1+
+  libmpv-2.dll 은 별도 파일이며, 같은 인터페이스의 다른 빌드로 바꿔 쓸 수 있습니다.
+- ANGLE (libEGL.dll, libGLESv2.dll)    BSD 3-Clause          https://chromium.googlesource.com/angle/angle
+- whisper.cpp / ggml                   MIT                   https://github.com/ggml-org/whisper.cpp
+- whisper_ggml (JJ_MKVMaker 수정본)       MIT                   https://pub.dev/packages/whisper_ggml
+  수정 내용: app\packages\whisper_ggml\JJ_PATCH.md
+- ONNX Runtime (onnxruntime.dll)       MIT                   https://github.com/microsoft/onnxruntime
+- onnxruntime (Dart)                   MIT                   https://pub.dev/packages/onnxruntime
+- window_manager, tray_manager, hotkey_manager, screen_retriever, nativeapi
+                                       MIT                   https://github.com/leanflutter
+- flutter_inappwebview                 Apache-2.0            https://pub.dev/packages/flutter_inappwebview
+- Microsoft Edge WebView2 SDK (WebView2Loader.dll)
+                                       BSD 3-Clause (Microsoft) https://www.nuget.org/packages/Microsoft.Web.WebView2
+  앱 안 브라우저는 Windows 에 설치된 Edge WebView2 런타임을 사용합니다 (Windows 11 기본 포함).
+- desktop_drop                         Apache-2.0            https://pub.dev/packages/desktop_drop
+- file_picker                          MIT                   https://pub.dev/packages/file_picker
+- charset                              Apache-2.0            https://pub.dev/packages/charset
+- cp949_codec                          BSD                   https://pub.dev/packages/cp949_codec
+- Microsoft Visual C++ 런타임 (msvcp140.dll, vcruntime140*.dll)
+                                       Microsoft 재배포 가능 파일 (Visual Studio 라이선스의 Distributable Code)
+- 그 밖의 Dart 패키지 라이선스: 프로그램의 "환경 설정 > 라이선스" 화면
+
+[별도 실행 파일로 함께 제공 - 프로그램과 결합되지 않고 명령줄로 실행]
+
+- FFmpeg (ffmpeg\ffmpeg.exe)           GPL-3.0               https://ffmpeg.org
+  빌드: gyan.dev "release essentials"  https://www.gyan.dev/ffmpeg/builds/
+  소스: https://ffmpeg.org/download.html 및 위 빌드 페이지의 소스 링크
+  원문: ffmpeg\FFMPEG_LICENSE.txt
+- aria2 (tools\aria2c.exe)             GPL-2.0-or-later      https://github.com/aria2/aria2
+  소스: https://github.com/aria2/aria2/releases/tag/release-1.37.0
+  원문: tools\ARIA2_COPYING.txt
+- yt-dlp (tools\yt-dlp.exe)            Unlicense (퍼블릭 도메인)  https://github.com/yt-dlp/yt-dlp
+  원문: tools\YT-DLP_LICENSE.txt
+- Deno (tools\deno.exe)                MIT                   https://github.com/denoland/deno
+  원문: tools\DENO_LICENSE.txt
+
+위 GPL 프로그램은 수정하지 않은 공식 배포 파일이며, 해당 소스는 위 주소에서 받을 수 있습니다.
+
+[처음 사용할 때 내려받는 AI 모델]
+
+- Whisper 모델 (ggml-base.bin 등)       MIT (OpenAI Whisper)  https://huggingface.co/ggerganov/whisper.cpp
+- NLLB-200 distilled 600M (ONNX)        CC-BY-NC 4.0 (비상업적 이용만 허용)
+                                        https://huggingface.co/facebook/nllb-200-distilled-600M
+                                        변환본: https://huggingface.co/Xenova/nllb-200-distilled-600M
+  ※ NLLB 번역 모델은 상업적 용도로 쓸 수 없습니다. 판매·유료 서비스에 쓰려면
+    상업 이용이 가능한 번역 모델로 바꿔야 합니다.
+
+[인터넷 서비스]
+
+- OpenSubtitles.com REST API: 사용자가 발급받은 API 키로 이용하며 OpenSubtitles 이용 약관을 따릅니다.
+- YouTube 등에서 받은 영상, 토렌트로 받은 파일의 저작권 책임은 이용자에게 있습니다.

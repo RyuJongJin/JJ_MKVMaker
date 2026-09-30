@@ -1,0 +1,31 @@
+import '../core/app_update.dart';
+
+class UpdateException implements Exception {
+  final String message;
+  const UpdateException(this.message);
+  @override
+  String toString() => message;
+}
+
+/// 새 버전 확인 · 설치 경계
+/// Windows: platform/windows/github_updater.dart (zip 받아 파일 교체 후 다시 시작)
+/// Android: (이식 시) 스토어 / APK 안내
+abstract class Updater {
+  /// 지금 실행 중인 버전 (예: 1.0.1)
+  Future<String> currentVersion();
+
+  /// GitHub 최신 Release (없거나 읽을 수 없으면 null)
+  Future<ReleaseInfo?> latest();
+
+  /// 프로그램 폴더에 쓸 수 있어 자동 설치가 가능한지 (아니면 페이지 안내)
+  Future<bool> canInstall();
+
+  /// zip 을 받아 SHA256 확인 후 압축을 푼 폴더 경로
+  Future<String> download(ReleaseInfo r, void Function(double progress) onProgress);
+
+  /// 앱이 끝나면 파일을 교체하고 새 버전을 실행하도록 예약 (호출 뒤 앱을 종료해야 함)
+  Future<void> scheduleInstall(String extractedDir);
+
+  /// 브라우저로 Release 페이지 열기
+  Future<void> openPage(ReleaseInfo r);
+}
