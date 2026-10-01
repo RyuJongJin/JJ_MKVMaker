@@ -16,6 +16,7 @@ import 'core/playlist.dart';
 import 'platform/windows/com_guard.dart';
 import 'platform/windows/desktop_shell.dart';
 import 'platform/windows/exit_trace.dart';
+import 'platform/windows/session_marker.dart';
 import 'platform/windows/single_instance.dart';
 import 'platform/windows/window_memory.dart';
 import 'services/platform_services.dart';
@@ -58,7 +59,17 @@ Future<void> main(List<String> args) async {
   }
 
   final services = PlatformServices.create();
-  final controller = AppController(services, settingsStore: SettingsStore());
+  final controller = AppController(services, settingsStore: SettingsStore())
+    ..logFile = p.join(dataDir, 'app.log');
+  // 지난 실행이 정상으로 끝났는지 (아니면 알려 주고 기록에 남긴다)
+  final session = SessionMarker(p.join(dataDir, 'session.json'));
+  final crashed = session.start();
+  controller.note('── 시작 $appTitle ──');
+  if (crashed != null) {
+    String hm(DateTime t) => '${t.month}/${t.day} ${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+    controller.note('⚠ 지난 실행이 정상적으로 끝나지 않았습니다 (시작 ${hm(crashed.$1)}, 마지막 확인 ${hm(crashed.$2)}). '
+        '그 전의 기록은 설정 폴더의 app.log 에 있습니다.');
+  }
   await controller.init();
 
   final bookmarks = BookmarksController();
@@ -120,6 +131,8 @@ Future<void> main(List<String> args) async {
       ExitStep('동영상 목록 · 창 위치 저장', () async {
         controller.stopVideoListShare();
         await memory.save();
+        controller.note('── 정상 종료 ──');
+        session.markClean();
       }),
       ExitStep('창 종료', () async {}),
     ];
@@ -191,6 +204,7 @@ Future<void> main(List<String> args) async {
     }
   });
   downloads.addToEditList = controller.addDownloaded;
+  downloads.log = controller.note;
   unawaited(downloads.startClipboardWatch());
 
   // 탐색기 메뉴 · 두 번째 실행에서 온 요청 처리
@@ -240,6 +254,14 @@ Future<void> main(List<String> args) async {
   WidgetsBinding.instance.addPostFrameCallback((_) async {
     final ctx = navigatorKey.currentContext;
     if (ctx == null) return;
+    if (crashed != null) {
+      messengerKey.currentState?.showSnackBar(SnackBar(
+        duration: const Duration(seconds: 10),
+        content: Text('지난 실행이 정상적으로 끝나지 않았습니다 (마지막 확인 '
+            '${crashed.$2.hour.toString().padLeft(2, '0')}:${crashed.$2.minute.toString().padLeft(2, '0')}). '
+            '작업 기록에 남겨 두었습니다.'),
+      ));
+    }
     // 시작 화면을 "웹 브라우저" 로 정했으면 브라우저를 연다 (MKV 화면은 그 아래에 있음)
     if (controller.settings.startScreen == 'browser') {
       navigatorKey.currentState?.push(MaterialPageRoute<void>(

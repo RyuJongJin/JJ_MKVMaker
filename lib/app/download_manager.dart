@@ -208,9 +208,28 @@ class DownloadManager extends ChangeNotifier {
   }
 
   /// 상태가 바뀔 때: 화면 갱신 + 대기 중인 다음 작업 시작
+  /// 작업 기록에 남기기 (앱이 연결해 준다): 다운로드 시작 · 완료 · 실패
+  void Function(String msg)? log;
+  final Map<String, DownloadState> _lastState = {};
+
   void _changed() {
     for (final t in tasks) {
       if (t.state == DownloadState.done && _reported.add(t.id)) _finished.add(t);
+      final before = _lastState[t.id];
+      if (before != t.state) {
+        _lastState[t.id] = t.state;
+        final name = t.title == t.source ? t.source : '${t.title} (${t.source})';
+        switch (t.state) {
+          case DownloadState.downloading when before != DownloadState.downloading:
+            log?.call('다운로드 시작: $name');
+          case DownloadState.done:
+            log?.call('다운로드 완료: $name${t.totalBytes == null ? '' : ' (${formatBytes(t.totalBytes!)})'}');
+          case DownloadState.failed:
+            log?.call('다운로드 실패: $name - ${t.error ?? ''}');
+          default:
+            break;
+        }
+      }
     }
     notifyListeners();
     _pump();

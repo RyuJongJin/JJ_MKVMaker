@@ -1103,11 +1103,26 @@ class AppController extends ChangeNotifier {
   /// 작업 기록에 한 줄 남기기 (앱의 다른 부분에서 알릴 것이 있을 때)
   void note(String msg) => _log(msg);
 
+  /// 작업 기록을 파일에도 남길 곳 (설정 폴더의 app.log). 프로그램이 갑자기 꺼져도 무슨 일이 있었는지 볼 수 있게.
+  /// 2MB 를 넘으면 app.log.1 로 옮기고 새로 시작한다.
+  String? logFile;
+
   void _log(String msg) {
     final t = DateTime.now();
     String two(int n) => n.toString().padLeft(2, '0');
     logs.add('[${two(t.hour)}:${two(t.minute)}:${two(t.second)}] $msg');
     if (logs.length > 500) logs.removeAt(0);
+    _appendLogFile('${t.year}-${two(t.month)}-${two(t.day)} ${two(t.hour)}:${two(t.minute)}:${two(t.second)}  $msg');
     notifyListeners();
+  }
+
+  void _appendLogFile(String line) {
+    final path = logFile;
+    if (path == null) return;
+    try {
+      final f = File(path);
+      if (f.existsSync() && f.lengthSync() > 2 * 1024 * 1024) f.renameSync('$path.1');
+      f.writeAsStringSync('$line\n', mode: FileMode.append, flush: true);
+    } catch (_) {}
   }
 }
