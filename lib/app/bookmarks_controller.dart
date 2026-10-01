@@ -50,9 +50,39 @@ class BookmarksController extends ChangeNotifier {
     return n;
   }
 
-  BookmarkNode addFolder(String title, {String parentId = BookmarkTree.barId}) {
-    final n = tree.add(parentId, BookmarkNode.folder(tree.newId(), title.trim().isEmpty ? '새 폴더' : title.trim()));
+  BookmarkNode addFolder(String title, {String parentId = BookmarkTree.barId, int? index}) {
+    final n = tree.add(parentId, BookmarkNode.folder(tree.newId(), title.trim().isEmpty ? '새 폴더' : title.trim()),
+        index: index);
     _changed();
+    return n;
+  }
+
+  /// [id] 를 폴더 [folderId] 의 맨 뒤로 (끌어다 폴더에 놓기)
+  bool moveInto(String id, String folderId) {
+    final f = tree.find(folderId);
+    if (f == null || !f.isFolder) return false;
+    return move(id, folderId, f.children!.length);
+  }
+
+  /// 끌어다 놓을 수 있는지: 자기 자신 · 자기 안쪽 폴더 · 기본 폴더 자체는 안 됨
+  bool canMoveInto(String id, String folderId) =>
+      id != folderId &&
+      id != BookmarkTree.barId &&
+      id != BookmarkTree.otherId &&
+      (tree.find(folderId)?.isFolder ?? false) &&
+      !tree.isInside(folderId, id);
+
+  /// 즐겨찾기 HTML 로 내보내기 (Chrome · Edge · Firefox 에서 가져올 수 있는 형식)
+  Future<void> exportHtml(String file) async {
+    final f = File(file);
+    await f.parent.create(recursive: true);
+    await f.writeAsString(tree.toNetscapeHtml());
+  }
+
+  /// 즐겨찾기 HTML 가져오기 → 기타 즐겨찾기 안 "가져온 즐겨찾기" 폴더. 가져온 주소 수.
+  Future<int> importHtml(String file) async {
+    final n = tree.importNetscapeHtml(await File(file).readAsString(), '가져온 즐겨찾기 (${p.basename(file)})');
+    if (n > 0) _changed();
     return n;
   }
 

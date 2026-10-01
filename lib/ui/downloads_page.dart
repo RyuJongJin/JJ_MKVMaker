@@ -50,11 +50,8 @@ class _DownloadsPageState extends State<DownloadsPage> {
               color: JjColors.panel,
               padding: const EdgeInsets.only(left: 8, right: appBarRightPadding),
               child: Row(children: [
-                IconButton(
-                  tooltip: '돌아가기',
-                  icon: const Icon(Icons.arrow_back),
-                  onPressed: () => Navigator.maybePop(context),
-                ),
+                const AppNavButtons(onDownloadsPage: true),
+                const SizedBox(width: 8),
                 Text('다운로드 (${d.tasks.length})',
                     style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
                 const SizedBox(width: 20),

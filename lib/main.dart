@@ -14,6 +14,7 @@ import 'app/settings.dart';
 import 'core/app_update.dart';
 import 'core/playlist.dart';
 import 'platform/windows/app_paths.dart';
+import 'platform/windows/cef_runtime.dart';
 import 'platform/windows/com_guard.dart';
 import 'platform/windows/desktop_shell.dart';
 import 'platform/windows/exit_trace.dart';
@@ -62,6 +63,8 @@ Future<void> main(List<String> args) async {
   final services = PlatformServices.create();
   // 작업 기록: 배포 폴더의 Logs (쓸 수 없으면 설정 폴더 아래 Logs)
   final logsDir = AppPaths.logsDir(dataDir);
+  // 내장 Chrome 엔진이 이번 실행 시작 때 있었는지 (실행 파일이 그때 준비함)
+  CefRuntime.rememberStartState();
   final controller = AppController(services, settingsStore: SettingsStore())
     ..logFile = p.join(logsDir, 'app.log');
   ExitTrace.file = p.join(logsDir, 'exit.log');
@@ -357,6 +360,8 @@ class JjCapCutApp extends StatelessWidget {
         builder: (context, child) => AppScope(
             controller: controller,
             onExit: onExit,
+            downloads: downloads,
+            bookmarks: bookmarks,
             child: AppDropArea(c: controller, child: UiScaler(c: controller, child: child!))),
         home: HomePage(c: controller, downloads: downloads, onExit: onExit, bookmarks: bookmarks),
       );

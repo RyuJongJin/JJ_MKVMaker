@@ -175,6 +175,115 @@ class BookmarkTree {
     return out;
   }
 
+  /// [id] 까지의 경로 (최상위 폴더부터 [id] 자신까지). 없으면 빈 목록.
+  List<BookmarkNode> pathTo(String id) {
+    final out = <BookmarkNode>[];
+    bool walk(BookmarkNode n) {
+      out.add(n);
+      if (n.id == id) return true;
+      for (final c in n.children ?? const <BookmarkNode>[]) {
+        if (walk(c)) return true;
+      }
+      out.removeLast();
+      return false;
+    }
+
+    for (final r in roots) {
+      if (walk(r)) return out;
+    }
+    return const [];
+  }
+
+  /// 이름 · 주소로 찾기 (대소문자 무시). 폴더도 이름으로 찾는다.
+  List<BookmarkNode> search(String query) {
+    final q = query.trim().toLowerCase();
+    if (q.isEmpty) return const [];
+    final out = <BookmarkNode>[];
+    void walk(BookmarkNode n) {
+      for (final c in n.children ?? const <BookmarkNode>[]) {
+        if (c.title.toLowerCase().contains(q) || (c.url?.toLowerCase().contains(q) ?? false)) out.add(c);
+        walk(c);
+      }
+    }
+
+    for (final r in roots) {
+      walk(r);
+    }
+    return out;
+  }
+
+  /// 폴더 안 주소 수 (하위 폴더 포함)
+  int countLinks(BookmarkNode n) =>
+      n.isFolder ? n.children!.fold(0, (s, c) => s + countLinks(c)) : 1;
+
+  /// 브라우저 공통 "즐겨찾기 HTML" (Netscape 형식) 로 내보내기 - Chrome · Edge · Firefox 에서 가져올 수 있다
+  String toNetscapeHtml() {
+    String esc(String s) =>
+        s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
+    final b = StringBuffer()
+      ..writeln('<!DOCTYPE NETSCAPE-Bookmark-file-1>')
+      ..writeln('<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">')
+      ..writeln('<TITLE>Bookmarks</TITLE>')
+      ..writeln('<H1>Bookmarks</H1>')
+      ..writeln('<DL><p>');
+    void walk(BookmarkNode n, String indent, {bool toolbar = false}) {
+      if (n.isFolder) {
+        b.writeln('$indent<DT><H3${toolbar ? ' PERSONAL_TOOLBAR_FOLDER="true"' : ''}>${esc(n.title)}</H3>');
+        b.writeln('$indent<DL><p>');
+        for (final c in n.children!) {
+          walk(c, '$indent    ');
+        }
+        b.writeln('$indent</DL><p>');
+      } else {
+        b.writeln('$indent<DT><A HREF="${esc(n.url!)}">${esc(n.title)}</A>');
+      }
+    }
+
+    walk(bar, '    ', toolbar: true);
+    walk(other, '    ');
+    b.writeln('</DL><p>');
+    return b.toString();
+  }
+
+  /// "즐겨찾기 HTML" 가져오기 → [folderTitle] 폴더 (기타 즐겨찾기 안) 에. 가져온 주소 수.
+  int importNetscapeHtml(String html, String folderTitle) {
+    String unesc(String s) => s
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
+        .replaceAll('&quot;', '"')
+        .replaceAll('&#39;', "'")
+        .replaceAll('&amp;', '&');
+    final root = BookmarkNode.folder(newId(), folderTitle);
+    final stack = <BookmarkNode>[root];
+    BookmarkNode? pendingFolder;
+    var count = 0;
+    final token = RegExp(r'<DT><H3[^>]*>(.*?)</H3>|<DT><A [^>]*HREF="([^"]*)"[^>]*>(.*?)</A>|<DL>|</DL>',
+        caseSensitive: false, dotAll: true);
+    for (final m in token.allMatches(html)) {
+      final t = m.group(0)!.toUpperCase();
+      if (m.group(1) != null) {
+        pendingFolder = BookmarkNode.folder(newId(), unesc(m.group(1)!.trim()));
+        stack.last.children!.add(pendingFolder);
+      } else if (m.group(2) != null) {
+        final url = unesc(m.group(2)!);
+        if (!url.startsWith('http')) continue;
+        final title = unesc(m.group(3)!.replaceAll(RegExp(r'<[^>]*>'), '').trim());
+        stack.last.children!.add(BookmarkNode.link(newId(), title.isEmpty ? url : title, url));
+        count++;
+      } else if (t.startsWith('<DL')) {
+        // 첫 <DL> 은 문서 전체, 그 뒤는 바로 앞 폴더의 내용
+        if (pendingFolder != null) {
+          stack.add(pendingFolder);
+          pendingFolder = null;
+        }
+      } else if (t.startsWith('</DL') && stack.length > 1) {
+        stack.removeLast();
+      }
+    }
+    if (count > 0) other.children!.add(root);
+    return count;
+  }
+
   /// Chrome · Edge 의 "Bookmarks" 파일 (JSON) 을 [folderTitle] 폴더로 가져오기. 가져온 주소 수 반환.
   int importChromium(Map<String, dynamic> json, String folderTitle) {
     final rootsJ = json['roots'] as Map<String, dynamic>? ?? const {};

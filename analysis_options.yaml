@@ -14,6 +14,7 @@ analyzer:
     - build/**
     - android/**
     - windows/**
+    - packages/webview_cef/**   # 고친 외부 부품 (원본 코드 그대로)
 
 linter:
   # The lint rules applied to this project can be customized in the

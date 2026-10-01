@@ -138,7 +138,7 @@ void main() {
     final d = DownloadManager(backends: const [], settings: () => c.settings, readClipboard: () async => null);
     final bm = BookmarksController(p.join(dir.path, 'bm.json'));
 
-    for (final width in [1900.0, 1600.0, 1300.0, 1100.0, 900.0]) {
+    for (final width in [2300.0, 1600.0, 1300.0, 1100.0, 900.0]) {
       tester.view.physicalSize = Size(width, 800);
       tester.view.devicePixelRatio = 1;
       await tester.pumpWidget(MaterialApp(
@@ -149,7 +149,7 @@ void main() {
       expect(exit.right, lessThanOrEqualTo(width), reason: '너비 $width: 종료 버튼이 창 밖');
       expect(tester.getRect(find.byTooltip('화면 크게')).left, greaterThan(0));
       // 넓을 때는 글이 있는 버튼, 좁을 때는 아이콘만 (기능은 그대로)
-      expect(find.text('자막 만들기 & MKV 만들기 (1)'), width >= 1900 ? findsOneWidget : anything);
+      expect(find.text('자막 만들기 & MKV 만들기 (1)'), width >= 2300 ? findsOneWidget : anything);
       expect(find.textContaining('MKV 만들기 (1)'), findsWidgets);
     }
     // 가장 좁을 때: 아이콘만 남고 설명은 마우스를 올리면

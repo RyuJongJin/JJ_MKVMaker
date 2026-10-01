@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 2026.10.1+2
+version: 2026.10.1+3
 
 environment:
   sdk: ^3.13.4
@@ -41,6 +41,9 @@ dependencies:
   media_kit: 1.2.6
   media_kit_video: 2.0.1
   media_kit_libs_video: 1.0.7
+  # 내장 Chrome (CEF). libcef 지연 로딩 · CEF 를 프로그램에 넣지 않도록 고친 사본 (packages/webview_cef/JJ_PATCH.md)
+  webview_cef:
+    path: packages/webview_cef
   # Windows 힙 손상 버그를 고친 사본 (packages/whisper_ggml/JJ_PATCH.md 참고)
   whisper_ggml:
     path: packages/whisper_ggml

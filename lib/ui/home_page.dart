@@ -91,6 +91,25 @@ class _TopBar extends StatelessWidget {
   final BookmarksController? bookmarks;
   const _TopBar({required this.c, this.downloads, this.onExit, this.bookmarks});
 
+  /// 고른 동영상이 없을 때: 목록 전체를 만들지 묻는다
+  Future<void> _confirmBuildAll(BuildContext context) async {
+    final todo = c.videos.where((v) => v.status != JobStatus.done).length;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('MKV 만들기'),
+        content: Text('선택한 동영상이 없습니다.\n목록 전체 ${c.videos.length}개 '
+            '(이미 만든 것을 빼면 $todo개) 를 MKV 로 만들까요?\n\n'
+            '일부만 만들려면 취소하고 동영상 목록에서 체크하세요.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('취소')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('전체 만들기')),
+        ],
+      ),
+    );
+    if (ok == true) await c.buildAll();
+  }
+
   static String _batchHint(AppController c, String what) => c.checked.isEmpty
       ? '지금 보고 있는 동영상의 $what (여러 개는 목록에서 체크)'
       : '체크한 동영상 ${c.checked.length}개의 $what';
@@ -108,15 +127,17 @@ class _TopBar extends StatelessWidget {
       final hasAi = c.aiAvailable;
       final hasPlayer = c.services.createMediaPlayer != null;
       var title = true, leftText = true, rightText = true, usage = c.usage != null, jobText = true;
+      // 아주 좁을 때: 다운로드 상자 숨김 (왼쪽 공통 버튼으로 열 수 있음) → MKV 만들기도 아이콘만
+      var dlBox = downloads != null, mkvText = true;
       // 각 부분의 너비 (실제 화면에서 잰 값)
       double need() =>
-          16 + appBarRightPadding + 36 + (title ? 126 : 0) + 24 +
+          8 + appBarRightPadding + AppNavButtons.width + 8 + (title ? 126 : 0) + 24 +
           (leftText ? 153 + (hasAi ? 161 + 298 : 0) : 40 + (hasAi ? 96 : 0)) + 8 +
           (c.busy ? (jobText ? 350 : 60) : 0) +
           (hasPlayer ? (rightText ? 201 : 48) : 0) +
-          166 + (c.busy && jobText ? 60 : 0) +
+          (mkvText ? 166 + (c.busy && jobText ? 60 : 0) : 48) +
           (bookmarks != null ? (rightText ? 138 : 48) : 0) +
-          (downloads != null ? 162 : 0) +
+          (dlBox ? 162 : 0) +
           (usage ? 220 : 0) + 96 + 92 +
           (c.checked.isEmpty ? 0 : 3 * 26) +
           8; // 여유
@@ -126,6 +147,8 @@ class _TopBar extends StatelessWidget {
       if (need() > w) leftText = false;
       if (need() > w) rightText = false;
       if (need() > w) usage = false;
+      if (need() > w) dlBox = false;
+      if (need() > w) mkvText = false;
 
       // 글이 있는 버튼, 또는 (좁을 때) 아이콘만 있는 버튼
       Widget action(IconData icon, String label, VoidCallback? onPressed,
@@ -147,11 +170,11 @@ class _TopBar extends StatelessWidget {
       return Container(
         height: appBarHeight,
         color: JjColors.panel,
-        padding: const EdgeInsets.only(left: 16, right: appBarRightPadding),
+        padding: const EdgeInsets.only(left: 8, right: appBarRightPadding),
         child: Row(
           children: [
-            // 프로그램 아이콘 (tool/make_icon.py 로 생성)
-            Image.asset('assets/icon/app_icon_256.png', width: 28, height: 28, filterQuality: FilterQuality.medium),
+            // 모든 화면 공통: [JJ 홈] [MKV 화면] [뒤로] [다운로드 목록]
+            const AppNavButtons(),
             const SizedBox(width: 8),
             if (title) const Text('JJ_MKVMaker', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
             const SizedBox(width: 24),
@@ -201,11 +224,19 @@ class _TopBar extends StatelessWidget {
                       : '선택한 파일 재생: 체크한 동영상 ${c.checked.length}개를 목록 순서대로 이어서'),
               const SizedBox(width: 8),
             ],
-            FilledButton.icon(
-              // 체크한 동영상이 있으면 그것만, 없으면 목록 전체
-              onPressed: !canBuild ? null : (c.checked.isEmpty ? c.buildAll : () => c.buildVideos(batch)),
-              icon: Icon(c.busy ? Icons.playlist_add : Icons.play_arrow, size: 20),
-              label: Text('MKV 만들기$count${c.busy && jobText ? ' (대기열)' : ''}'),
+            // 체크한 동영상이 있으면 그것만, 없으면 "전체 만들기 / 취소" 를 묻는다
+            Tooltip(
+              message: 'MKV 만들기$count',
+              child: mkvText
+                  ? FilledButton.icon(
+                      onPressed: !canBuild ? null : (c.checked.isEmpty ? () => _confirmBuildAll(context) : () => c.buildVideos(batch)),
+                      icon: Icon(c.busy ? Icons.playlist_add : Icons.play_arrow, size: 20),
+                      label: Text('MKV 만들기$count${c.busy && jobText ? ' (대기열)' : ''}'),
+                    )
+                  : IconButton.filled(
+                      onPressed: !canBuild ? null : (c.checked.isEmpty ? () => _confirmBuildAll(context) : () => c.buildVideos(batch)),
+                      icon: Icon(c.busy ? Icons.playlist_add : Icons.play_arrow, size: 20),
+                    ),
             ),
             if (bookmarks != null) ...[
               const SizedBox(width: 8),
@@ -219,7 +250,7 @@ class _TopBar extends StatelessWidget {
                   text: rightText,
                   tip: '웹 브라우저'),
             ],
-            if (downloads != null) ...[
+            if (dlBox) ...[
               const SizedBox(width: 12),
               _DownloadBox(d: downloads!),
             ],

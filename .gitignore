@@ -56,3 +56,6 @@ app.*.map.json
 /jj_aria2/
 *.log
 /android/local.properties
+
+# 내장 Chrome: 빌드할 때 내려받는 CEF 배포본 (약 330MB)
+/packages/webview_cef/third/cef/

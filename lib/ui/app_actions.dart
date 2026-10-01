@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../app/app_controller.dart';
+import '../app/bookmarks_controller.dart';
+import '../app/download_manager.dart';
 import '../app/settings.dart';
 import '../services/system_usage.dart';
+import 'browser_page.dart';
+import 'downloads_page.dart';
 import 'settings_page.dart';
 import 'theme.dart';
 
@@ -17,12 +21,88 @@ class AppScope extends InheritedWidget {
   /// 종료 버튼을 눌렀을 때 (없으면 버튼을 숨김)
   final VoidCallback? onExit;
 
-  const AppScope({super.key, required this.controller, this.onExit, required super.child});
+  /// 다운로드 목록 · 웹 브라우저 (홈 화면이 브라우저일 때). 새 창 (재생 창) 에서는 없음.
+  final DownloadManager? downloads;
+  final BookmarksController? bookmarks;
+
+  const AppScope(
+      {super.key, required this.controller, this.onExit, this.downloads, this.bookmarks, required super.child});
 
   static AppScope? maybeOf(BuildContext context) => context.dependOnInheritedWidgetOfExactType<AppScope>();
 
   @override
-  bool updateShouldNotify(AppScope old) => controller != old.controller || onExit != old.onExit;
+  bool updateShouldNotify(AppScope old) =>
+      controller != old.controller || onExit != old.onExit || downloads != old.downloads || bookmarks != old.bookmarks;
+}
+
+/// 모든 화면의 위쪽 막대 맨 왼쪽 (같은 자리 · 같은 순서):
+///   [JJ] 홈 화면 (환경 설정의 "홈 화면": MKV 화면 또는 웹 브라우저)
+///   [▤] MKV 화면으로   [←] 뒤로   [⇩] 다운로드 목록
+class AppNavButtons extends StatelessWidget {
+  /// 다운로드 목록 화면 자신 (그 버튼을 "지금 여기" 로 표시)
+  final bool onDownloadsPage;
+  const AppNavButtons({super.key, this.onDownloadsPage = false});
+
+  static const double width = 4 * 40;
+
+  /// MKV 화면 (맨 처음 화면) 까지 돌아가기
+  static void toMkv(BuildContext context) => Navigator.of(context).popUntil((r) => r.isFirst);
+
+  /// 홈 화면으로: MKV 화면까지 돌아간 뒤, 홈 화면이 웹 브라우저면 브라우저를 연다
+  static void toHome(BuildContext context) {
+    final scope = AppScope.maybeOf(context);
+    final nav = Navigator.of(context);
+    nav.popUntil((r) => r.isFirst);
+    if (scope != null && scope.controller.settings.startScreen == 'browser' && scope.bookmarks != null) {
+      nav.push(MaterialPageRoute<void>(
+          builder: (_) => BrowserPage(c: scope.controller, downloads: scope.downloads, bookmarks: scope.bookmarks!)));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scope = AppScope.maybeOf(context);
+    final nav = Navigator.maybeOf(context);
+    final atRoot = !(nav?.canPop() ?? false);
+    final homeIsBrowser = scope?.controller.settings.startScreen == 'browser' && scope?.bookmarks != null;
+    final downloads = scope?.downloads;
+    Widget btn(Widget icon, String tip, VoidCallback? f, {bool here = false}) => SizedBox(
+          width: 40,
+          height: 40,
+          child: IconButton(
+            tooltip: tip,
+            padding: EdgeInsets.zero,
+            isSelected: here,
+            icon: icon,
+            onPressed: f,
+          ),
+        );
+    return SizedBox(
+      width: width,
+      child: Row(children: [
+        btn(
+          Image.asset('assets/icon/app_icon_256.png', width: 26, height: 26, filterQuality: FilterQuality.medium),
+          '홈 화면 (${homeIsBrowser ? '웹 브라우저' : 'MKV 화면'}) · 환경 설정에서 바꿈',
+          scope == null ? null : () => toHome(context),
+        ),
+        btn(
+          Icon(Icons.video_library_outlined, color: atRoot ? JjColors.accent : null),
+          atRoot ? 'MKV 화면 (지금 여기)' : 'MKV 화면으로',
+          atRoot ? null : () => toMkv(context),
+          here: atRoot,
+        ),
+        btn(const Icon(Icons.arrow_back), '뒤로', atRoot ? null : () => Navigator.maybePop(context)),
+        btn(
+          Icon(Icons.download_for_offline_outlined, color: onDownloadsPage ? JjColors.accent : null),
+          onDownloadsPage ? '다운로드 목록 (지금 여기)' : '다운로드 목록',
+          downloads == null || onDownloadsPage
+              ? null
+              : () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => DownloadsPage(d: downloads))),
+          here: onDownloadsPage,
+        ),
+      ]),
+    );
+  }
 }
 
 /// "CPU 23%  MEM 61%" (90% 넘으면 빨갛게). 글자 폭이 바뀌어도 옆 버튼이 움직이지 않게 너비를 고정한다.

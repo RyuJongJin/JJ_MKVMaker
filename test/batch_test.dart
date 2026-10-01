@@ -310,14 +310,21 @@ void main() {
     final bm = BookmarksController(p.join(dir.path, 'bm.json'));
     var exits = 0;
 
-    Future<(Offset, Offset)> at(Widget page) async {
+    Future<(Offset, Offset, Offset, Offset)> at(Widget page) async {
       await tester.pumpWidget(MaterialApp(
         key: UniqueKey(),
-        builder: (context, child) => AppScope(controller: c, onExit: () => exits++, child: child!),
+        builder: (context, child) =>
+            AppScope(controller: c, onExit: () => exits++, downloads: d, bookmarks: bm, child: child!),
         home: page,
       ));
       await tester.pump();
-      return (tester.getCenter(find.byTooltip('환경 설정')), tester.getCenter(find.byTooltip('종료')));
+      return (
+        tester.getCenter(find.byTooltip('환경 설정')),
+        tester.getCenter(find.byTooltip('종료')),
+        // 왼쪽 공통 버튼: JJ (홈) · 다운로드 목록
+        tester.getCenter(find.byTooltip(RegExp('^홈 화면'))),
+        tester.getCenter(find.byTooltip(RegExp('^다운로드 목록'))),
+      );
     }
 
     final home = await at(HomePage(c: c, downloads: d, bookmarks: bm, onExit: () => exits++));
@@ -333,10 +340,89 @@ void main() {
     // 오른쪽 위 구석
     expect(home.$2.dx, greaterThan(1500 - 60));
     expect(home.$2.dy, 28);
+    // 왼쪽 위 구석: JJ 아이콘 (홈)
+    expect(home.$3.dx, lessThan(40));
+    expect(home.$3.dy, 28);
 
     // 브라우저에서 종료 버튼 → 앱의 종료 동작
     await tester.tap(find.byTooltip('종료'));
     expect(exits, 1);
+    d.dispose();
+  });
+
+  testWidgets('MKV 만들기: 고른 동영상이 없으면 "전체 만들기 / 취소" 를 묻는다', (tester) async {
+    tester.view.physicalSize = const Size(1500, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final c = _plain()..ffmpegVersion = 'test';
+    c.videos.addAll([VideoItem(r'D:\v\a.mp4'), VideoItem(r'D:\v\b.mp4')]);
+    c.selected = c.videos.first;
+    await tester.pumpWidget(MaterialApp(home: HomePage(c: c)));
+
+    await tester.tap(find.text('MKV 만들기'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('선택한 동영상이 없습니다'), findsOneWidget);
+    expect(find.textContaining('목록 전체 2개'), findsOneWidget);
+    await tester.tap(find.text('취소'));
+    await tester.pumpAndSettle();
+    expect(c.busy, isFalse); // 취소하면 아무것도 하지 않음
+
+    // 하나라도 고르면 묻지 않는다 (버튼 글에 개수)
+    c.toggleChecked(c.videos.last);
+    await tester.pump();
+    expect(find.text('MKV 만들기 (1)'), findsOneWidget);
+  });
+
+  testWidgets('왼쪽 공통 버튼: JJ (홈) · MKV 화면으로 · 뒤로 · 다운로드 목록', (tester) async {
+    tester.view.physicalSize = const Size(1500, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final dir = Directory.systemTemp.createTempSync('jj_nav_');
+    final c = _plain();
+    final d = DownloadManager(backends: [_Backend()], settings: () => c.settings, readClipboard: () async => null);
+    final bm = BookmarksController(p.join(dir.path, 'bm.json'));
+    await tester.pumpWidget(MaterialApp(
+      builder: (context, child) => AppScope(controller: c, downloads: d, bookmarks: bm, child: child!),
+      home: HomePage(c: c, downloads: d, bookmarks: bm),
+    ));
+    IconButton btn(String tip) =>
+        tester.widget<IconButton>(find.ancestor(of: find.byTooltip(RegExp('^$tip')), matching: find.byType(IconButton)).first);
+
+    // MKV 화면: 뒤로 · MKV 는 "지금 여기" 라 꺼짐, 다운로드 목록 열기
+    expect(btn('뒤로').onPressed, isNull);
+    expect(find.byTooltip('MKV 화면 (지금 여기)'), findsOneWidget);
+    await tester.tap(find.byTooltip('다운로드 목록'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('다운로드 ('), findsOneWidget);
+    expect(find.byTooltip('다운로드 목록 (지금 여기)'), findsOneWidget);
+
+    // 다운로드 → 환경 설정 → MKV 화면으로 (한 번에 처음까지)
+    await tester.tap(find.byTooltip('환경 설정').first);
+    await tester.pumpAndSettle();
+    expect(find.text('환경 설정'), findsWidgets);
+    await tester.tap(find.byTooltip('MKV 화면으로'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('MKV 화면 (지금 여기)'), findsOneWidget);
+
+    // 뒤로: 한 단계만
+    await tester.tap(find.byTooltip('다운로드 목록'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('뒤로'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('MKV 화면 (지금 여기)'), findsOneWidget);
+
+    // 홈 화면을 웹 브라우저로 정하면 JJ 아이콘이 브라우저를 연다 (MKV 버튼은 그대로 있음)
+    c.settings.startScreen = 'browser';
+    await tester.tap(find.byTooltip('다운로드 목록'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip(RegExp('^홈 화면 \\(웹 브라우저\\)')));
+    // 화면 전환 (닫히는 화면 · 새 화면) 이 끝날 때까지. 브라우저는 계속 움직여서 pumpAndSettle 은 쓰지 않는다.
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 200));
+    }
+    expect(find.byType(BrowserPage), findsOneWidget);
+    expect(find.byTooltip('MKV 화면으로'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
     d.dispose();
   });
 }

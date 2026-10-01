@@ -477,11 +477,7 @@ class _SubtitleEditorPageState extends State<SubtitleEditorPage> {
         padding: const EdgeInsets.only(left: 8, right: appBarRightPadding),
         child: Row(
           children: [
-            IconButton(
-              tooltip: '돌아가기',
-              icon: const Icon(Icons.arrow_back),
-              onPressed: () => Navigator.maybePop(context),
-            ),
+            const AppNavButtons(),
             const SizedBox(width: 4),
             Expanded(
               child: Text(

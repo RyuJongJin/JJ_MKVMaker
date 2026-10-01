@@ -250,13 +250,10 @@ class _PlayerPageState extends State<PlayerPage> {
   Widget _header() => Container(
         height: appBarHeight,
         color: JjColors.panel,
-        padding: const EdgeInsets.only(left: 4, right: appBarRightPadding),
+        padding: const EdgeInsets.only(left: 8, right: appBarRightPadding),
         child: Row(children: [
-          IconButton(
-            tooltip: '돌아가기',
-            icon: const Icon(Icons.arrow_back),
-            onPressed: () => Navigator.maybePop(context),
-          ),
+          const AppNavButtons(),
+          const SizedBox(width: 8),
           Expanded(
             child: ValueListenableBuilder<PlayerState>(
               valueListenable: pl.state,

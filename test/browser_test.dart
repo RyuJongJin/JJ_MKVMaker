@@ -222,11 +222,24 @@ void main() {
     await tester.pump();
     expect(video.started, ['https://www.youtube.com/watch?v=abc']);
 
-    // ☆ → 표시줄에 추가
+    // ☆ → Chrome 처럼 "즐겨찾기 추가됨" 창: 이름 · 폴더 고르기, 그 자리에서 새 폴더
     await tester.tap(find.byTooltip('즐겨찾기 추가 (Ctrl+D)'));
     await tester.pumpAndSettle();
-    expect(find.text('재미있는 영상'), findsOneWidget);
-    expect(bm.tree.findByUrl('https://www.youtube.com/watch?v=abc'), isNotNull);
+    expect(find.text('즐겨찾기 추가됨'), findsOneWidget);
+    expect(bm.tree.parentOf(bm.tree.findByUrl('https://www.youtube.com/watch?v=abc')!.id)!.id, BookmarkTree.barId);
+    await tester.tap(find.text('새 폴더'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, '음악');
+    await tester.tap(find.text('확인'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('완료'));
+    await tester.pumpAndSettle();
+    final saved = bm.tree.findByUrl('https://www.youtube.com/watch?v=abc')!;
+    final folder = bm.tree.parentOf(saved.id)!;
+    expect(folder.title, '음악');
+    expect(bm.tree.parentOf(folder.id)!.id, BookmarkTree.barId);
+    // 표시줄에는 폴더가 보인다
+    expect(find.widgetWithText(TextButton, '음악'), findsOneWidget);
 
     // 관리 패널 → 삭제 → 실행 취소
     await tester.tap(find.byTooltip('즐겨찾기 관리 (Ctrl+Shift+B)'));
@@ -251,7 +264,6 @@ void main() {
     expect(find.text('작업 현황'), findsOneWidget);
     expect(find.text('쉬는 중'), findsOneWidget);
     expect(find.text('다운로드 1개'), findsOneWidget);
-    expect(find.text('재미있는 영상'), findsWidgets);
     await tester.tap(find.byTooltip('작업 현황 닫기'));
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.text('작업 현황'), findsNothing);

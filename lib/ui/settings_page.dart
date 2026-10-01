@@ -13,7 +13,9 @@ import '../services/app_shell.dart';
 import 'setup_dialog.dart';
 import 'update_dialog.dart';
 import '../app/settings.dart';
+import '../platform/windows/cef_runtime.dart';
 import 'app_actions.dart';
+import 'cef_setup.dart';
 import 'theme.dart';
 
 /// 동시 작업 수 고르기: 1 · 5 · 10 · 무한(0) · 직접 입력
@@ -245,11 +247,8 @@ class _SettingsPageState extends State<SettingsPage> {
               color: JjColors.panel,
               padding: const EdgeInsets.only(left: 8, right: appBarRightPadding),
               child: Row(children: [
-                IconButton(
-                  tooltip: '돌아가기',
-                  icon: const Icon(Icons.arrow_back),
-                  onPressed: () => Navigator.maybePop(context),
-                ),
+                const AppNavButtons(),
+                const SizedBox(width: 8),
                 const Text('환경 설정', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
                 const Spacer(),
                 const Text('바꾸면 바로 저장됩니다', style: TextStyle(fontSize: 12, color: JjColors.textDim)),
@@ -286,8 +285,8 @@ class _SettingsPageState extends State<SettingsPage> {
                   ),
                   _section('시작 · 웹 브라우저'),
                   ListTile(
-                    title: const Text('처음 화면'),
-                    subtitle: const Text('프로그램을 켰을 때 보일 화면'),
+                    title: const Text('홈 화면'),
+                    subtitle: const Text('프로그램을 켰을 때, 그리고 위쪽 왼쪽 JJ 아이콘을 눌렀을 때 보일 화면'),
                     trailing: DropdownButton<String>(
                       value: s.startScreen,
                       items: const [
@@ -301,17 +300,42 @@ class _SettingsPageState extends State<SettingsPage> {
                       (v) => c.updateSettings((x) => x.homeUrl = v.trim().isEmpty ? 'https://www.youtube.com/' : v.trim())),
                   ListTile(
                     title: const Text('브라우저 엔진 (앱 안)'),
-                    subtitle: const Text('Edge 엔진은 Windows 에 들어 있어 따로 설치하지 않습니다. '
-                        '여기서 YouTube 에 로그인하면 다운로드에도 그 로그인이 쓰입니다.'),
-                    trailing: DropdownButton<String>(
-                      value: s.browserEngine,
-                      items: const [
-                        DropdownMenuItem(value: 'edge', child: Text('Edge (내장)')),
-                        DropdownMenuItem(value: 'chrome', enabled: false, child: Text('Chrome (다음 업데이트)',
-                            style: TextStyle(color: JjColors.textDim))),
-                      ],
-                      onChanged: (v) => c.updateSettings((x) => x.browserEngine = v!),
-                    ),
+                    subtitle: Text(
+                        'Edge: Windows 에 들어 있어 따로 설치하지 않습니다. 여기서 YouTube 에 로그인하면 다운로드에도 그 로그인이 쓰입니다.\n'
+                        'Chrome: 고르면 약 ${CefRuntime.approxDownloadMb}MB 를 내려받고 다시 시작한 뒤 쓸 수 있습니다 '
+                        '(Google 로그인은 막힐 수 있음).'
+                        '${CefRuntime.installed ? ' 지금 설치됨 (${CefRuntime.installedMb()}MB)' : ''}'
+                        '${s.browserEngine == 'chrome' && !CefRuntime.readyThisRun ? ' · 다시 시작해야 Chrome 으로 바뀝니다' : ''}'),
+                    isThreeLine: true,
+                    trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                      if (s.browserEngine == 'edge' && CefRuntime.installed && !CefRuntime.readyThisRun)
+                        IconButton(
+                          tooltip: '내려받은 Chrome 엔진 지우기',
+                          icon: const Icon(Icons.delete_outline, color: JjColors.textDim),
+                          onPressed: () async {
+                            final ok = await CefRuntime.uninstall();
+                            c.note(ok ? '내장 Chrome 엔진을 지웠습니다.' : '내장 Chrome 엔진을 지우지 못했습니다 (사용 중).');
+                            setState(() {});
+                          },
+                        ),
+                      DropdownButton<String>(
+                        value: s.browserEngine,
+                        items: [
+                          const DropdownMenuItem(value: 'edge', child: Text('Edge (내장)')),
+                          DropdownMenuItem(
+                              value: 'chrome',
+                              child: Text(CefRuntime.installed ? 'Chrome (내장)' : 'Chrome (내려받기)')),
+                        ],
+                        onChanged: (v) async {
+                          if (v == 'chrome') {
+                            await chooseChromeEngine(context, c);
+                            if (mounted) setState(() {});
+                          } else {
+                            await c.updateSettings((x) => x.browserEngine = 'edge');
+                          }
+                        },
+                      ),
+                    ]),
                   ),
                   ListTile(
                     title: const Text('외부 브라우저'),
