@@ -5,6 +5,8 @@ import 'package:crypto/crypto.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path/path.dart' as p;
 
+import 'app_paths.dart';
+
 import '../../core/app_update.dart';
 import '../../services/updater.dart';
 
@@ -24,7 +26,7 @@ class GitHubUpdater implements Updater {
     this.apiBase = 'https://api.github.com',
     String? appDir,
     this.versionOverride,
-  }) : appDir = appDir ?? p.dirname(Platform.resolvedExecutable);
+  }) : appDir = appDir ?? AppPaths.root; // Lib 구조면 배포 폴더 맨 위
 
   @override
   Future<String> currentVersion() async {
@@ -98,13 +100,16 @@ class GitHubUpdater implements Updater {
     if (t.exitCode != 0) throw UpdateException('압축을 풀 수 없습니다: ${t.stderr}');
     await zip.delete();
     final exeName = p.basename(Platform.resolvedExecutable).toLowerCase();
-    final exe = await out
+    // 배포 폴더 맨 위 = 가장 얕은 곳의 jj_mkvmaker.exe (Lib 구조면 시작 프로그램, 예전 구조면 프로그램 자신)
+    final exes = await out
         .list(recursive: true)
-        .firstWhere((e) => e is File && p.basename(e.path).toLowerCase() == 'jj_mkvmaker.exe' ||
-            e is File && p.basename(e.path).toLowerCase() == exeName,
-            orElse: () => throw const UpdateException('압축 파일 안에 프로그램이 없습니다.'));
+        .where((e) => e is File && {'jj_mkvmaker.exe', exeName}.contains(p.basename(e.path).toLowerCase()))
+        .map((e) => e.path)
+        .toList();
+    if (exes.isEmpty) throw const UpdateException('압축 파일 안에 프로그램이 없습니다.');
+    exes.sort((a, b) => p.split(a).length.compareTo(p.split(b).length));
     onProgress(1);
-    return p.dirname(exe.path);
+    return p.dirname(exes.first);
   }
 
   /// 파일 교체 스크립트 (영문만: Windows PowerShell 5.1 이 BOM 없는 UTF-8 을 잘못 읽는 문제 방지)
@@ -130,7 +135,7 @@ exit 0
       [
         '-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', ps1.path,
         '-ParentPid', '$waitPid', '-Source', source, '-Target', appDir,
-        '-Exe', p.join(appDir, p.basename(Platform.resolvedExecutable)),
+        '-Exe', p.join(appDir, 'jj_mkvmaker.exe'),
         if (!restart) '-NoRestart',
       ],
       mode: restart ? ProcessStartMode.detached : ProcessStartMode.normal,

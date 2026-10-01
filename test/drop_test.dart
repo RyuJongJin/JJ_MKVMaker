@@ -77,7 +77,8 @@ void main() {
     // 놓기
     await tester.runAsync(() async {
       await _native(tester, 'performOperation', [file]);
-      for (var i = 0; i < 50 && c.videos.isEmpty; i++) {
+      // PC 가 바쁠 때 (전체 테스트 중) 를 생각해 넉넉히 최대 5초
+      for (var i = 0; i < 250 && c.videos.isEmpty; i++) {
         await Future<void>.delayed(const Duration(milliseconds: 20));
       }
       await Future<void>.delayed(const Duration(milliseconds: 100));
@@ -93,7 +94,7 @@ void main() {
     await tester.pump();
     await tester.runAsync(() async {
       await _native(tester, 'performOperation', [file]);
-      await Future<void>.delayed(const Duration(milliseconds: 200));
+      await Future<void>.delayed(const Duration(milliseconds: 1000));
     });
     // 앞의 안내가 사라지고 새 안내가 나올 때까지
     for (var i = 0; i < 10; i++) {

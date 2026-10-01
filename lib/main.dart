@@ -13,6 +13,7 @@ import 'app/download_manager.dart';
 import 'app/settings.dart';
 import 'core/app_update.dart';
 import 'core/playlist.dart';
+import 'platform/windows/app_paths.dart';
 import 'platform/windows/com_guard.dart';
 import 'platform/windows/desktop_shell.dart';
 import 'platform/windows/exit_trace.dart';
@@ -59,16 +60,22 @@ Future<void> main(List<String> args) async {
   }
 
   final services = PlatformServices.create();
+  // 작업 기록: 배포 폴더의 Logs (쓸 수 없으면 설정 폴더 아래 Logs)
+  final logsDir = AppPaths.logsDir(dataDir);
   final controller = AppController(services, settingsStore: SettingsStore())
-    ..logFile = p.join(dataDir, 'app.log');
+    ..logFile = p.join(logsDir, 'app.log');
+  ExitTrace.file = p.join(logsDir, 'exit.log');
   // 지난 실행이 정상으로 끝났는지 (아니면 알려 주고 기록에 남긴다)
   final session = SessionMarker(p.join(dataDir, 'session.json'));
   final crashed = session.start();
-  controller.note('── 시작 $appTitle ──');
+  controller.note('── 시작 $appTitle (${AppPaths.exeDir}) ──');
+  // 예전 구조 (한 폴더) 에서 Lib 구조로 바뀐 뒤 맨 위에 남은 예전 프로그램 파일 정리
+  final cleaned = AppPaths.cleanupOldLayout();
+  if (cleaned.isNotEmpty) controller.note('예전 구조의 프로그램 파일 정리 (${cleaned.length}개): ${cleaned.join(', ')}');
   if (crashed != null) {
     String hm(DateTime t) => '${t.month}/${t.day} ${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
     controller.note('⚠ 지난 실행이 정상적으로 끝나지 않았습니다 (시작 ${hm(crashed.$1)}, 마지막 확인 ${hm(crashed.$2)}). '
-        '그 전의 기록은 설정 폴더의 app.log 에 있습니다.');
+        '그 전의 기록은 Logs 폴더의 app.log 에 있습니다.');
   }
   await controller.init();
 
@@ -115,7 +122,6 @@ Future<void> main(List<String> args) async {
       final ctx = navigatorKey.currentContext;
       if (ctx != null && ctx.mounted && !await confirmExit(ctx, downloads)) return false;
     }
-    ExitTrace.file = p.join(dataDir, 'exit.log');
     ExitTrace.start();
     final job = controller.currentJob;
     final wait = controller.pendingJobs.length;
