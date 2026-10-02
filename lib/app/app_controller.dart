@@ -694,6 +694,7 @@ class AppController extends ChangeNotifier {
     final wav = p.join(tmp, 'audio.wav');
     _log('AI 자막 시작: ${v.fileName}');
     try {
+      if (!await storage.exists(v.path)) throw MediaToolException(missingFileMessage);
       // 2. 음성 추출 (전체의 5%)
       if (v.info?.ofType('audio').isEmpty ?? false) {
         throw const MediaToolException('음성 트랙이 없습니다.');
@@ -1088,6 +1089,7 @@ class AppController extends ChangeNotifier {
     final copies = <SubtitleEntry, String>{};
     var started = false; // FFmpeg 가 출력 파일을 쓰기 시작했는지
     try {
+      if (!await services.storage.exists(v.path)) throw MediaToolException(missingFileMessage);
       // Android 의 FFmpeg (ffmpeg-kit) 에는 AV1 디코더가 없어 다시 인코딩할 수 없다 (원본 유지는 된다)
       final vcodec = v.info?.ofType('video').firstOrNull?.codec;
       if (Platform.isAndroid && encode.reencode && vcodec == 'av1') {
@@ -1139,6 +1141,9 @@ class AppController extends ChangeNotifier {
   }
 
   bool _buildCancelled = false;
+
+  /// 목록에 넣은 뒤 파일이 옮겨지거나 지워졌을 때
+  static const missingFileMessage = '동영상 파일이 없습니다 (옮겨졌거나 지워졌습니다). 목록에서 빼고 다시 추가하세요.';
 
   /// 지금 작업 중단 + 대기 중인 작업 모두 비우기
   void cancel() {
