@@ -27,6 +27,8 @@ class MainActivity : FlutterActivity() {
                     result.success(null)
                 }
                 "storageRoot" -> result.success(Environment.getExternalStorageDirectory().path)
+                "openUrl" -> result.success(openUrl(call.argument<String>("url") ?: ""))
+                "openFolder" -> result.success(openFolder(call.argument<String>("path") ?: ""))
                 "keepAlive" -> {
                     keepAlive(call.argument<String>("text") ?: "", call.argument<Int>("progress") ?: -1)
                     result.success(null)
@@ -42,6 +44,35 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+    }
+
+    /// 웹 주소를 기기의 기본 브라우저로
+    private fun openUrl(url: String): Boolean = try {
+        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        true
+    } catch (e: Exception) {
+        false
+    }
+
+    /// 폴더를 파일 앱으로 연다 (내장 저장소 안의 폴더만). 열 앱이 없으면 false.
+    private fun openFolder(path: String): Boolean {
+        val root = Environment.getExternalStorageDirectory().path
+        if (!path.startsWith(root)) return false
+        val rel = path.removePrefix(root).trim('/')
+        val uri = android.provider.DocumentsContract.buildDocumentUri(
+            "com.android.externalstorage.documents", "primary:$rel"
+        )
+        for (type in listOf(android.provider.DocumentsContract.Document.MIME_TYPE_DIR, "resource/folder")) {
+            try {
+                startActivity(
+                    Intent(Intent.ACTION_VIEW).setDataAndType(uri, type)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                )
+                return true
+            } catch (e: Exception) {
+            }
+        }
+        return false
     }
 
     /// 작업 진행 알림 (포그라운드 서비스) 시작 · 갱신. 처음 한 번 알림 권한을 묻는다 (Android 13+, 거절해도 작업은 계속)

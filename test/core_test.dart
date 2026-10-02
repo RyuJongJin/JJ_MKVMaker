@@ -112,6 +112,10 @@ At least one output file must be specified
 
       // 문자셋은 해당 입력 앞에만
       expect(a, contains('-sub_charenc CP949 -i a.ko.smi -i a.ja.srt'));
+      // 앱이 UTF-8 로 바꿔 둔 사본을 쓰면 문자셋 지정 없이 사본을 읽는다 (Android 의 FFmpeg 는 iconv 가 없음)
+      final copy = buildMuxArgs(v, 'out.mkv', utf8Copies: {v.subtitles[3]: 'tmp/utf8_a.ko.smi'}).join(' ');
+      expect(copy, contains('-i in.mkv -i tmp/utf8_a.ko.smi -i a.ja.srt'));
+      expect(copy, isNot(contains('-sub_charenc')));
       // 삭제된 트랙(4)은 매핑하지 않음
       expect(a, contains('-map 0:2 -map 0:3 -map 1:0 -map 2:0'));
       expect(a, isNot(contains('0:4')));

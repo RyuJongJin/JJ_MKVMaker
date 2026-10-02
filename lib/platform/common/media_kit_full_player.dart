@@ -14,7 +14,8 @@ import '../../services/media_player.dart';
 bool isNonFatalMpvMessage(String m) =>
     m.contains('Could not open codec') ||
     m.contains('hardware decoding') ||
-    m.contains('Could not create device');
+    m.contains('Could not create device') ||
+    m.contains('Can not open external file');
 
 /// mpv(media_kit) 동영상 플레이어. Windows·Android 공용.
 class MediaKitFullPlayer implements MediaPlayer {
@@ -87,7 +88,8 @@ class MediaKitFullPlayer implements MediaPlayer {
       audioTracks: audio,
       subtitleTracks: subs,
       audioId: st.track.audio.id,
-      subtitleId: _externalSub?.id ?? (sid == 'no' ? null : sid),
+      // mpv 의 'auto' 는 고른 자막이 없을 수도 있다 → 실제 목록에 있을 때만 켜진 것으로
+      subtitleId: _externalSub?.id ?? (subs.any((t) => t.id == sid) ? sid : null),
     );
   }
 

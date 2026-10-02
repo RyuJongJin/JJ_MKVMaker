@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../app/app_controller.dart';
@@ -834,7 +836,7 @@ class _SubtitleRow extends StatelessWidget {
           ),
           if (c.services.createTranslator != null)
             IconButton(
-              tooltip: c.canEdit(s) ? '다른 언어로 번역 (AI · 이 PC 에서)' : '이미지 자막은 번역할 수 없습니다',
+              tooltip: c.canEdit(s) ? '다른 언어로 번역 (AI · 이 ${Platform.isAndroid ? '기기' : 'PC'} 에서)' : '이미지 자막은 번역할 수 없습니다',
               iconSize: 18,
               onPressed: locked || off || !c.canEdit(s) ? null : () => showTranslateDialog(context, c, v, s),
               icon: const Icon(Icons.translate, color: JjColors.accent),

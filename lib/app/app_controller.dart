@@ -483,14 +483,30 @@ class AppController extends ChangeNotifier {
     }
     final tmp = p.join(await storage.tempDirectory(),
         'edit_${DateTime.now().microsecondsSinceEpoch}.srt');
+    final copy = await _utf8Copy(s);
     try {
       await _tool.runFfmpeg(s.kind == SubtitleKind.external
-          ? buildToSrtArgs(input: s.path!, output: tmp, charset: s.charset)
+          ? buildToSrtArgs(input: copy ?? s.path!, output: tmp, charset: copy == null ? s.charset : null)
           : buildToSrtArgs(input: v.path, output: tmp, streamIndex: s.streamIndex));
       return parseSrt(decodeText(await storage.readBytes(tmp), 'UTF-8'));
     } finally {
       await storage.delete(tmp);
+      if (copy != null) await storage.delete(copy);
     }
+  }
+
+  /// UTF-8 이 아닌 외부 자막 (CP949 SMI 등) 의 UTF-8 임시 사본. 필요 없으면 null.
+  /// Android 의 FFmpeg (ffmpeg-kit) 에는 문자셋 변환 (iconv) 이 없어 -sub_charenc 를 쓸 수 없으므로
+  /// 앱이 바꿔서 넘긴다 (Windows 도 같은 방식으로).
+  Future<String?> _utf8Copy(SubtitleEntry s) async {
+    final cs = s.charset;
+    if (s.kind != SubtitleKind.external || s.path == null || cs == null || cs.startsWith('UTF-')) return null;
+    final storage = services.storage;
+    final text = decodeText(await storage.readBytes(s.path!), cs);
+    final copy = p.join(await storage.tempDirectory(),
+        'utf8_${DateTime.now().microsecondsSinceEpoch}_${p.basename(s.path!)}');
+    await storage.writeBytes(copy, utf8.encode(text));
+    return copy;
   }
 
   /// 편집한 자막을 jj_mkv\파일명_언어코드.srt 로 저장하고 MKV 에 반영되도록 목록을 바꾼다.
@@ -981,6 +997,32 @@ class AppController extends ChangeNotifier {
   }
 
   /// 재생 중 고를 수 있는 외부 자막: 같은 폴더의 자막 + jj_mkv 안의 파일명_*.srt
+  /// 플레이어에 넘길 자막 파일 (Android). Android 의 mpv 는 문자셋 변환 (iconv) 이 없고 SAMI (SMI) 도 열지 못하므로
+  /// UTF-8 이 아닌 자막은 UTF-8 사본으로, SMI 는 SRT 로 바꿔 임시 폴더에 만든다. 그 밖에는 그대로.
+  Future<String> playableSubtitle(String path) async {
+    if (!Platform.isAndroid) return path;
+    try {
+      final storage = services.storage;
+      final ext = p.extension(path).toLowerCase();
+      final isSami = ext == '.smi' || ext == '.sami';
+      final cs = detectCharset(Uint8List.fromList(await storage.readHead(path, 64 * 1024)));
+      if (cs == 'UTF-8' && !isSami) return path;
+      final tmp = await storage.tempDirectory();
+      final key = path.hashCode.toUnsigned(32);
+      var src = path;
+      if (cs != 'UTF-8') {
+        src = p.join(tmp, 'play_${key}_${p.basename(path)}');
+        await storage.writeBytes(src, utf8.encode(decodeText(await storage.readBytes(path), cs)));
+      }
+      if (!isSami) return src;
+      final srt = p.join(tmp, 'play_$key.srt');
+      await _tool.runFfmpeg(buildToSrtArgs(input: src, output: srt));
+      return srt;
+    } catch (_) {
+      return path;
+    }
+  }
+
   Future<List<String>> externalSubtitlesFor(String video) async {
     final out = <String>[];
     final storage = services.storage;
@@ -1043,10 +1085,23 @@ class AppController extends ChangeNotifier {
     notifyListeners();
     _log('시작: ${v.fileName} → $outputFolderName\\${p.basename(out)}'
         '${encode.reencode ? ' [${encode.codec.label} · ${encode.resolution.label} · ${encode.quality.label}]' : ''}');
+    final copies = <SubtitleEntry, String>{};
+    var started = false; // FFmpeg 가 출력 파일을 쓰기 시작했는지
     try {
+      // Android 의 FFmpeg (ffmpeg-kit) 에는 AV1 디코더가 없어 다시 인코딩할 수 없다 (원본 유지는 된다)
+      final vcodec = v.info?.ofType('video').firstOrNull?.codec;
+      if (Platform.isAndroid && encode.reencode && vcodec == 'av1') {
+        throw const MediaToolException('AV1 영상은 이 기기에서 다시 인코딩할 수 없습니다. '
+            '코덱을 "원본 유지" 로 바꿔 MKV 를 만드세요. (PC 판은 됩니다)');
+      }
       await services.storage.ensureDirectory(outputDirFor(v.path));
+      for (final s in v.subtitles.where((s) => s.enabled)) {
+        final c = await _utf8Copy(s);
+        if (c != null) copies[s] = c;
+      }
+      started = true;
       await _tool.runFfmpeg(
-        buildMuxArgs(v, out, encode: encode, encoders: encoders),
+        buildMuxArgs(v, out, encode: encode, encoders: encoders, utf8Copies: copies),
         duration: v.info?.duration,
         onProgress: (x) {
           v.progress = x;
@@ -1067,6 +1122,18 @@ class AppController extends ChangeNotifier {
         ..status = JobStatus.failed
         ..message = msg;
       _log('실패: ${v.fileName}\n$msg');
+      // 만들다 만 파일은 지운다 (0 바이트 MKV 가 남지 않도록). 시작 전에 실패했으면 전에 만든 MKV 는 그대로 둔다.
+      if (started) {
+        try {
+          await services.storage.delete(out);
+        } catch (_) {}
+      }
+    } finally {
+      for (final c in copies.values) {
+        try {
+          await services.storage.delete(c);
+        } catch (_) {}
+      }
     }
     notifyListeners();
   }

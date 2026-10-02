@@ -198,7 +198,10 @@ class Aria2Backend implements DownloadBackend {
       } catch (_) {}
     }
     _tasks.remove(t.id);
-    t.state = DownloadState.cancelled;
+    t
+      ..state = DownloadState.cancelled
+      ..speed = ''
+      ..eta = '';
     await Future<void>.delayed(const Duration(milliseconds: 300)); // 파일 핸들 해제 대기
     for (final f in t.files) {
       for (final path in [f, '$f.aria2']) {

@@ -435,7 +435,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       (v) => c.updateSettings((x) => x.openSubtitlesKey = v.trim())),
                   _textTile('아이디 (선택)', s.openSubtitlesUser, '로그인하면 하루 받기 횟수가 늘어납니다',
                       (v) => c.updateSettings((x) => x.openSubtitlesUser = v.trim())),
-                  _textTile('비밀번호 (선택)', s.openSubtitlesPassword, '이 PC 의 설정 파일에 저장됩니다',
+                  _textTile('비밀번호 (선택)', s.openSubtitlesPassword, '이 ${desk ? 'PC' : '기기'} 의 설정 파일에 저장됩니다',
                       (v) => c.updateSettings((x) => x.openSubtitlesPassword = v), obscure: true),
                   ListTile(
                     title: const Text('YouTube 받을 형식'),

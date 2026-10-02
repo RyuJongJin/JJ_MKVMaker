@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../app/app_controller.dart';
@@ -84,7 +86,7 @@ class _TranslateDialogState extends State<_TranslateDialog> {
             ]),
             const SizedBox(height: 16),
             Row(children: [
-              const Text('번역 모델: NLLB-200 (이 PC 에서만)  ', style: TextStyle(fontSize: 13)),
+              Text('번역 모델: NLLB-200 (이 ${Platform.isAndroid ? '기기' : 'PC'} 에서만)  ', style: const TextStyle(fontSize: 13)),
               if (_installed != null)
                 Text(_installed! ? '설치됨' : '처음 사용 시 내려받기 ${nllbModel.sizeLabel}',
                     style: TextStyle(fontSize: 11, color: _installed! ? JjColors.success : JjColors.textDim)),

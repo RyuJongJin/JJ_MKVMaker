@@ -92,8 +92,17 @@ class _PlayerPageState extends State<PlayerPage> {
     final i = pl.state.value.index;
     if (i != _subsForIndex && i >= 0 && i < pl.playlist.length) {
       _subsForIndex = i;
-      c.externalSubtitlesFor(pl.playlist[i]).then((s) {
-        if (mounted) setState(() => _externalSubs = s);
+      c.externalSubtitlesFor(pl.playlist[i]).then((s) async {
+        if (!mounted) return;
+        setState(() => _externalSubs = s);
+        // 영상 안 · 같은 폴더 자막이 없고 jj_mkv 에 만든 자막 (번역 · 받은 자막) 만 있으면 하나를 켠다 (한국어 먼저).
+        // 같은 폴더 자막은 mpv 가 스스로 켜므로 그 뒤에 (1초) 확인한다.
+        await Future<void>.delayed(const Duration(seconds: 1));
+        final st = pl.state.value;
+        if (!mounted || s.isEmpty || st.index != i || st.subtitleId != null || st.subtitleTracks.isNotEmpty) return;
+        final pick = s.firstWhere((f) => RegExp(r'[._-](ko|kor)[._]', caseSensitive: false).hasMatch(p.basename(f)),
+            orElse: () => s.first);
+        await _setSub(TrackInfo('file:$pick', p.basename(pick), file: pick));
       });
     }
   }
@@ -179,17 +188,29 @@ class _PlayerPageState extends State<PlayerPage> {
   void _toggleSubtitles() {
     final s = pl.state.value;
     if (s.subtitleId != null) {
-      pl.setSubtitleTrack(null);
+      _setSub(null);
     } else {
       final all = _subtitleChoices();
-      if (all.isNotEmpty) pl.setSubtitleTrack(all.first);
+      if (all.isNotEmpty) _setSub(all.first);
     }
   }
 
-  List<TrackInfo> _subtitleChoices() => [
-        ...pl.state.value.subtitleTracks,
-        for (final f in _externalSubs) TrackInfo('file:$f', p.basename(f), file: f),
-      ];
+  /// 자막 고르기. 파일 자막은 플레이어가 읽을 수 있는 형태로 (Android: UTF-8 사본) 넘긴다 - 고른 표시는 원래 id 로.
+  Future<void> _setSub(TrackInfo? t) async {
+    final f = t?.file;
+    if (t != null && f != null) t = TrackInfo(t.id, t.label, file: await c.playableSubtitle(f));
+    await pl.setSubtitleTrack(t);
+  }
+
+  List<TrackInfo> _subtitleChoices() {
+    final tracks = pl.state.value.subtitleTracks;
+    return [
+      ...tracks,
+      // mpv 가 같은 폴더에서 스스로 불러온 파일은 다시 넣지 않는다 (목록에 두 번 보이지 않게)
+      for (final f in _externalSubs)
+        if (!tracks.any((t) => t.label.contains(p.basename(f)))) TrackInfo('file:$f', p.basename(f), file: f),
+    ];
+  }
 
   Future<void> _addDropped(List<String> paths) async {
     final videos = await collectVideos(paths,
@@ -330,15 +351,18 @@ class _PlayerPageState extends State<PlayerPage> {
       item('다음', () => pl.next(), key: 'N'),
       const Divider(height: 1),
       item('전체 화면', _toggleFull, key: 'F', checked: _full),
-      item('팝업 보기', _togglePopup, checked: _popup),
-      SubmenuButton(menuChildren: [
-        for (final f in const [0.5, 1.0, 2.0, 4.0]) item('원본의 $f배', () => _fit(f)),
-      ], child: const Text('화면 크기')),
+      // 팝업 (항상 위 작은 창) · 창 크기는 PC 만
+      if (!Platform.isAndroid) ...[
+        item('팝업 보기', _togglePopup, checked: _popup),
+        SubmenuButton(menuChildren: [
+          for (final f in const [0.5, 1.0, 2.0, 4.0]) item('원본의 $f배', () => _fit(f)),
+        ], child: const Text('화면 크기')),
+      ],
       const Divider(height: 1),
       item('자막 보기', _toggleSubtitles, key: 'S', checked: s.subtitleId != null),
       SubmenuButton(menuChildren: [
-        item('끄기', () => pl.setSubtitleTrack(null), checked: s.subtitleId == null),
-        for (final t in subs) item(t.label, () => pl.setSubtitleTrack(t), checked: s.subtitleId == t.id),
+        item('끄기', () => _setSub(null), checked: s.subtitleId == null),
+        for (final t in subs) item(t.label, () => _setSub(t), checked: s.subtitleId == t.id),
       ], child: const Text('자막 선택')),
       if (s.audioTracks.length > 1)
         SubmenuButton(menuChildren: [
@@ -414,9 +438,9 @@ class _PlayerPageState extends State<PlayerPage> {
                       (label: '${r}x', checked: s.rate == r, onTap: () => pl.setRate(r)),
                   ]),
                   _menuButton(Icons.subtitles, '자막 (S)', [
-                    (label: '끄기', checked: s.subtitleId == null, onTap: () => pl.setSubtitleTrack(null)),
+                    (label: '끄기', checked: s.subtitleId == null, onTap: () => _setSub(null)),
                     for (final t in _subtitleChoices())
-                      (label: t.label, checked: s.subtitleId == t.id, onTap: () => pl.setSubtitleTrack(t)),
+                      (label: t.label, checked: s.subtitleId == t.id, onTap: () => _setSub(t)),
                   ]),
                   if (s.audioTracks.length > 1)
                     _menuButton(Icons.audiotrack, '음성', [
@@ -425,8 +449,9 @@ class _PlayerPageState extends State<PlayerPage> {
                     ]),
                   btn(Icons.playlist_play, '재생 목록 (L)', () => setState(() => _showList = !_showList)),
                 ],
-                btn(_popup ? Icons.close_fullscreen : Icons.picture_in_picture_alt, _popup ? '팝업 끄기' : '팝업 보기',
-                    _togglePopup),
+                if (!Platform.isAndroid)
+                  btn(_popup ? Icons.close_fullscreen : Icons.picture_in_picture_alt, _popup ? '팝업 끄기' : '팝업 보기',
+                      _togglePopup),
                 btn(_full ? Icons.fullscreen_exit : Icons.fullscreen, '전체 화면 (F)', _toggleFull),
               ]),
             ]),
@@ -479,6 +504,7 @@ class _PlayerPageState extends State<PlayerPage> {
               ),
             ),
           ),
+          if (!Platform.isAndroid)
           const Padding(
             padding: EdgeInsets.all(8),
             child: Text('동영상을 끌어다 놓으면 목록에 추가됩니다',

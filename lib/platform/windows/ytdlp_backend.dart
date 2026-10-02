@@ -272,7 +272,10 @@ class YtDlpBackend implements DownloadBackend {
   @override
   Future<void> cancel(DownloadTask t) async {
     await _stop(t);
-    t.state = DownloadState.cancelled;
+    t
+      ..state = DownloadState.cancelled
+      ..speed = ''
+      ..eta = '';
     for (final f in t.files) {
       for (final path in [f, '$f.part', '$f.ytdl']) {
         try {

@@ -19,11 +19,14 @@ const preferredDefaultLanguage = 'kor';
 /// 동영상 + 자막 → MKV 로 합치는 FFmpeg 인수.
 ///
 /// [encode] 가 재인코딩이면 영상은 선택한 코덱·크기로 인코딩하고, 음성은 항상 그대로 복사한다.
+///
+/// [utf8Copies]: UTF-8 로 바꿔 둔 외부 자막 사본 (원래 항목 → 사본 경로). 사본은 문자셋 지정 없이 읽는다.
 List<String> buildMuxArgs(
   VideoItem video,
   String outputPath, {
   EncodeSettings encode = const EncodeSettings(),
   Set<String> encoders = const {},
+  Map<SubtitleEntry, String> utf8Copies = const {},
 }) {
   final externals = video.subtitles
       .where((s) => s.enabled && s.kind == SubtitleKind.external)
@@ -39,12 +42,13 @@ List<String> buildMuxArgs(
 
   // 입력 1..n: 외부 자막 (-sub_charenc 는 입력 옵션이므로 -i 앞에 둔다)
   for (final s in externals) {
+    final copy = utf8Copies[s];
     final cs = s.charset;
     // UTF-8 / UTF-16(BOM) 은 FFmpeg 가 스스로 처리
-    if (cs != null && !cs.startsWith('UTF-')) {
+    if (copy == null && cs != null && !cs.startsWith('UTF-')) {
       args.addAll(['-sub_charenc', cs]);
     }
-    args.addAll(['-i', s.path!]);
+    args.addAll(['-i', copy ?? s.path!]);
   }
 
   // 영상(표지 그림 제외)·음성 트랙 전부, 첨부 파일(폰트) 유지

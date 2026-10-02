@@ -232,7 +232,12 @@ class _DownloadRow extends StatelessWidget {
             tooltip: '폴더 열기',
             icon: const Icon(Icons.folder_open, size: 18, color: JjColors.textDim),
             onPressed: () {
-              if (Platform.isWindows) Process.run('explorer', [t.dir]);
+              if (Platform.isWindows) {
+                Process.run('explorer', [t.dir]);
+              } else {
+                // Android: 파일 앱으로
+                AppScope.maybeOf(context)?.controller.services.shell.revealFile(t.dir);
+              }
             },
           ),
         ]),
