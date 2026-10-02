@@ -298,6 +298,42 @@ Future<void> main(List<String> args) async {
   ));
 }
 
+/// Android: 다른 앱 (파일 앱 "다음으로 열기" · 공유) 에서 받은 동영상.
+/// 설정 "다른 앱에서 동영상을 열 때" 에 따라 바로 재생 (기본) 또는 MKV 목록에 추가. 실제 경로를 모르는 것은 재생만.
+Future<void> openFromOtherApp(
+    GlobalKey<NavigatorState> navigatorKey, AppController c, List<Map<Object?, Object?>> files) async {
+  final paths = [for (final f in files) f['path'] as String?].whereType<String>().toList();
+  final uris = [
+    for (final f in files)
+      if (f['path'] == null) f['uri'] as String,
+  ];
+  c.note('다른 앱에서 열기: ${files.map((f) => f['name'] ?? f['uri']).join(', ')}');
+  // MKV 화면으로 돌아온 뒤 (재생 중이었다면 그 화면은 닫는다)
+  navigatorKey.currentState?.popUntil((r) => r.isFirst);
+  final ctx = navigatorKey.currentContext;
+  if (ctx == null || !ctx.mounted) return;
+  if (paths.isNotEmpty) {
+    final added = c.addVideos(paths, allowOutputFolder: true);
+    if (c.settings.openFileAction == 'add') {
+      await added;
+      final first = c.videos.where((v) => paths.any((f) => p.equals(f, v.path))).firstOrNull;
+      if (first != null) c.select(first);
+    } else {
+      unawaited(added);
+      await playFiles(ctx, c, paths);
+    }
+  } else if (uris.isNotEmpty) {
+    // 파일 위치를 알려 주지 않는 앱: 재생만 (MKV 만들기 · 자막은 파일 고르기로 추가해야 함)
+    ScaffoldMessenger.maybeOf(ctx)?.showSnackBar(const SnackBar(
+        content: Text('파일 위치를 알 수 없어 재생만 합니다. MKV 를 만들려면 "동영상 추가" 로 고르세요.')));
+    final create = c.services.createMediaPlayer;
+    if (create != null) {
+      await Navigator.of(ctx).push(MaterialPageRoute<void>(
+          builder: (_) => PlayerPage(c: c, player: create(), files: uris, start: 0)));
+    }
+  }
+}
+
 /// 탐색기에서 연 동영상을 새 재생 창으로 띄울지 (재생 요청 + 설정 "새 창에서")
 bool wantsNewPlayerWindow(LaunchRequest r, AppSettings s) =>
     s.openFileWindow == 'new' &&
@@ -359,7 +395,24 @@ Future<void> runAndroid(String dataDir) async {
   // 진행 중인 일이 있으면 화면에서 내려가도 계속 (알림에 진행 상황)
   AndroidKeepAlive(controller, downloads);
 
+  // 연결 프로그램 · 공유로 받은 동영상: 앱이 켜져 있을 때 (MainActivity.onNewIntent)
+  const android = MethodChannel('jj_mkvmaker/android');
+  android.setMethodCallHandler((call) async {
+    if (call.method == 'openFiles') {
+      await openFromOtherApp(navigatorKey, controller, (call.arguments as List).cast<Map<Object?, Object?>>());
+    }
+    return null;
+  });
+
   WidgetsBinding.instance.addPostFrameCallback((_) async {
+    // 연결 프로그램 · 공유로 앱을 켠 경우: 그 동영상부터
+    try {
+      final opened = await android.invokeMethod<List<Object?>>('takeOpenedFiles') ?? const [];
+      if (opened.isNotEmpty) {
+        unawaited(openFromOtherApp(navigatorKey, controller, opened.cast<Map<Object?, Object?>>()));
+        return;
+      }
+    } catch (_) {}
     if (controller.settings.startScreen == 'browser') {
       navigatorKey.currentState?.push(MaterialPageRoute<void>(
           builder: (_) => BrowserPage(c: controller, downloads: downloads, bookmarks: bookmarks)));

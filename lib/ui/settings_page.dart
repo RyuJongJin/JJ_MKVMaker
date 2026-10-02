@@ -427,10 +427,11 @@ class _SettingsPageState extends State<SettingsPage> {
                       onChanged: (m) => c.updateSettings((x) => x.playlistMode = m!),
                     ),
                   ),
-                  if (desk) ...[
                   ListTile(
-                    title: const Text('탐색기에서 동영상을 열 때'),
-                    subtitle: const Text('더블클릭 · 연결 프로그램으로 JJ_MKVMaker 를 골랐을 때 (오른쪽 클릭 메뉴는 그대로)'),
+                    title: Text(desk ? '탐색기에서 동영상을 열 때' : '다른 앱에서 동영상을 열 때'),
+                    subtitle: Text(desk
+                        ? '더블클릭 · 연결 프로그램으로 JJ_MKVMaker 를 골랐을 때 (오른쪽 클릭 메뉴는 그대로)'
+                        : '파일 앱의 "다음으로 열기" · 공유에서 JJ_MKVMaker 를 골랐을 때'),
                     trailing: DropdownButton<String>(
                       value: s.openFileAction,
                       items: const [
@@ -440,6 +441,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       onChanged: (v) => c.updateSettings((x) => x.openFileAction = v!),
                     ),
                   ),
+                  if (desk) ...[
                   ListTile(
                     title: const Text('탐색기에서 연 동영상을 재생할 창'),
                     subtitle: const Text('프로그램이 이미 켜져 있을 때. 새 창은 재생만 하는 창이며 닫으면 그 창만 끝납니다'),

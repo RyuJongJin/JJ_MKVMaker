@@ -17,10 +17,22 @@ import java.io.File
 
 /// 저장소 전체 접근 (동영상 옆 jj_mkv 폴더에 MKV 를 만들기 위해) 확인 · 요청, 다운로드 프로그램 준비
 class MainActivity : FlutterActivity() {
+    private var channel: MethodChannel? = null
+
+    /// 다른 앱에서 연 동영상 (앱이 켜질 때 받은 것: Dart 가 준비되면 가져간다)
+    private var pendingOpen: List<Map<String, String?>> = emptyList()
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "jj_mkvmaker/android").setMethodCallHandler { call, result ->
+        pendingOpen = openedFiles(intent)
+        val ch = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "jj_mkvmaker/android")
+        channel = ch
+        ch.setMethodCallHandler { call, result ->
             when (call.method) {
+                "takeOpenedFiles" -> {
+                    result.success(pendingOpen)
+                    pendingOpen = emptyList()
+                }
                 "hasAllFilesAccess" -> result.success(hasAllFilesAccess())
                 "requestAllFilesAccess" -> {
                     requestAllFilesAccess()
@@ -81,6 +93,96 @@ class MainActivity : FlutterActivity() {
                 .setDataAndType(uri, "application/vnd.android.package-archive")
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
         )
+    }
+
+    /// 앱이 켜져 있을 때 다른 앱에서 동영상을 열면 (launchMode singleTop)
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        val files = openedFiles(intent)
+        if (files.isNotEmpty()) channel?.invokeMethod("openFiles", files)
+    }
+
+    /// 연결 프로그램 (VIEW) · 공유 (SEND) 로 받은 동영상: [{path (실제 경로, 모르면 null), uri, name}]
+    private fun openedFiles(intent: Intent?): List<Map<String, String?>> {
+        if (intent == null) return emptyList()
+        val uris = mutableListOf<Uri>()
+        when (intent.action) {
+            Intent.ACTION_VIEW -> intent.data?.let { uris.add(it) }
+            Intent.ACTION_SEND -> intentStream(intent)?.let { uris.add(it) }
+            Intent.ACTION_SEND_MULTIPLE -> intentStreams(intent)?.let { uris.addAll(it) }
+        }
+        return uris.map { mapOf("path" to realPath(it), "uri" to it.toString(), "name" to displayName(it)) }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun intentStream(i: Intent): Uri? =
+        if (Build.VERSION.SDK_INT >= 33) i.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+        else i.getParcelableExtra(Intent.EXTRA_STREAM)
+
+    @Suppress("DEPRECATION")
+    private fun intentStreams(i: Intent): List<Uri>? =
+        if (Build.VERSION.SDK_INT >= 33) i.getParcelableArrayListExtra(Intent.EXTRA_STREAM, Uri::class.java)
+        else i.getParcelableArrayListExtra(Intent.EXTRA_STREAM)
+
+    private fun displayName(uri: Uri): String? = try {
+        contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
+            if (it.moveToFirst()) it.getString(0) else null
+        }
+    } catch (e: Exception) {
+        null
+    } ?: uri.lastPathSegment?.substringAfterLast('/')
+
+    /// content:// → 실제 파일 경로 ("모든 파일에 대한 접근" 이 있으면 그 경로로 읽고 옆에 MKV 를 만들 수 있다). 모르면 null.
+    private fun realPath(uri: Uri): String? {
+        fun ok(path: String?) = path != null && File(path).isFile
+        if (uri.scheme == "file") return uri.path?.takeIf { ok(it) }
+        if (uri.scheme != "content") return null
+        // 1. 저장소 문서 (primary:Download/a.mp4 · XXXX-XXXX:Movies/a.mp4)
+        try {
+            if (android.provider.DocumentsContract.isDocumentUri(this, uri) &&
+                uri.authority == "com.android.externalstorage.documents"
+            ) {
+                val id = android.provider.DocumentsContract.getDocumentId(uri)
+                val vol = id.substringBefore(':')
+                val rel = id.substringAfter(':', "")
+                val base = if (vol == "primary") Environment.getExternalStorageDirectory().path else "/storage/$vol"
+                val path = "$base/$rel"
+                if (ok(path)) return path
+            }
+        } catch (e: Exception) {
+        }
+        // 2. 미디어 저장소 등이 알려 주는 경로 (_data)
+        try {
+            contentResolver.query(uri, arrayOf("_data"), null, null, null)?.use {
+                if (it.moveToFirst()) {
+                    val path = it.getString(0)
+                    if (ok(path)) return path
+                }
+            }
+        } catch (e: Exception) {
+        }
+        // 3. 주소 안의 경로 조각을 저장소 맨 위에 붙여 본다 (파일 앱마다 주소 모양이 달라서)
+        //    예: content://…/device_storage/0/Download/a.mp4 → /storage/emulated/0/Download/a.mp4 (크기가 같을 때만)
+        val size = try {
+            contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.SIZE), null, null, null)?.use {
+                if (it.moveToFirst() && !it.isNull(0)) it.getLong(0) else -1L
+            } ?: -1L
+        } catch (e: Exception) {
+            -1L
+        }
+        val segs = uri.pathSegments.flatMap { Uri.decode(it).split('/') }.filter { it.isNotEmpty() }
+        val roots = storageVolumes().map { it["path"] as String }
+        for (i in segs.indices) {
+            val rest = segs.drop(i).joinToString("/")
+            for (root in roots) {
+                val f = File(root, rest)
+                if (f.isFile && (size < 0 || f.length() == size)) return f.absolutePath
+            }
+            // 경로 조각 안에 저장소 경로가 그대로 있는 경우 (/storage/emulated/0/…)
+            val abs = "/$rest"
+            if (abs.startsWith("/storage/") && ok(abs)) return abs
+        }
+        return null
     }
 
     /// 쓸 수 있는 저장소 (내장 · SD 카드 · USB 메모리): [{path, label, removable}]
