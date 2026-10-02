@@ -67,3 +67,5 @@ app.*.map.json
 
 # 플러그인 사본 안에 IDE 가 만든 Gradle 캐시
 packages/*/android/.gradle/
+# 플러그인 사본에서 pub get 을 하면 생기는 잠금 파일 (앱의 pubspec.lock 이 버전을 정함)
+packages/*/pubspec.lock
