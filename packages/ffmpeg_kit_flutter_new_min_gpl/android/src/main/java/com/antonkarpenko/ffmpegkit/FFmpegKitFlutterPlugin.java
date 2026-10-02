@@ -161,6 +161,11 @@ public class FFmpegKitFlutterPlugin implements FlutterPlugin, ActivityAware, Met
         });
 
         FFmpegKitConfig.enableStatisticsCallback(statistics -> {
+            // JJ_PATCH: FFmpeg 는 프레임마다 통계를 보낸다 (긴 영상이면 수만 개).
+            // 모두 Dart 로 보내면 메인 스레드 줄이 밀려 완료 이벤트가 몇 분씩 늦게 도착한다 → 세션마다 0.25초에 한 번만
+            if (!shouldEmitStatistics(statistics)) {
+                return;
+            }
             for (FFmpegKitFlutterPlugin plugin : attachedPlugins) {
                 if (plugin.statisticsEnabled.get() && plugin.eventSink != null) {
                     plugin.emitStatistics(statistics);
@@ -169,7 +174,23 @@ public class FFmpegKitFlutterPlugin implements FlutterPlugin, ActivityAware, Met
         });
     }
 
+    // JJ_PATCH: 세션별 마지막 통계 전송 시각 (완료되면 지운다)
+    private static final long STATISTICS_INTERVAL_MS = 250;
+    private static final java.util.concurrent.ConcurrentHashMap<Long, Long> lastStatisticsAt =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    private static boolean shouldEmitStatistics(final Statistics statistics) {
+        final long now = android.os.SystemClock.uptimeMillis();
+        final Long last = lastStatisticsAt.get(statistics.getSessionId());
+        if (last != null && now - last < STATISTICS_INTERVAL_MS) {
+            return false;
+        }
+        lastStatisticsAt.put(statistics.getSessionId(), now);
+        return true;
+    }
+
     private static void broadcastSession(final Session session) {
+        lastStatisticsAt.remove(session.getSessionId());
         boolean delivered = false;
         for (FFmpegKitFlutterPlugin plugin : attachedPlugins) {
             if (plugin.eventSink != null) {

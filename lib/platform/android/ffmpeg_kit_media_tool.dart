@@ -71,6 +71,7 @@ class FfmpegKitMediaTool implements MediaTool {
     final totalMs = duration?.inMilliseconds ?? 0;
     final done = Completer<void>();
     final errTail = <String>[];
+    var lastProgress = 0.0;
     final session = await FFmpegKit.executeWithArgumentsAsync(
       a,
       (s) async {
@@ -93,9 +94,12 @@ class FfmpegKitMediaTool implements MediaTool {
         }
       },
       (st) {
-        if (onProgress != null && totalMs > 0 && st.getTime() > 0) {
-          onProgress((st.getTime() / totalMs).clamp(0.0, 1.0));
-        }
+        if (onProgress == null || totalMs <= 0 || st.getTime() <= 0) return;
+        // 화면을 다시 그리는 일이 많지 않도록 0.5% 이상 바뀔 때만 알린다
+        final x = (st.getTime() / totalMs).clamp(0.0, 1.0);
+        if (x - lastProgress < 0.005) return;
+        lastProgress = x;
+        onProgress(x);
       },
     );
     final id = session.getSessionId();
