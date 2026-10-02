@@ -64,3 +64,6 @@ app.*.map.json
 /android/build/
 /packages/*/android/.cxx/
 /packages/*/android/build/
+
+# 플러그인 사본 안에 IDE 가 만든 Gradle 캐시
+packages/*/android/.gradle/
