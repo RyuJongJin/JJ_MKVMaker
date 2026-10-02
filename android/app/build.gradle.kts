@@ -1,13 +1,22 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// 배포 서명 키 (android/key.properties, 저장소에 올리지 않음). 없으면 디버그 키로 서명.
+val keyProps = Properties().apply {
+    val f = rootProject.file("key.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+
 android {
     namespace = "com.jj.jj_mkvmaker"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+    // whisper_ggml 이 NDK 29 를 요구 (더 낮은 버전용 코드와 호환)
+    ndkVersion = "29.0.13113456"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -15,25 +24,41 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.jj.jj_mkvmaker"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        // ffmpeg-kit 은 Android 7.0 (API 24) 이상
+        minSdk = maxOf(24, flutter.minSdkVersion)
         targetSdk = flutter.targetSdkVersion
-        // Uses the version code from pubspec.yaml. When using split APKs, 1000 * ABI_VERSION
-        // is added automatically by Flutter. (https://developer.android.com/studio/build/configure-apk-splits#configure-APK-versions)
-        // You can force using the value of versionCode by specifying the `-P force-version-code-ignoring-abi=true`
-        // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        // 요즘 휴대폰 · 태블릿 (64비트 ARM) 만. 플러그인이 다른 CPU 용 라이브러리를 넣어도 앱 본체가 없으면 실행되지 않으므로 뺀다
+        ndk {
+            abiFilters += listOf("arm64-v8a")
+        }
+    }
+
+    signingConfigs {
+        if (keyProps.getProperty("storeFile") != null) {
+            create("release") {
+                storeFile = file(keyProps.getProperty("storeFile"))
+                storePassword = keyProps.getProperty("storePassword")
+                keyAlias = keyProps.getProperty("keyAlias")
+                keyPassword = keyProps.getProperty("keyPassword")
+            }
+        }
     }
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
+        }
+    }
+
+    // ffmpeg · whisper 등 네이티브 라이브러리를 압축하지 않고 그대로 (설치 후 바로 로드)
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+            // 64비트 ARM 만 (위 abiFilters 와 같은 뜻, 플러그인 라이브러리까지 확실히 빼기)
+            excludes += setOf("lib/x86_64/**", "lib/x86/**", "lib/armeabi-v7a/**")
         }
     }
 }

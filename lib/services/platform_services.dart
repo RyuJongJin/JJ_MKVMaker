@@ -9,6 +9,9 @@ import '../core/download_detect.dart';
 import '../platform/common/nllb_translator.dart';
 import '../platform/common/opensubtitles_provider.dart';
 import '../platform/common/whisper_recognizer.dart';
+import '../platform/android/android_shell.dart';
+import '../platform/android/android_storage.dart';
+import '../platform/android/ffmpeg_kit_media_tool.dart';
 import '../platform/windows/aria2_backend.dart';
 import '../platform/windows/desktop_shell.dart';
 import '../platform/windows/desktop_storage_service.dart';
@@ -106,6 +109,26 @@ class PlatformServices {
         shell: DesktopShell(),
         updater: GitHubUpdater(),
         usage: Platform.isWindows ? WindowsUsage() : null,
+        createSubtitleProviders: (s) => [
+          OpenSubtitlesProvider(
+            apiKey: () => s().openSubtitlesKey,
+            username: () => s().openSubtitlesUser,
+            password: () => s().openSubtitlesPassword,
+          ),
+        ],
+      );
+    }
+    if (Platform.isAndroid) {
+      // 다운로드 (yt-dlp · aria2) · 업데이트 · 탐색기 연결은 데스크톱 전용
+      MediaKitPreviewPlayer.ensureInitialized();
+      return PlatformServices(
+        mediaTool: FfmpegKitMediaTool(),
+        storage: AndroidStorageService(),
+        createPlayer: MediaKitPreviewPlayer.new,
+        createMediaPlayer: MediaKitFullPlayer.new,
+        createRecognizer: WhisperRecognizer.new,
+        createTranslator: NllbTranslator.new,
+        shell: AndroidShell(),
         createSubtitleProviders: (s) => [
           OpenSubtitlesProvider(
             apiKey: () => s().openSubtitlesKey,

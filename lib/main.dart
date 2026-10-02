@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -13,6 +14,7 @@ import 'app/download_manager.dart';
 import 'app/settings.dart';
 import 'core/app_update.dart';
 import 'core/playlist.dart';
+import 'platform/android/android_storage.dart';
 import 'platform/windows/app_paths.dart';
 import 'platform/windows/cef_runtime.dart';
 import 'platform/windows/com_guard.dart';
@@ -49,6 +51,7 @@ Future<String> _prepare() async {
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
   final dataDir = await _prepare();
+  if (Platform.isAndroid) return runAndroid(dataDir);
 
   // 이미 실행 중이면 인수(탐색기에서 고른 파일)를 넘기고 끝낸다
   final request = LaunchRequest.parse(args);
@@ -308,6 +311,65 @@ String lastWorkText(AppController c) {
   if (c.currentJob != null) return c.currentJob!;
   if (c.logs.isEmpty) return '없음';
   return c.logs.last.replaceFirst(RegExp(r'^\[[\d:]+\]\s*'), '').split('\n').first;
+}
+
+/// Android: 창 하나. 트레이 · 단축키 · 탐색기 연결 · 다운로드 (yt-dlp · aria2) · 업데이트는 없다.
+/// 데스크톱 화면을 그대로 쓰므로 가로 화면으로 띄운다.
+Future<void> runAndroid(String dataDir) async {
+  await SystemChrome.setPreferredOrientations(
+      [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
+  final services = PlatformServices.create();
+  final logs = Directory(p.join(dataDir, 'Logs'))..createSync(recursive: true);
+  final controller = AppController(services, settingsStore: SettingsStore())..logFile = p.join(logs.path, 'app.log');
+  controller.note('── 시작 $appTitle (Android) ──');
+  await controller.init();
+  final bookmarks = BookmarksController();
+  await bookmarks.load();
+  final navigatorKey = GlobalKey<NavigatorState>();
+  final messengerKey = GlobalKey<ScaffoldMessengerState>();
+  AndroidStorageService.navigatorKey = navigatorKey;
+
+  WidgetsBinding.instance.addPostFrameCallback((_) async {
+    if (controller.settings.startScreen == 'browser') {
+      navigatorKey.currentState
+          ?.push(MaterialPageRoute<void>(builder: (_) => BrowserPage(c: controller, bookmarks: bookmarks)));
+    }
+    // 동영상을 읽고 옆에 MKV 를 만들려면 저장소 전체 접근이 필요하다
+    if (!await AndroidAccess.hasAllFiles()) {
+      messengerKey.currentState?.showSnackBar(SnackBar(
+        duration: const Duration(seconds: 20),
+        content: const Text('동영상을 고르고 MKV 를 만들려면 "모든 파일에 대한 접근" 권한이 필요합니다.'),
+        action: SnackBarAction(label: '허용', onPressed: AndroidAccess.request),
+      ));
+    }
+  });
+
+  runApp(JjCapCutApp(
+    controller: controller,
+    bookmarks: bookmarks,
+    navigatorKey: navigatorKey,
+    messengerKey: messengerKey,
+    onExit: () async {
+      final ctx = navigatorKey.currentContext;
+      if (controller.busy && ctx != null && ctx.mounted) {
+        final ok = await showDialog<bool>(
+          context: ctx,
+          builder: (c) => AlertDialog(
+            title: const Text('종료'),
+            content: Text('진행 중인 작업이 있습니다: ${controller.currentJob ?? ''}\n중지하고 끝낼까요?'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('취소')),
+              FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('종료')),
+            ],
+          ),
+        );
+        if (ok != true) return;
+      }
+      controller.cancel();
+      controller.note('── 정상 종료 ──');
+      await services.shell.quit();
+    },
+  ));
 }
 
 /// 탐색기에서 연 동영상의 새 창: 바로 재생하고, ← 로 나오면 같은 동영상 목록의 MKV 화면.

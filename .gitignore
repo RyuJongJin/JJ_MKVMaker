@@ -59,3 +59,8 @@ app.*.map.json
 
 # 내장 Chrome: 빌드할 때 내려받는 CEF 배포본 (약 330MB)
 /packages/webview_cef/third/cef/
+
+# Android 빌드 중간 파일
+/android/build/
+/packages/*/android/.cxx/
+/packages/*/android/build/

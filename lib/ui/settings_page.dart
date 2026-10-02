@@ -240,6 +240,8 @@ class _SettingsPageState extends State<SettingsPage> {
       listenable: c,
       builder: (context, _) {
         final s = c.settings;
+        // Android: 창 · 트레이 · 탐색기 · 다운로드 (yt-dlp · aria2) · 내장 Chrome 설정은 없음
+        final desk = !Platform.isAndroid;
         return Scaffold(
           body: Column(children: [
             Container(
@@ -298,6 +300,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   ),
                   _textTile('홈 주소', s.homeUrl, '웹 브라우저의 시작 · 🏠 주소',
                       (v) => c.updateSettings((x) => x.homeUrl = v.trim().isEmpty ? 'https://www.youtube.com/' : v.trim())),
+                  if (desk) ...[
                   ListTile(
                     title: const Text('브라우저 엔진 (앱 안)'),
                     subtitle: Text(
@@ -356,6 +359,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       onChanged: (v) => c.updateSettings((x) => x.externalBrowser = v!),
                     ),
                   ),
+                  ],
                   _section('저장 위치'),
                   _folderTile(
                     title: 'MKV · 자막 (jj_mkv)',
@@ -367,6 +371,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     },
                     onReset: () => c.updateSettings((x) => x.mkvOutputRoot = null),
                   ),
+                  if (desk) ...[
                   _folderTile(
                     title: '다운로드 (jj_yt-dlp · jj_aria2)',
                     value: s.downloadRoot,
@@ -384,6 +389,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     title: const Text('복사(Ctrl+C)한 주소 자동 다운로드'),
                     subtitle: const Text('YouTube → yt-dlp, 마그넷 · .torrent → aria2 (완료 후 올려 주기 안 함)'),
                   ),
+                  ],
                   _section('재생'),
                   ListTile(
                     title: const Text('동영상 하나를 재생할 때'),
@@ -396,6 +402,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       onChanged: (m) => c.updateSettings((x) => x.playlistMode = m!),
                     ),
                   ),
+                  if (desk) ...[
                   ListTile(
                     title: const Text('탐색기에서 동영상을 열 때'),
                     subtitle: const Text('더블클릭 · 연결 프로그램으로 JJ_MKVMaker 를 골랐을 때 (오른쪽 클릭 메뉴는 그대로)'),
@@ -422,6 +429,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   ),
                   _ExternalPlayers(c: c),
                   _ContextMenuTile(c: c),
+                  ],
                   _section('인터넷 자막 (OpenSubtitles.com)'),
                   _textTile('API 키 (필수, 무료)', s.openSubtitlesKey,
                       '가입 → 프로필 → API consumers → New consumer',
@@ -430,6 +438,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       (v) => c.updateSettings((x) => x.openSubtitlesUser = v.trim())),
                   _textTile('비밀번호 (선택)', s.openSubtitlesPassword, '이 PC 의 설정 파일에 저장됩니다',
                       (v) => c.updateSettings((x) => x.openSubtitlesPassword = v), obscure: true),
+                  if (desk) ...[
                   ListTile(
                     title: const Text('YouTube 받을 형식'),
                     subtitle: const Text('기본: MP4. 음성만 받으면 MP3 · M4A 로 저장'),
@@ -502,6 +511,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       onChanged: (n) => c.updateSettings((x) => x.maxParallelDownloads = n),
                     ),
                   ),
+                  ],
                   _section('변환'),
                   ListTile(
                     title: const Text('동시 MKV 변환 수'),
@@ -511,6 +521,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       onChanged: (n) => c.updateSettings((x) => x.maxParallelJobs = n),
                     ),
                   ),
+                  if (desk) ...[
                   _section('실행'),
                   ListTile(
                     title: const Text('종료 (창 닫기 ✕ · 종료 버튼) 를 누르면'),
@@ -560,6 +571,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     title: const Text('완료시 자동 동영상추가'),
                     subtitle: const Text('다 받는 대로 MKV 만들기의 동영상 목록에 넣고, 다운로드 목록에서는 뺍니다 (다운로드 화면의 체크 상자와 같음)'),
                   ),
+                  ],
                   _section('AI 자막'),
                   SwitchListTile(
                     value: s.askAiOptions,
@@ -587,6 +599,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       title: const Text('시작할 때 새 버전 확인 (하루 한 번)'),
                     ),
                   ],
+                  if (desk) ...[
                   ListTile(
                     title: const Text('필수 프로그램 점검'),
                     subtitle: const Text('FFmpeg · yt-dlp · aria2 · Deno 가 없으면 내려받아 설치합니다'),
@@ -595,17 +608,18 @@ class _SettingsPageState extends State<SettingsPage> {
                       child: const Text('점검'),
                     ),
                   ),
+                  ],
                   ListTile(
                     title: const Text('오픈 소스 라이선스'),
                     subtitle: const Text('포함된 구성 요소와 라이선스 (THIRD_PARTY_NOTICES.txt)'),
                     trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                      OutlinedButton(
+                      if (desk) OutlinedButton(
                         onPressed: () => c.services.shell.openExternal('system', [
                           '${File(Platform.resolvedExecutable).parent.path}\\THIRD_PARTY_NOTICES.txt',
                         ]),
                         child: const Text('고지 문서'),
                       ),
-                      const SizedBox(width: 6),
+                      if (desk) const SizedBox(width: 6),
                       OutlinedButton(
                         onPressed: () => showLicensePage(context: context, applicationName: 'JJ_MKVMaker'),
                         child: const Text('패키지 라이선스'),

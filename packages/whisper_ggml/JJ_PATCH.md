@@ -14,3 +14,8 @@ Windows 에서 음성인식이 끝나는 순간 앱이 종료됨 (예외 코드 
 - example 폴더 제거
 
 원본 패키지에서 고쳐지면 pubspec.yaml 을 다시 `whisper_ggml: ^버전` 으로 바꾸면 된다.
+
+## Android: FFmpeg 하나만 넣기
+- pubspec.yaml · lib/src/whisper_audio_convert.dart: `ffmpeg_kit_flutter_new_min` → `ffmpeg_kit_flutter_new_min_gpl`
+  (앱이 MKV 만들기에 쓰는 것과 같은 것. 두 가지가 함께 들어가면 같은 이름의 Java 클래스 · 네이티브 라이브러리가 겹쳐 빌드 · 실행이 안 됨)
+- android/build.gradle: compileSdk 34 → 36 (ffmpeg-kit min-gpl 이 35 이상을 요구)

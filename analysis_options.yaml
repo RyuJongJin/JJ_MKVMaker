@@ -14,7 +14,9 @@ analyzer:
     - build/**
     - android/**
     - windows/**
-    - packages/webview_cef/**   # 고친 외부 부품 (원본 코드 그대로)
+    - packages/webview_cef/**
+    - packages/flutter_inappwebview_android/**
+    - packages/ffmpeg_kit_flutter_new_min_gpl/**   # 고친 외부 부품 (원본 코드 그대로)
 
 linter:
   # The lint rules applied to this project can be customized in the

@@ -161,14 +161,13 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.1.2"
-  ffmpeg_kit_flutter_new_min:
-    dependency: transitive
+  ffmpeg_kit_flutter_new_min_gpl:
+    dependency: "direct main"
     description:
-      name: ffmpeg_kit_flutter_new_min
-      sha256: "1fce79b73ebbcf34e1063ed84cacc4920adfbb8631877e585302e68157b0ace3"
-      url: "https://pub.dev"
-    source: hosted
-    version: "2.1.0"
+      path: "packages/ffmpeg_kit_flutter_new_min_gpl"
+      relative: true
+    source: path
+    version: "2.6.2"
   ffmpeg_kit_flutter_platform_interface:
     dependency: transitive
     description:
@@ -252,12 +251,11 @@ packages:
     source: hosted
     version: "6.1.5"
   flutter_inappwebview_android:
-    dependency: transitive
+    dependency: "direct overridden"
     description:
-      name: flutter_inappwebview_android
-      sha256: "62557c15a5c2db5d195cb3892aab74fcaec266d7b86d59a6f0027abd672cddba"
-      url: "https://pub.dev"
-    source: hosted
+      path: "packages/flutter_inappwebview_android"
+      relative: true
+    source: path
     version: "1.1.3"
   flutter_inappwebview_internal_annotations:
     dependency: transitive
