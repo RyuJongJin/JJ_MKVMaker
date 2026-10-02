@@ -30,7 +30,16 @@ abstract class WebNav {
 
   /// YouTube · Google 로그인 쿠키를 yt-dlp 용 cookies.txt 로 내보내기
   Future<void> exportCookies();
+
+  /// 페이지의 동영상 · 소리 멈추기 (다른 화면으로 갈 때)
+  Future<void> pauseMedia();
 }
+
+/// 페이지의 모든 동영상 · 소리를 멈추는 스크립트
+const pauseMediaScript = "document.querySelectorAll('video,audio').forEach(function(m){try{m.pause()}catch(e){}})";
+
+/// 화면 이동 알림 (브라우저 위에 다른 화면이 올라오면 동영상을 멈춘다). MaterialApp.navigatorObservers 에 넣는다.
+final browserRouteObserver = RouteObserver<ModalRoute<void>>();
 
 /// 웹뷰 → 화면으로 알리는 통로
 class BrowserHost {
@@ -97,7 +106,7 @@ class BrowserPage extends StatefulWidget {
   }
 }
 
-class _BrowserPageState extends State<BrowserPage> {
+class _BrowserPageState extends State<BrowserPage> with RouteAware {
   late String _url = widget.initialUrl ?? widget.c.settings.homeUrl;
   String _title = '';
   double _progress = 1;
@@ -139,7 +148,21 @@ class _BrowserPageState extends State<BrowserPage> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route != null) browserRouteObserver.subscribe(this, route);
+  }
+
+  /// 다운로드 목록 · 플레이어 · 설정 등이 위에 올라왔다: 보던 동영상을 멈춘다 (가려진 채 소리만 나지 않게)
+  @override
+  void didPushNext() {
+    _nav?.pauseMedia();
+  }
+
+  @override
   void dispose() {
+    browserRouteObserver.unsubscribe(this);
     BrowserPage._open--;
     _address.dispose();
     _addressFocus.dispose();
@@ -492,6 +515,13 @@ class _InAppNav implements WebNav {
   final String dataDir;
   _InAppNav(this.c, this.env, this.dataDir);
 
+  @override
+  Future<void> pauseMedia() async {
+    try {
+      await c.evaluateJavascript(source: pauseMediaScript);
+    } catch (_) {}
+  }
+
   static const _cookieSites = [
     'https://www.youtube.com/',
     'https://m.youtube.com/',
@@ -641,6 +671,13 @@ class _CefNav implements WebNav {
   final cef.WebViewController c;
   final String dataDir;
   _CefNav(this.c, this.dataDir);
+
+  @override
+  Future<void> pauseMedia() async {
+    try {
+      await c.evaluateJavascript(pauseMediaScript);
+    } catch (_) {}
+  }
 
   /// YouTube · Google 쿠키를 yt-dlp 용 cookies.txt 로 (Edge 와 같은 파일 - 지금 쓰는 엔진의 로그인이 쓰인다).
   /// Chrome 엔진은 쿠키의 이름 · 값만 알려 주므로 만료 · 보안 표시는 기본값으로 적는다.

@@ -40,6 +40,9 @@ class _Backend implements DownloadBackend {
 }
 
 class _Nav implements WebNav {
+  int paused = 0;
+  @override
+  Future<void> pauseMedia() async => paused++;
   final loads = <String>[];
   @override
   Future<void> load(String url) async => loads.add(url);

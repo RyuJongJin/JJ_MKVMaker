@@ -507,6 +507,7 @@ class JjCapCutApp extends StatelessWidget {
         theme: buildTheme(),
         navigatorKey: navigatorKey,
         scaffoldMessengerKey: messengerKey,
+        navigatorObservers: [browserRouteObserver],
         // 모든 화면에: 환경 설정 · 종료 버튼이 쓸 것 + 끌어다 놓은 동영상을 목록에 추가
         builder: (context, child) => AppScope(
             controller: controller,
