@@ -10,6 +10,7 @@ import 'theme.dart';
 String? _lastDir;
 
 /// Android 앱 안 파일 고르기: 폴더를 오가며 [extensions] 파일을 여러 개 고른다. 고른 파일의 실제 경로를 돌려준다.
+/// 내장 저장소와 SD 카드 · USB 메모리를 오갈 수 있다.
 Future<List<String>?> showAndroidFileBrowser(
   BuildContext context, {
   required String title,
@@ -21,18 +22,31 @@ Future<List<String>?> showAndroidFileBrowser(
       builder: (_) => _FileBrowser(title: title, extensions: extensions, initialDirectory: initialDirectory),
     ));
 
+/// Android 앱 안 폴더 고르기 (저장 위치 등). 고른 폴더의 실제 경로, 취소하면 null.
+Future<String?> showAndroidFolderBrowser(BuildContext context, {required String title, String? initialDirectory}) async {
+  final r = await Navigator.of(context).push<List<String>>(MaterialPageRoute(
+    fullscreenDialog: true,
+    builder: (_) => _FileBrowser(title: title, extensions: const [], initialDirectory: initialDirectory, folder: true),
+  ));
+  return r?.firstOrNull;
+}
+
 class _FileBrowser extends StatefulWidget {
   final String title;
   final List<String> extensions;
   final String? initialDirectory;
-  const _FileBrowser({required this.title, required this.extensions, this.initialDirectory});
+
+  /// 폴더 고르기 (파일은 보이지 않고 "이 폴더 선택")
+  final bool folder;
+  const _FileBrowser({required this.title, required this.extensions, this.initialDirectory, this.folder = false});
 
   @override
   State<_FileBrowser> createState() => _FileBrowserState();
 }
 
 class _FileBrowserState extends State<_FileBrowser> {
-  String _root = '/storage/emulated/0';
+  /// (경로, 이름, 빼낼 수 있는지)
+  List<(String, String, bool)> _volumes = const [('/storage/emulated/0', '내장 저장소', false)];
   String? _dir;
   bool? _allowed;
   List<Directory> _dirs = [];
@@ -46,14 +60,24 @@ class _FileBrowserState extends State<_FileBrowser> {
   }
 
   Future<void> _start() async {
-    _root = await AndroidAccess.storageRoot();
+    _volumes = await AndroidAccess.volumes();
     final allowed = await AndroidAccess.hasAllFiles();
-    final first = [widget.initialDirectory, _lastDir, _root].firstWhere(
-        (d) => d != null && Directory(d).existsSync(),
-        orElse: () => _root)!;
+    final first = [widget.initialDirectory, _lastDir, _volumes.first.$1].firstWhere(
+        (d) => d != null && Directory(d).existsSync() && _volumeOf(d) != null,
+        orElse: () => _volumes.first.$1)!;
     setState(() => _allowed = allowed);
     if (allowed) _open(first);
   }
+
+  /// [dir] 이 들어 있는 저장소 (맨 위 폴더 · 이름)
+  (String, String, bool)? _volumeOf(String dir) {
+    for (final v in _volumes) {
+      if (p.equals(v.$1, dir) || p.isWithin(v.$1, dir)) return v;
+    }
+    return null;
+  }
+
+  static String _volumeName((String, String, bool) v) => v.$3 ? (v.$2.isEmpty ? 'SD 카드' : v.$2) : '내장 저장소';
 
   bool _match(String path) => widget.extensions.contains(p.extension(path).replaceFirst('.', '').toLowerCase());
 
@@ -65,7 +89,7 @@ class _FileBrowserState extends State<_FileBrowser> {
         final name = p.basename(e.path);
         if (name.startsWith('.')) continue;
         if (e is Directory) dirs.add(e);
-        if (e is File && _match(e.path)) files.add(e);
+        if (!widget.folder && e is File && _match(e.path)) files.add(e);
       }
     } catch (_) {}
     int byName(FileSystemEntity a, FileSystemEntity b) =>
@@ -88,7 +112,10 @@ class _FileBrowserState extends State<_FileBrowser> {
   @override
   Widget build(BuildContext context) {
     final dir = _dir;
-    final atRoot = dir == null || p.equals(dir, _root) || !p.isWithin(_root, dir);
+    final vol = dir == null ? null : _volumeOf(dir);
+    final root = vol?.$1;
+    final atRoot = dir == null || root == null || p.equals(dir, root);
+    final internal = _volumes.first.$1;
     return PopScope(
       canPop: atRoot,
       onPopInvokedWithResult: (didPop, _) {
@@ -98,45 +125,63 @@ class _FileBrowserState extends State<_FileBrowser> {
         appBar: AppBar(
           title: Text(widget.title),
           actions: [
-            if (_files.isNotEmpty)
-              TextButton(
-                onPressed: () => setState(() {
-                  final all = _files.every((f) => _picked.contains(f.path));
-                  for (final f in _files) {
-                    all ? _picked.remove(f.path) : _picked.add(f.path);
-                  }
-                }),
-                child: const Text('이 폴더 전체'),
+            if (widget.folder)
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: FilledButton.icon(
+                  onPressed: dir == null ? null : () => Navigator.pop(context, [dir]),
+                  icon: const Icon(Icons.check, size: 18),
+                  label: const Text('이 폴더 선택'),
+                ),
+              )
+            else ...[
+              if (_files.isNotEmpty)
+                TextButton(
+                  onPressed: () => setState(() {
+                    final all = _files.every((f) => _picked.contains(f.path));
+                    for (final f in _files) {
+                      all ? _picked.remove(f.path) : _picked.add(f.path);
+                    }
+                  }),
+                  child: const Text('이 폴더 전체'),
+                ),
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: FilledButton(
+                  onPressed: _picked.isEmpty ? null : () => Navigator.pop(context, _picked.toList()),
+                  child: Text('추가 (${_picked.length})'),
+                ),
               ),
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: FilledButton(
-                onPressed: _picked.isEmpty ? null : () => Navigator.pop(context, _picked.toList()),
-                child: Text('추가 (${_picked.length})'),
-              ),
-            ),
+            ],
           ],
         ),
         body: switch (_allowed) {
           null => const Center(child: CircularProgressIndicator()),
           false => _permission(),
           true => Column(children: [
-              // 바로 가기 · 지금 폴더
+              // 바로 가기: 저장소 (내장 · SD 카드 · USB) → 내장 저장소의 자주 쓰는 폴더
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.fromLTRB(8, 6, 8, 2),
                 child: Row(children: [
+                  for (final v in _volumes)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: ActionChip(
+                        avatar: Icon(v.$3 ? Icons.sd_card_outlined : Icons.phone_android, size: 18),
+                        label: Text(_volumeName(v)),
+                        onPressed: () => _open(v.$1),
+                      ),
+                    ),
                   for (final (label, sub) in [
-                    ('내장 저장소', ''),
                     ('Download', 'Download'),
                     ('Movies', 'Movies'),
                     ('DCIM', 'DCIM'),
-                    ('jj_mkv', 'Movies/jj_mkv'),
                   ])
-                    if (Directory(p.join(_root, sub)).existsSync())
+                    if (Directory(p.join(internal, sub)).existsSync())
                       Padding(
                         padding: const EdgeInsets.only(right: 6),
-                        child: ActionChip(label: Text(label), onPressed: () => _open(p.join(_root, sub))),
+                        child: ActionChip(label: Text(label), onPressed: () => _open(p.join(internal, sub))),
                       ),
                 ]),
               ),
@@ -148,14 +193,18 @@ class _FileBrowserState extends State<_FileBrowser> {
                   onPressed: atRoot ? null : () => _open(p.dirname(dir)),
                 ),
                 title: Text(
-                  dir == null ? '' : (p.equals(dir, _root) ? '내장 저장소' : p.relative(dir, from: _root)),
+                  dir == null || vol == null
+                      ? ''
+                      : (atRoot ? _volumeName(vol) : '${_volumeName(vol)} / ${p.relative(dir, from: root)}'),
                   style: const TextStyle(color: JjColors.textDim),
                 ),
               ),
               const Divider(height: 1),
               Expanded(
                 child: _dirs.isEmpty && _files.isEmpty
-                    ? const Center(child: Text('이 폴더에는 고를 파일이 없습니다', style: TextStyle(color: JjColors.textDim)))
+                    ? Center(
+                        child: Text(widget.folder ? '하위 폴더가 없습니다' : '이 폴더에는 고를 파일이 없습니다',
+                            style: const TextStyle(color: JjColors.textDim)))
                     : ListView(children: [
                         for (final d in _dirs)
                           ListTile(

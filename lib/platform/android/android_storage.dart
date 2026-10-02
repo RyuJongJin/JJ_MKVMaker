@@ -28,6 +28,21 @@ class AndroidAccess {
     } catch (_) {}
   }
 
+  /// 쓸 수 있는 저장소: (경로, 이름, 빼낼 수 있는지). 내장 저장소가 먼저.
+  /// 읽지 못하면 내장 저장소만.
+  static Future<List<(String, String, bool)>> volumes() async {
+    try {
+      final list = await _ch.invokeMethod<List<Object?>>('storageVolumes') ?? const [];
+      final out = [
+        for (final v in list.cast<Map<Object?, Object?>>())
+          (v['path'] as String, v['label'] as String? ?? '', v['removable'] == true),
+      ];
+      out.sort((a, b) => (a.$3 ? 1 : 0) - (b.$3 ? 1 : 0));
+      if (out.isNotEmpty) return out;
+    } catch (_) {}
+    return [(await storageRoot(), '내장 저장소', false)];
+  }
+
   /// 내장 저장소 맨 위 (예: /storage/emulated/0)
   static Future<String> storageRoot() async {
     try {

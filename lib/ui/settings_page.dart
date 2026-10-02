@@ -14,6 +14,7 @@ import 'setup_dialog.dart';
 import 'update_dialog.dart';
 import '../app/settings.dart';
 import '../platform/windows/cef_runtime.dart';
+import 'android_file_browser.dart';
 import 'app_actions.dart';
 import 'cef_setup.dart';
 import 'theme.dart';
@@ -221,7 +222,10 @@ class _SettingsPageState extends State<SettingsPage> {
     super.dispose();
   }
 
-  Future<String?> _pickDir(String title) => FilePicker.getDirectoryPath(dialogTitle: title);
+  /// 폴더 고르기. Android 는 앱 안 화면 (내장 저장소 · SD 카드 · USB 를 실제 경로로 고를 수 있음)
+  Future<String?> _pickDir(String title, [String? initial]) => Platform.isAndroid
+      ? showAndroidFolderBrowser(context, title: title, initialDirectory: initial)
+      : FilePicker.getDirectoryPath(dialogTitle: title, initialDirectory: initial);
 
   Future<void> _applyHotkey() async {
     final text = _hotkey.text.trim();
@@ -388,7 +392,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     value: s.mkvOutputRoot,
                     defaultText: '동영상이 있는 폴더 아래 jj_mkv (기본)',
                     onPick: () async {
-                      final d = await _pickDir('MKV · 자막 저장 위치');
+                      final d = await _pickDir('MKV · 자막 저장 위치', s.mkvOutputRoot);
                       if (d != null) await c.updateSettings((x) => x.mkvOutputRoot = d);
                     },
                     onReset: () => c.updateSettings((x) => x.mkvOutputRoot = null),
@@ -398,7 +402,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     value: s.downloadRoot,
                     defaultText: '${desk ? '프로그램 폴더' : '내장 저장소'} (기본): ${s.resolvedDownloadRoot()}',
                     onPick: () async {
-                      final d = await _pickDir('다운로드 위치');
+                      final d = await _pickDir('다운로드 위치', s.resolvedDownloadRoot());
                       if (d != null) await c.updateSettings((x) => x.downloadRoot = d);
                     },
                     onReset: () => c.updateSettings((x) => x.downloadRoot = null),

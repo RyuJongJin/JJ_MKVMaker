@@ -27,6 +27,7 @@ class MainActivity : FlutterActivity() {
                     result.success(null)
                 }
                 "storageRoot" -> result.success(Environment.getExternalStorageDirectory().path)
+                "storageVolumes" -> result.success(storageVolumes())
                 "openUrl" -> result.success(openUrl(call.argument<String>("url") ?: ""))
                 "installApk" -> try {
                     installApk(call.argument<String>("path") ?: "")
@@ -82,6 +83,33 @@ class MainActivity : FlutterActivity() {
         )
     }
 
+    /// 쓸 수 있는 저장소 (내장 · SD 카드 · USB 메모리): [{path, label, removable}]
+    private fun storageVolumes(): List<Map<String, Any>> {
+        val sm = getSystemService(STORAGE_SERVICE) as android.os.storage.StorageManager
+        val out = mutableListOf<Map<String, Any>>()
+        for (v in sm.storageVolumes) {
+            if (v.state != Environment.MEDIA_MOUNTED) continue
+            val dir: File? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                v.directory
+            } else {
+                try {
+                    v.javaClass.getMethod("getPathFile").invoke(v) as File?
+                } catch (e: Exception) {
+                    null
+                }
+            }
+            if (dir == null) continue
+            out.add(
+                mapOf(
+                    "path" to dir.absolutePath,
+                    "label" to (v.getDescription(this) ?: dir.name),
+                    "removable" to v.isRemovable,
+                )
+            )
+        }
+        return out
+    }
+
     /// 웹 주소를 기기의 기본 브라우저로
     private fun openUrl(url: String): Boolean = try {
         startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -92,9 +120,16 @@ class MainActivity : FlutterActivity() {
 
     /// 폴더를 파일 앱으로 연다 (내장 저장소 안의 폴더만). 열 앱이 없으면 false.
     private fun openFolder(path: String): Boolean {
+        // 내장 저장소 (primary) 또는 SD 카드 · USB (/storage/XXXX-XXXX → 문서 ID "XXXX-XXXX:...")
         val root = Environment.getExternalStorageDirectory().path
-        if (!path.startsWith(root)) return false
-        val rel = path.removePrefix(root).trim('/')
+        val (volumeId, rel) = when {
+            path.startsWith(root) -> "primary" to path.removePrefix(root).trim('/')
+            path.startsWith("/storage/") -> {
+                val rest = path.removePrefix("/storage/")
+                rest.substringBefore('/') to rest.substringAfter('/', "").trim('/')
+            }
+            else -> return false
+        }
         // 1. 삼성 "내 파일": 그 폴더로 바로 연다
         try {
             startActivity(
@@ -108,7 +143,7 @@ class MainActivity : FlutterActivity() {
         }
         // 2. 시스템 "파일" 앱 (Google / AOSP). 다른 파일 관리자 (X-plore 등) 는 이 주소의 폴더로 가지 않아 앱을 정해 연다
         val uri = android.provider.DocumentsContract.buildDocumentUri(
-            "com.android.externalstorage.documents", "primary:$rel"
+            "com.android.externalstorage.documents", "$volumeId:$rel"
         )
         for (pkg in listOf("com.google.android.documentsui", "com.android.documentsui", null)) {
             try {
