@@ -59,9 +59,12 @@ class _DownloadsPageState extends State<DownloadsPage> {
                   child: TextField(
                     controller: _url,
                     style: const TextStyle(fontSize: 13),
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       isDense: true,
-                      hintText: 'YouTube 주소 · 마그넷 링크 · .torrent 주소 붙여넣기 (Ctrl+C 만 해도 자동 추가)',
+                      // Android 는 클립보드를 감시하지 않는다
+                      hintText: Platform.isAndroid
+                          ? 'YouTube 주소 · 마그넷 링크 · .torrent 주소 붙여넣기'
+                          : 'YouTube 주소 · 마그넷 링크 · .torrent 주소 붙여넣기 (Ctrl+C 만 해도 자동 추가)',
                       border: OutlineInputBorder(),
                     ),
                     onSubmitted: (_) => _add(),
@@ -129,9 +132,13 @@ class _DownloadsPageState extends State<DownloadsPage> {
             const Divider(height: 1),
             Expanded(
               child: d.tasks.isEmpty
-                  ? const Center(
-                      child: Text('다운로드가 없습니다.\nYouTube 주소나 마그넷 링크를 복사(Ctrl+C)하면 자동으로 받습니다.',
-                          textAlign: TextAlign.center, style: TextStyle(color: JjColors.textDim)))
+                  ? Center(
+                      child: Text(
+                          Platform.isAndroid
+                              ? '다운로드가 없습니다.\nYouTube 주소 · 마그넷 링크를 위 칸에 붙여 넣거나, 웹 브라우저에서 [다운로드] 를 누르세요.'
+                              : '다운로드가 없습니다.\nYouTube 주소나 마그넷 링크를 복사(Ctrl+C)하면 자동으로 받습니다.',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: JjColors.textDim)))
                   : ListView.builder(
                       itemCount: d.tasks.length,
                       itemBuilder: (_, i) => _DownloadRow(d: d, t: d.tasks[i]),

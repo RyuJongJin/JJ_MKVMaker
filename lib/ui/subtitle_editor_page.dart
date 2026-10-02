@@ -460,12 +460,20 @@ class _SubtitleEditorPageState extends State<SubtitleEditorPage> {
               _pl?.setRate(r!);
             },
           ),
-          const Spacer(),
-          btn('+ 여기에 새 줄', 'F7', _insertHere),
-          btn('선택 줄 재생', 'F8', hasSel ? _playSelected : null),
-          btn('시작 = 현재', 'F9', hasSel ? _setStartHere : null),
-          btn('끝 = 현재', 'F10', hasSel ? _setEndHere : null),
-          btn('선택 줄부터 여기로 맞추기', '선택한 줄과 그 뒤 모든 줄을 함께 이동', hasSel ? _alignHere : null),
+          // 폭이 좁으면 (휴대폰) 밀어서 본다. 넓으면 지금처럼 오른쪽에 붙는다 (reverse)
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              reverse: true,
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                btn('+ 여기에 새 줄', 'F7', _insertHere),
+                btn('선택 줄 재생', 'F8', hasSel ? _playSelected : null),
+                btn('시작 = 현재', 'F9', hasSel ? _setStartHere : null),
+                btn('끝 = 현재', 'F10', hasSel ? _setEndHere : null),
+                btn('선택 줄부터 여기로 맞추기', '선택한 줄과 그 뒤 모든 줄을 함께 이동', hasSel ? _alignHere : null),
+              ]),
+            ),
+          ),
         ],
       ),
     );
@@ -486,52 +494,61 @@ class _SubtitleEditorPageState extends State<SubtitleEditorPage> {
                 style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
               ),
             ),
-            // 전체 싱크 이동
-            const Text('싱크', style: TextStyle(fontSize: 12, color: JjColors.textDim)),
-            const SizedBox(width: 6),
-            SizedBox(
-              width: 80,
-              child: TextField(
-                controller: _shift,
-                textAlign: TextAlign.right,
-                style: const TextStyle(fontSize: 13),
-                decoration: const InputDecoration(
-                    isDense: true, suffixText: 'ms', border: OutlineInputBorder()),
+            // 폭이 좁으면 (휴대폰) 도구 줄을 밀어서 본다 - 설정 · 종료 버튼은 늘 오른쪽 끝에
+            Flexible(
+              flex: 4,
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  // 전체 싱크 이동
+                  const Text('싱크', style: TextStyle(fontSize: 12, color: JjColors.textDim)),
+                  const SizedBox(width: 6),
+                  SizedBox(
+                    width: 80,
+                    child: TextField(
+                      controller: _shift,
+                      textAlign: TextAlign.right,
+                      style: const TextStyle(fontSize: 13),
+                      decoration: const InputDecoration(
+                          isDense: true, suffixText: 'ms', border: OutlineInputBorder()),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  OutlinedButton(
+                    onPressed: () {
+                      final ms = int.tryParse(_shift.text.trim());
+                      if (ms == null) return;
+                      e.shiftAll(ms);
+                    },
+                    child: const Text('전체 이동'),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton(onPressed: e.sortByTime, child: const Text('시간순 정렬')),
+                  const SizedBox(width: 12),
+                  DropdownButton<String>(
+                    value: e.saveCharset,
+                    isDense: true,
+                    underline: const SizedBox(),
+                    style: const TextStyle(fontSize: 13, color: JjColors.text),
+                    items: [
+                      for (final c in saveCharsets.entries)
+                        DropdownMenuItem(value: c.key, child: Text(c.value)),
+                    ],
+                    onChanged: (v) => e.setCharset(v!),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton(
+                    onPressed: e.canSave ? _saveAs : null,
+                    child: const Text('다른 이름으로 저장'),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton.icon(
+                    onPressed: e.canSave && !_saving ? _save : null,
+                    icon: const Icon(Icons.save, size: 18),
+                    label: Text(e.dirty ? '저장 (MKV 반영) *' : '저장 (MKV 반영)'),
+                  ),
+                ]),
               ),
-            ),
-            const SizedBox(width: 4),
-            OutlinedButton(
-              onPressed: () {
-                final ms = int.tryParse(_shift.text.trim());
-                if (ms == null) return;
-                e.shiftAll(ms);
-              },
-              child: const Text('전체 이동'),
-            ),
-            const SizedBox(width: 8),
-            OutlinedButton(onPressed: e.sortByTime, child: const Text('시간순 정렬')),
-            const SizedBox(width: 12),
-            DropdownButton<String>(
-              value: e.saveCharset,
-              isDense: true,
-              underline: const SizedBox(),
-              style: const TextStyle(fontSize: 13, color: JjColors.text),
-              items: [
-                for (final c in saveCharsets.entries)
-                  DropdownMenuItem(value: c.key, child: Text(c.value)),
-              ],
-              onChanged: (v) => e.setCharset(v!),
-            ),
-            const SizedBox(width: 8),
-            OutlinedButton(
-              onPressed: e.canSave ? _saveAs : null,
-              child: const Text('다른 이름으로 저장'),
-            ),
-            const SizedBox(width: 8),
-            FilledButton.icon(
-              onPressed: e.canSave && !_saving ? _save : null,
-              icon: const Icon(Icons.save, size: 18),
-              label: Text(e.dirty ? '저장 (MKV 반영) *' : '저장 (MKV 반영)'),
             ),
             const AppActions(),
           ],

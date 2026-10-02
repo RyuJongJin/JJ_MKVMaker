@@ -95,14 +95,16 @@ class _PlayerPageState extends State<PlayerPage> {
       c.externalSubtitlesFor(pl.playlist[i]).then((s) async {
         if (!mounted) return;
         setState(() => _externalSubs = s);
-        // 영상 안 · 같은 폴더 자막이 없고 jj_mkv 에 만든 자막 (번역 · 받은 자막) 만 있으면 하나를 켠다 (한국어 먼저).
-        // 같은 폴더 자막은 mpv 가 스스로 켜므로 그 뒤에 (1초) 확인한다.
+        // 켜진 자막이 없으면 하나를 켠다 (한국어 먼저, 없으면 첫 번째). mpv 가 같은 폴더 자막을 불러와도
+        // 켜지 않는 일이 있어 (Android) 그 뒤에 (1초) 확인한다.
         await Future<void>.delayed(const Duration(seconds: 1));
         final st = pl.state.value;
-        if (!mounted || s.isEmpty || st.index != i || st.subtitleId != null || st.subtitleTracks.isNotEmpty) return;
-        final pick = s.firstWhere((f) => RegExp(r'[._-](ko|kor)[._]', caseSensitive: false).hasMatch(p.basename(f)),
-            orElse: () => s.first);
-        await _setSub(TrackInfo('file:$pick', p.basename(pick), file: pick));
+        if (!mounted || st.index != i || st.subtitleId != null) return;
+        final all = _subtitleChoices();
+        if (all.isEmpty) return;
+        final ko = RegExp(r'[._-](ko|kor)[._]|한국어|\(ko\)|\bkor\b', caseSensitive: false);
+        await _setSub(all.firstWhere((t) => ko.hasMatch(t.label) || ko.hasMatch(p.basename(t.file ?? '')),
+            orElse: () => all.first));
       });
     }
   }
