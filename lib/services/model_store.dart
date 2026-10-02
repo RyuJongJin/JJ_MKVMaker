@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import '../platform/common/onnx_external.dart';
+
 /// 내려받을 AI 모델
 class ModelSpec {
   final String id;
@@ -81,10 +83,13 @@ class ModelStore {
   Future<bool> isInstalled(ModelSpec m) async {
     final dir = await folderOf(m);
     for (final f in m.files) {
-      if (!await File(p.join(dir, f.name)).exists()) return false;
+      if (!_present(p.join(dir, f.name))) return false;
     }
     return true;
   }
+
+  /// 파일이 있거나, 외부 데이터 형식으로 바꿔 둔 것이 있으면 (Android 는 바꾼 뒤 원래 파일을 지운다)
+  static bool _present(String path) => File(path).existsSync() || OnnxExternal.isReady(path);
 
   /// 없는 파일만 내려받는다. [onProgress] 0.0~1.0, [isCancelled] 가 true 면 중단.
   Future<void> download(
@@ -100,7 +105,7 @@ class ModelStore {
     try {
       for (final f in m.files) {
         final target = File(p.join(dir, f.name));
-        if (await target.exists()) {
+        if (_present(target.path)) {
           done += f.bytes;
           continue;
         }

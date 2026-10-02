@@ -91,6 +91,9 @@ void main() {
       expect(ytDlpFormatArgs(YtContainer.mp4, YtQuality.p1080).join(' '),
           '-S res:1080,ext:mp4:m4a --merge-output-format mp4 --remux-video mp4');
       expect(ytDlpFormatArgs(YtContainer.webm, YtQuality.best).join(' '), '-S ext:webm:webm --merge-output-format webm');
+      // Android: 같은 크기면 H.264 (하드웨어 재생)
+      expect(ytDlpFormatArgs(YtContainer.mp4, YtQuality.p1080, preferH264: true).take(2).join(' '),
+          '-S res:1080,vcodec:h264,ext:mp4:m4a');
       expect(ytDlpFormatArgs(YtContainer.mp3, YtQuality.p720), contains('mp3'));
       expect(ytDlpCookieArgs(browser: 'firefox'), ['--cookies-from-browser', 'firefox']);
       expect(ytDlpCookieArgs(browser: 'firefox', file: r'C:\c.txt'), ['--cookies', r'C:\c.txt']);

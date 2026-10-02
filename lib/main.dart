@@ -15,6 +15,7 @@ import 'app/settings.dart';
 import 'core/app_update.dart';
 import 'core/playlist.dart';
 import 'platform/android/android_download_tools.dart';
+import 'platform/android/android_keep_alive.dart';
 import 'platform/android/android_storage.dart';
 import 'platform/windows/app_paths.dart';
 import 'platform/windows/cef_runtime.dart';
@@ -355,6 +356,8 @@ Future<void> runAndroid(String dataDir) async {
   };
   downloads.addToEditList = controller.addDownloaded;
   downloads.log = controller.note;
+  // 진행 중인 일이 있으면 화면에서 내려가도 계속 (알림에 진행 상황)
+  AndroidKeepAlive(controller, downloads);
 
   WidgetsBinding.instance.addPostFrameCallback((_) async {
     if (controller.settings.startScreen == 'browser') {
@@ -454,7 +457,19 @@ class JjCapCutApp extends StatelessWidget {
             onExit: onExit,
             downloads: downloads,
             bookmarks: bookmarks,
-            child: AppDropArea(c: controller, child: UiScaler(c: controller, child: child!))),
+            child: AppDropArea(c: controller, child: _SystemBarsArea(child: UiScaler(c: controller, child: child!)))),
         home: HomePage(c: controller, downloads: downloads, onExit: onExit, bookmarks: bookmarks),
       );
+}
+
+/// Android: 앱 화면이 상태 표시줄 · 아래쪽 작업 표시줄 밑까지 그려지므로 (Android 15 부터 기본)
+/// 위쪽 버튼 줄이 시계 · 배터리 표시와 겹치지 않게 그만큼 띄운다. 전체 화면 재생 중에는 표시줄이 숨어 여백도 없다.
+class _SystemBarsArea extends StatelessWidget {
+  final Widget child;
+  const _SystemBarsArea({required this.child});
+
+  @override
+  Widget build(BuildContext context) => Platform.isAndroid
+      ? ColoredBox(color: Theme.of(context).scaffoldBackgroundColor, child: SafeArea(child: child))
+      : child;
 }

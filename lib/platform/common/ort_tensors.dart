@@ -45,7 +45,12 @@ OrtValueTensor _create(ffi.Pointer<ffi.Void> data, int bytes, List<int> shape, i
 ///
 /// onnxruntime 1.4.1 의 OrtSession.fromFile 은 Windows 에서 경로를 UTF-8 로 넘겨 실패한다
 /// (Windows 의 ORT 는 wchar_t 경로를 받음). 여기서는 플랫폼에 맞는 문자열로 직접 호출한다.
-OrtSession openSession(String path, {int threads = 1}) {
+///
+/// [lowMemory]: 메모리가 적은 기기 (Android) 용. 외부 데이터 모델 ([OnnxExternal]) 과 함께 쓴다.
+/// 그래프 최적화를 끈다: 최적화 (BASIC 이상) 의 상수 접기는 int8 가중치를 float 로 풀어 디코더가 1GB 넘게 쓴다.
+/// prepacking · 메모리 아레나도 끈다. 측정 (NLLB 디코더): 기본 최대 1.5GB → 외부 데이터 + 이 설정 112MB.
+/// 대신 계산이 몇 배 느려진다.
+OrtSession openSession(String path, {int threads = 1, bool lowMemory = false}) {
   final optPP = calloc<ffi.Pointer<bg.OrtSessionOptions>>();
   _check(_api.CreateSessionOptions.asFunction<
       bg.OrtStatusPtr Function(ffi.Pointer<ffi.Pointer<bg.OrtSessionOptions>>)>()(optPP));
@@ -58,7 +63,31 @@ OrtSession openSession(String path, {int threads = 1}) {
         bg.OrtStatusPtr Function(ffi.Pointer<bg.OrtSessionOptions>, int)>()(opt, 1));
     _check(_api.SetSessionGraphOptimizationLevel.asFunction<
             bg.OrtStatusPtr Function(ffi.Pointer<bg.OrtSessionOptions>, int)>()(
-        opt, bg.GraphOptimizationLevel.ORT_ENABLE_ALL));
+        opt, lowMemory ? bg.GraphOptimizationLevel.ORT_DISABLE_ALL : bg.GraphOptimizationLevel.ORT_ENABLE_ALL));
+    if (lowMemory) {
+      final off = <ffi.Pointer<ffi.NativeFunction<bg.OrtStatusPtr Function(ffi.Pointer<bg.OrtSessionOptions>)>>>[
+        _api.DisableCpuMemArena,
+        _api.DisableMemPattern,
+      ];
+      for (final f in off) {
+        _check(f.asFunction<bg.OrtStatusPtr Function(ffi.Pointer<bg.OrtSessionOptions>)>()(opt));
+      }
+      final add = _api.AddSessionConfigEntry.asFunction<
+          bg.OrtStatusPtr Function(ffi.Pointer<bg.OrtSessionOptions>, ffi.Pointer<ffi.Char>, ffi.Pointer<ffi.Char>)>();
+      for (final (k, v) in const [
+        ('session.disable_prepacking', '1'),
+        ('session.use_device_allocator_for_initializers', '1'),
+      ]) {
+        final kp = k.toNativeUtf8(), vp = v.toNativeUtf8();
+        try {
+          _check(add(opt, kp.cast(), vp.cast()));
+        } finally {
+          calloc
+            ..free(kp)
+            ..free(vp);
+        }
+      }
+    }
 
     // 바인딩은 char* 로 선언되어 있지만 Windows 네이티브는 wchar_t* 를 읽는다
     final ffi.Pointer<ffi.Char> pathPtr = Platform.isWindows

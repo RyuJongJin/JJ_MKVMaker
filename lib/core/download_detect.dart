@@ -157,10 +157,14 @@ enum YtQuality {
 }
 
 /// yt-dlp 형식 인수
-List<String> ytDlpFormatArgs(YtContainer c, YtQuality q) {
+///
+/// [preferH264]: 같은 크기면 H.264 를 먼저 고른다 (Android: 휴대폰 · 태블릿은 AV1 · VP9 을 하드웨어로 못 푸는 일이 많아
+/// 재생이 끊기고 배터리를 많이 씀). YouTube 의 H.264 는 1080p 까지라 그보다 큰 화질을 고르면 크기가 먼저다.
+List<String> ytDlpFormatArgs(YtContainer c, YtQuality q, {bool preferH264 = false}) {
   final res = q.height == null ? '' : 'res:${q.height},';
+  final codec = preferH264 ? 'vcodec:h264,' : '';
   return switch (c) {
-    YtContainer.mp4 => ['-S', '${res}ext:mp4:m4a', '--merge-output-format', 'mp4', '--remux-video', 'mp4'],
+    YtContainer.mp4 => ['-S', '$res${codec}ext:mp4:m4a', '--merge-output-format', 'mp4', '--remux-video', 'mp4'],
     YtContainer.webm => ['-S', '${res}ext:webm:webm', '--merge-output-format', 'webm'],
     YtContainer.mp3 => ['-f', 'ba/b', '-x', '--audio-format', 'mp3', '--audio-quality', '0'],
     YtContainer.m4a => ['-f', 'ba[ext=m4a]/ba/b', '-x', '--audio-format', 'm4a'],

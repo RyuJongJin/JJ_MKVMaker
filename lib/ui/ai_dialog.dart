@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../app/app_controller.dart';
@@ -77,8 +79,8 @@ class _AiDialogState extends State<_AiDialog> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('영상의 음성을 인식하고 선택한 언어로 번역합니다. 모든 처리는 이 PC 에서 이루어집니다.',
-                  style: TextStyle(fontSize: 12, color: JjColors.textDim)),
+              Text('영상의 음성을 인식하고 선택한 언어로 번역합니다. 모든 처리는 이 ${Platform.isAndroid ? '기기' : 'PC'} 에서 이루어집니다.',
+                  style: const TextStyle(fontSize: 12, color: JjColors.textDim)),
               const SizedBox(height: 16),
               _label('원어 (영상 속 언어)'),
               DropdownButton<Language>(

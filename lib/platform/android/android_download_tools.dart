@@ -70,7 +70,7 @@ class AndroidDownloadTools {
         // --ffmpeg-location 은 파일 경로도 받는다 (libffmpeg.so = ffmpeg 실행 파일)
         ffmpegDir: t.ffmpeg,
         jsRuntime: 'quickjs:${t.quickjs}',
-        formatArgs: () => ytDlpFormatArgs(s().ytContainer, s().ytQuality),
+        formatArgs: () => ytDlpFormatArgs(s().ytContainer, s().ytQuality, preferH264: true),
         cookieArgs: () => ytDlpCookieArgs(
           browser: s().ytCookiesBrowser,
           file: s().ytCookiesFile,

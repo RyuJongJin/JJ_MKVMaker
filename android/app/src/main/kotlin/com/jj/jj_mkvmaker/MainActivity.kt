@@ -27,12 +27,45 @@ class MainActivity : FlutterActivity() {
                     result.success(null)
                 }
                 "storageRoot" -> result.success(Environment.getExternalStorageDirectory().path)
+                "keepAlive" -> {
+                    keepAlive(call.argument<String>("text") ?: "", call.argument<Int>("progress") ?: -1)
+                    result.success(null)
+                }
+                "stopKeepAlive" -> {
+                    stopService(Intent(this, KeepAliveService::class.java))
+                    result.success(null)
+                }
                 "downloadToolsInit" -> inBackground(result) { downloadToolsInit() }
                 "downloadToolsUpdate" -> inBackground(result) {
                     YoutubeDL.updateYoutubeDL(applicationContext)?.name ?: ""
                 }
                 else -> result.notImplemented()
             }
+        }
+    }
+
+    /// 작업 진행 알림 (포그라운드 서비스) 시작 · 갱신. 처음 한 번 알림 권한을 묻는다 (Android 13+, 거절해도 작업은 계속)
+    private var askedNotifications = false
+
+    private fun keepAlive(text: String, progress: Int) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !askedNotifications &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            askedNotifications = true
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 2)
+        }
+        if (KeepAliveService.running) {
+            KeepAliveService.update(this, text, progress)
+            return
+        }
+        val i = Intent(this, KeepAliveService::class.java)
+            .putExtra(KeepAliveService.EXTRA_TEXT, text)
+            .putExtra(KeepAliveService.EXTRA_PROGRESS, progress)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(i) else startService(i)
+        } catch (e: Exception) {
+            // 백그라운드에서는 새로 시작할 수 없다 (Android 12+). 이미 떠 있으면 다음 갱신 때 바뀐다
+            android.util.Log.w("jj_mkvmaker", "keepAlive", e)
         }
     }
 

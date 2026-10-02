@@ -11,6 +11,7 @@ import 'package:path/path.dart' as p;
 
 import '../../core/nllb_tokenizer.dart';
 import '../../services/ai_services.dart';
+import 'onnx_external.dart';
 import 'ort_tensors.dart';
 
 /// NLLB-200 (ONNX, int8) 로컬 번역기. Windows·Android 공용.
@@ -42,7 +43,7 @@ class NllbTranslator implements Translator {
   Future<void> load(String modelDir) async {
     if (_isolate != null) return;
     for (final f in files) {
-      if (!File(p.join(modelDir, f)).existsSync()) {
+      if (!File(p.join(modelDir, f)).existsSync() && !OnnxExternal.isReady(p.join(modelDir, f))) {
         throw FileSystemException('번역 모델 파일이 없습니다', p.join(modelDir, f));
       }
     }
@@ -164,18 +165,16 @@ void _workerMain(List<Object?> args) {
     }
     final id = m['id'] as int;
     final lines = (m['lines'] as List).cast<String>();
+    final src = m['src'] as String, tgt = m['tgt'] as String;
     try {
-      final out = <String>[];
-      for (var i = 0; i < lines.length; i += batch) {
-        if (cancel.value != 0) {
-          main.send({'type': 'error', 'id': id, 'cancelled': true});
-          return;
-        }
-        final chunk = lines.sublist(i, math.min(i + batch, lines.length));
-        out.addAll(engine.translateBatch(chunk, m['src'] as String, m['tgt'] as String));
-        main.send({'type': 'progress', 'id': id, 'value': out.length / lines.length});
+      final out = engine.translateAll(lines, src, tgt, batch,
+          cancelled: () => cancel.value != 0,
+          progress: (v) => main.send({'type': 'progress', 'id': id, 'value': v}));
+      if (out == null) {
+        main.send({'type': 'error', 'id': id, 'cancelled': true});
+      } else {
+        main.send({'type': 'result', 'id': id, 'lines': out});
       }
-      main.send({'type': 'result', 'id': id, 'lines': out});
     } catch (e) {
       main.send({'type': 'error', 'id': id, 'error': '$e'});
     }
@@ -186,39 +185,117 @@ class _NllbEngine {
   static const _layers = 12, _heads = 16, _headDim = 64;
 
   final NllbTokenizer tok;
-  final OrtSession encoder;
-  final OrtSession decoder;
-  final OrtRunOptions runOptions = OrtRunOptions();
-  late final Map<String, int> _outIndex = {
-    for (var i = 0; i < decoder.outputNames.length; i++) decoder.outputNames[i]: i,
-  };
+  final String dir;
+  final int threads;
 
-  _NllbEngine(this.tok, this.encoder, this.decoder);
+  /// 메모리가 적은 기기 (Android): 인코더와 디코더를 동시에 열지 않는다.
+  /// 둘을 함께 열면 불러오는 동안 1.5GB 를 넘게 써서 4GB 기기에서는 Android 가 앱을 강제로 끈다.
+  /// → 모든 줄을 먼저 인코딩해 두고 인코더를 닫은 뒤 디코더를 연다. 인코딩 결과는 대상 언어와 상관없으므로
+  ///   같은 줄을 다른 언어로 번역할 때 다시 쓴다.
+  final bool lowMemory;
+  OrtSession? _enc, _dec;
+  final OrtRunOptions runOptions = OrtRunOptions();
+  Map<String, int>? _outIdx;
+
+  /// 마지막으로 인코딩한 줄 (lowMemory)
+  String? _cacheKey;
+  List<_Encoded> _cache = const [];
+
+  _NllbEngine(this.tok, this.dir, this.threads, this.lowMemory);
 
   factory _NllbEngine.load(String dir, int threads) {
     OrtEnv.instance.init();
     final tok = NllbTokenizer.fromJson(
         File(p.join(dir, 'tokenizer.json')).readAsStringSync());
-    return _NllbEngine(
-      tok,
-      openSession(p.join(dir, 'encoder_model_quantized.onnx'), threads: threads),
-      openSession(p.join(dir, 'decoder_model_merged_quantized.onnx'), threads: threads),
-    );
+    // JJ_NLLB_LOW_MEMORY=1: PC 에서 Android 방식을 시험할 때
+    final low = Platform.isAndroid || Platform.environment['JJ_NLLB_LOW_MEMORY'] == '1';
+    final e = _NllbEngine(tok, dir, threads, low);
+    // 넉넉한 기기는 미리 둘 다 연다 (모델 파일이 깨졌으면 여기서 알 수 있게)
+    if (!e.lowMemory) {
+      e.encoder;
+      e.decoder;
+    }
+    return e;
+  }
+
+  OrtSession get encoder => _enc ??= _open('encoder_model_quantized.onnx');
+  OrtSession get decoder => _dec ??= _open('decoder_model_merged_quantized.onnx');
+
+  /// lowMemory: 외부 데이터 모델로 연다 (처음 한 번 바꾸고 원래 파일은 지움)
+  OrtSession _open(String name) {
+    final path = p.join(dir, name);
+    return openSession(lowMemory ? OnnxExternal.ensure(path, deleteOriginal: true) : path,
+        threads: threads, lowMemory: lowMemory);
+  }
+  Map<String, int> get _outIndex => _outIdx ??= {
+        for (var i = 0; i < decoder.outputNames.length; i++) decoder.outputNames[i]: i,
+      };
+
+  void _closeEncoder() {
+    _enc?.release();
+    _enc = null;
+  }
+
+  void _closeDecoder() {
+    _dec?.release();
+    _dec = null;
+    _outIdx = null;
   }
 
   void release() {
     runOptions.release();
-    encoder.release();
-    decoder.release();
+    _closeEncoder();
+    _closeDecoder();
     OrtEnv.instance.release();
   }
 
+  /// 모든 줄 번역. [batch] 줄씩. 취소되면 null.
+  List<String>? translateAll(List<String> lines, String src, String tgt, int batch,
+      {required bool Function() cancelled, required void Function(double) progress}) {
+    final out = <String>[];
+    if (!lowMemory) {
+      for (var i = 0; i < lines.length; i += batch) {
+        if (cancelled()) return null;
+        out.addAll(translateBatch(lines.sublist(i, math.min(i + batch, lines.length)), src, tgt));
+        progress(out.length / lines.length);
+      }
+      return out;
+    }
+    // 1단계: 인코딩 (전체의 20%) - 같은 줄이면 지난번 결과를 쓴다
+    final key = '$src\n${lines.join('\n')}';
+    if (_cacheKey != key) {
+      _cacheKey = null;
+      _cache = const [];
+      _closeDecoder();
+      final enc = <_Encoded>[];
+      for (var i = 0; i < lines.length; i += batch) {
+        if (cancelled()) return null;
+        enc.add(_encode(lines.sublist(i, math.min(i + batch, lines.length)), src));
+        progress(0.2 * math.min(i + batch, lines.length) / lines.length);
+      }
+      _closeEncoder();
+      _cache = enc;
+      _cacheKey = key;
+    }
+    // 2단계: 디코딩
+    var done = 0;
+    for (final e in _cache) {
+      if (cancelled()) return null;
+      out.addAll(_decode(e, tgt));
+      done += e.count;
+      progress(0.2 + 0.8 * done / lines.length);
+    }
+    return out;
+  }
+
   /// 여러 줄을 한 번에 번역 (탐욕적 디코딩 + KV 캐시)
-  List<String> translateBatch(List<String> lines, String src, String tgt) {
-    final result = List<String>.filled(lines.length, '');
+  List<String> translateBatch(List<String> lines, String src, String tgt) => _decode(_encode(lines, src), tgt);
+
+  /// 인코더 실행. 결과는 Dart 메모리로 복사해 둔다 (인코더를 닫아도 남도록)
+  _Encoded _encode(List<String> lines, String src) {
     // 빈 줄은 건너뜀
     final idx = [for (var i = 0; i < lines.length; i++) if (lines[i].trim().isNotEmpty) i];
-    if (idx.isEmpty) return result;
+    if (idx.isEmpty) return _Encoded(lines.length, idx, Float32List(0), const [], const [], 0);
 
     final encoded = [for (final i in idx) tok.encode(lines[i], src)];
     final b = encoded.length;
@@ -235,7 +312,24 @@ class _NllbEngine {
     final inMask = int64Tensor(mask, [b, encLen]);
     final encOut = encoder.run(runOptions, {'input_ids': inIds, 'attention_mask': inMask});
     inIds.release();
-    final hidden = encOut[0]!;
+    inMask.release();
+    final h = encOut[0]!;
+    final copy = _Encoded(lines.length, idx, Float32List.fromList(floatView(h)), tensorShape(h), mask, encLen);
+    for (final v in encOut) {
+      v?.release();
+    }
+    return copy;
+  }
+
+  /// 디코더 실행 (탐욕적 디코딩 + KV 캐시)
+  List<String> _decode(_Encoded e, String tgt) {
+    final result = List<String>.filled(e.count, '');
+    final idx = e.idx;
+    if (idx.isEmpty) return result;
+    final b = idx.length;
+    final encLen = e.encLen;
+    final inMask = int64Tensor(e.mask, [b, encLen]);
+    final hidden = floatTensor(e.hidden, e.hiddenShape);
 
     final tgtId = tok.langId(tgt);
     final maxNew = math.min(256, encLen * 2 + 10);
@@ -358,4 +452,18 @@ class _NllbEngine {
     }
     return false;
   }
+}
+
+/// 인코더 결과 한 묶음 (Dart 메모리)
+class _Encoded {
+  /// 묶음의 전체 줄 수 (빈 줄 포함)
+  final int count;
+
+  /// 번역할 (비어 있지 않은) 줄의 위치
+  final List<int> idx;
+  final Float32List hidden;
+  final List<int> hiddenShape;
+  final List<int> mask;
+  final int encLen;
+  const _Encoded(this.count, this.idx, this.hidden, this.hiddenShape, this.mask, this.encLen);
 }
