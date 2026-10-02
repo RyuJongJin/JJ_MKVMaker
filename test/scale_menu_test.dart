@@ -150,7 +150,9 @@ void main() {
       expect(tester.getRect(find.byTooltip('화면 크게')).left, greaterThan(0));
       // 넓을 때는 글이 있는 버튼, 좁을 때는 아이콘만 (기능은 그대로)
       expect(find.text('자막 만들기 & MKV 만들기 (1)'), width >= 2300 ? findsOneWidget : anything);
-      expect(find.textContaining('MKV 만들기 (1)'), findsWidgets);
+      // MKV 만들기: 아주 좁으면 아이콘만 (체크 수는 마우스를 올리면)
+      expect(find.byTooltip('MKV 만들기 (1)'), findsOneWidget);
+      if (width >= 1300) expect(find.textContaining('MKV 만들기 (1)'), findsWidgets);
     }
     // 가장 좁을 때: 아이콘만 남고 설명은 마우스를 올리면
     expect(find.text('동영상 추가'), findsNothing);

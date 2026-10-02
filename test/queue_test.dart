@@ -163,7 +163,8 @@ void main() {
       c.settings.maxParallelJobs = limit;
       final dir = Directory.systemTemp.createTempSync('jj_par_');
       for (var i = 0; i < 5; i++) {
-        c.videos.add(VideoItem(p.join(dir.path, 'v$i.mp4'))..info = const MediaInfo(duration: Duration(seconds: 1)));
+        final f = File(p.join(dir.path, 'v$i.mp4'))..writeAsStringSync(''); // 없는 파일은 만들지 않으므로
+        c.videos.add(VideoItem(f.path)..info = const MediaInfo(duration: Duration(seconds: 1)));
       }
       await c.buildAll();
       dir.deleteSync(recursive: true);
