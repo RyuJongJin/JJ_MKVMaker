@@ -57,8 +57,7 @@ class AppNavButtons extends StatelessWidget {
     final nav = Navigator.of(context);
     nav.popUntil((r) => r.isFirst);
     if (scope != null && scope.controller.settings.startScreen == 'browser' && scope.bookmarks != null) {
-      nav.push(MaterialPageRoute<void>(
-          builder: (_) => BrowserPage(c: scope.controller, downloads: scope.downloads, bookmarks: scope.bookmarks!)));
+      BrowserPage.open(nav, c: scope.controller, downloads: scope.downloads, bookmarks: scope.bookmarks!);
     }
   }
 
@@ -100,11 +99,8 @@ class AppNavButtons extends StatelessWidget {
           onBrowserPage ? '웹 브라우저 (지금 여기)' : '웹 브라우저',
           scope?.bookmarks == null || onBrowserPage
               ? null
-              : () => Navigator.push(
-                  context,
-                  MaterialPageRoute<void>(
-                      builder: (_) =>
-                          BrowserPage(c: scope!.controller, downloads: scope.downloads, bookmarks: scope.bookmarks!))),
+              : () => BrowserPage.open(Navigator.of(context),
+                  c: scope!.controller, downloads: scope.downloads, bookmarks: scope.bookmarks!),
           here: onBrowserPage,
         ),
         btn(const Icon(Icons.arrow_back), '뒤로', atRoot ? null : () => Navigator.maybePop(context)),

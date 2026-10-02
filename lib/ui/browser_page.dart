@@ -71,6 +71,30 @@ class BrowserPage extends StatefulWidget {
 
   @override
   State<BrowserPage> createState() => _BrowserPageState();
+
+  /// 브라우저 화면의 경로 이름 (이미 열려 있으면 그 화면으로 돌아가기 위해)
+  static const routeName = 'browser';
+
+  /// 열려 있는 브라우저 화면 수
+  static int _open = 0;
+
+  /// 웹 브라우저로: 이미 열린 브라우저가 있으면 그 화면으로 돌아가고 (보던 페이지 그대로),
+  /// 없으면 새로 연다. 다운로드 목록 · 플레이어 등에서 브라우저 버튼을 눌러도 보던 페이지를 잃지 않는다.
+  static Future<void> open(NavigatorState nav,
+      {required AppController c, DownloadManager? downloads, required BookmarksController bookmarks}) async {
+    if (_open > 0) {
+      var found = false;
+      nav.popUntil((r) {
+        if (r.settings.name == routeName) found = true;
+        return found || r.isFirst;
+      });
+      if (found) return;
+    }
+    await nav.push(MaterialPageRoute<void>(
+      settings: const RouteSettings(name: routeName),
+      builder: (_) => BrowserPage(c: c, downloads: downloads, bookmarks: bookmarks),
+    ));
+  }
 }
 
 class _BrowserPageState extends State<BrowserPage> {
@@ -109,7 +133,14 @@ class _BrowserPageState extends State<BrowserPage> {
   BookmarksController get bm => widget.bookmarks;
 
   @override
+  void initState() {
+    super.initState();
+    BrowserPage._open++;
+  }
+
+  @override
   void dispose() {
+    BrowserPage._open--;
     _address.dispose();
     _addressFocus.dispose();
     super.dispose();

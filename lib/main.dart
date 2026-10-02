@@ -278,8 +278,8 @@ Future<void> main(List<String> args) async {
     }
     // 시작 화면을 "웹 브라우저" 로 정했으면 브라우저를 연다 (MKV 화면은 그 아래에 있음)
     if (controller.settings.startScreen == 'browser') {
-      navigatorKey.currentState?.push(MaterialPageRoute<void>(
-          builder: (_) => BrowserPage(c: controller, downloads: downloads, bookmarks: bookmarks)));
+      final nav = navigatorKey.currentState;
+      if (nav != null) unawaited(BrowserPage.open(nav, c: controller, downloads: downloads, bookmarks: bookmarks));
     }
     await checkRequiredTools(ctx, services.shell);
     final ctx2 = navigatorKey.currentContext;
@@ -414,8 +414,8 @@ Future<void> runAndroid(String dataDir) async {
       }
     } catch (_) {}
     if (controller.settings.startScreen == 'browser') {
-      navigatorKey.currentState?.push(MaterialPageRoute<void>(
-          builder: (_) => BrowserPage(c: controller, downloads: downloads, bookmarks: bookmarks)));
+      final nav = navigatorKey.currentState;
+      if (nav != null) unawaited(BrowserPage.open(nav, c: controller, downloads: downloads, bookmarks: bookmarks));
     }
     // 새 버전 확인 (하루 한 번, 환경 설정에서 끌 수 있음)
     final ctx = navigatorKey.currentContext;
