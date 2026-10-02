@@ -15,7 +15,8 @@ String formatVersion(String v) {
   final n = parseVersion(v);
   if (n.length < 3 || n[0] < 2000) return n.join('.');
   String two(int x) => x.toString().padLeft(2, '0');
-  final seq = n.length > 3 ? n[3] : 1;
+  // Android 는 빌드 번호 자리에 날짜를 붙인 versionCode (261002001) 가 온다 → 끝 세 자리가 순번
+  final seq = n.length > 3 ? n[3] % 1000 : 1;
   return '${n[0]}.${two(n[1])}.${two(n[2])}_${seq.toString().padLeft(3, '0')}';
 }
 

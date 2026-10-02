@@ -39,6 +39,7 @@ void main() {
       expect(formatVersion('2026.9.30+1'), '2026.09.30_001'); // pubspec 의 표기 → 보이는 글
       expect(formatVersion('v2026.09.30_012'), '2026.09.30_012');
       expect(formatVersion('2026.10.1+3'), '2026.10.01_003');
+      expect(formatVersion('2026.10.2+261002001'), '2026.10.02_001'); // Android versionCode
       expect(formatVersion('v1.2.3'), '1.2.3'); // 예전 방식은 그대로
       // 같은 날: 순번이 크면 최신. 날이 바뀌면 001 이어도 최신.
       expect(compareVersions('2026.09.30_002', '2026.9.30+1'), greaterThan(0));

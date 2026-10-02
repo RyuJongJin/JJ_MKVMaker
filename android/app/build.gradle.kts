@@ -28,7 +28,11 @@ android {
         // ffmpeg-kit 은 Android 7.0 (API 24) 이상
         minSdk = maxOf(24, flutter.minSdkVersion)
         targetSdk = flutter.targetSdkVersion
-        versionCode = flutter.versionCode
+        // 버전 "년.월.일+순번" 의 순번은 날마다 1 부터 다시 시작하므로 그대로 쓰면 다음 날 판이 "더 낮은 버전" 으로
+        // 설치가 거부된다. 날짜를 앞에 붙여 늘 커지게 한다: 2026.10.2+1 → 261002001
+        versionCode = flutter.versionName.split(".").let { (y, m, d) ->
+            (y.toInt() % 100) * 10_000_000 + m.toInt() * 100_000 + d.toInt() * 1_000 + flutter.versionCode
+        }
         versionName = flutter.versionName
         // 요즘 휴대폰 · 태블릿 (64비트 ARM) 만. 플러그인이 다른 CPU 용 라이브러리를 넣어도 앱 본체가 없으면 실행되지 않으므로 뺀다
         ndk {
