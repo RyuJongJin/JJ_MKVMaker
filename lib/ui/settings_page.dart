@@ -371,25 +371,24 @@ class _SettingsPageState extends State<SettingsPage> {
                     },
                     onReset: () => c.updateSettings((x) => x.mkvOutputRoot = null),
                   ),
-                  if (desk) ...[
                   _folderTile(
                     title: '다운로드 (jj_yt-dlp · jj_aria2)',
                     value: s.downloadRoot,
-                    defaultText: '프로그램 폴더 (기본): ${s.resolvedDownloadRoot()}',
+                    defaultText: '${desk ? '프로그램 폴더' : '내장 저장소'} (기본): ${s.resolvedDownloadRoot()}',
                     onPick: () async {
                       final d = await _pickDir('다운로드 위치');
                       if (d != null) await c.updateSettings((x) => x.downloadRoot = d);
                     },
                     onReset: () => c.updateSettings((x) => x.downloadRoot = null),
                   ),
-                  _section('다운로드'),
+                  if (desk) _section('다운로드'),
+                  if (desk)
                   SwitchListTile(
                     value: s.clipboardWatch,
                     onChanged: (v) => c.updateSettings((x) => x.clipboardWatch = v),
                     title: const Text('복사(Ctrl+C)한 주소 자동 다운로드'),
                     subtitle: const Text('YouTube → yt-dlp, 마그넷 · .torrent → aria2 (완료 후 올려 주기 안 함)'),
                   ),
-                  ],
                   _section('재생'),
                   ListTile(
                     title: const Text('동영상 하나를 재생할 때'),
@@ -438,7 +437,6 @@ class _SettingsPageState extends State<SettingsPage> {
                       (v) => c.updateSettings((x) => x.openSubtitlesUser = v.trim())),
                   _textTile('비밀번호 (선택)', s.openSubtitlesPassword, '이 PC 의 설정 파일에 저장됩니다',
                       (v) => c.updateSettings((x) => x.openSubtitlesPassword = v), obscure: true),
-                  if (desk) ...[
                   ListTile(
                     title: const Text('YouTube 받을 형식'),
                     subtitle: const Text('기본: MP4. 음성만 받으면 MP3 · M4A 로 저장'),
@@ -479,8 +477,10 @@ class _SettingsPageState extends State<SettingsPage> {
                         items: [
                           const DropdownMenuItem(value: '', child: Text('사용 안 함')),
                           const DropdownMenuItem(value: internalBrowserCookies, child: Text('앱 안 브라우저 (권장)')),
-                          for (final b in const ['firefox', 'chrome', 'edge', 'brave', 'whale', 'opera'])
-                            DropdownMenuItem(value: b, child: Text(b[0].toUpperCase() + b.substring(1))),
+                          // PC 브라우저의 쿠키는 Windows 에서만
+                          if (desk)
+                            for (final b in const ['firefox', 'chrome', 'edge', 'brave', 'whale', 'opera'])
+                              DropdownMenuItem(value: b, child: Text(b[0].toUpperCase() + b.substring(1))),
                           const DropdownMenuItem(value: '*file', child: Text('cookies.txt 파일…')),
                         ],
                         onChanged: (v) async {
@@ -511,7 +511,6 @@ class _SettingsPageState extends State<SettingsPage> {
                       onChanged: (n) => c.updateSettings((x) => x.maxParallelDownloads = n),
                     ),
                   ),
-                  ],
                   _section('변환'),
                   ListTile(
                     title: const Text('동시 MKV 변환 수'),

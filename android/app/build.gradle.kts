@@ -53,6 +53,7 @@ android {
 
     buildTypes {
         release {
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
@@ -75,4 +76,12 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+// 다운로드 (앱 안 브라우저 · 다운로드 목록): Android 용 yt-dlp (Python 포함) · ffmpeg (영상 · 음성 합치기) · aria2c (토렌트)
+// 실행 파일을 앱에 넣고 처음 켤 때 풀어 둔다. 실행은 Dart (YtDlpBackend · Aria2Backend) 가 Windows 와 같은 방식으로 한다.
+dependencies {
+    implementation("io.github.junkfood02.youtubedl-android:library:0.18.1")
+    implementation("io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1")
+    implementation("io.github.junkfood02.youtubedl-android:aria2c:0.18.1")
 }

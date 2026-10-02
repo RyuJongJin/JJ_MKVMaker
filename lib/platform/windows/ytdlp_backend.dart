@@ -27,8 +27,14 @@ class YtDlpBackend implements DownloadBackend {
   /// yt-dlp 가 영상·음성을 합칠 때 쓰는 ffmpeg 폴더
   final String? ffmpegDir;
 
-  /// YouTube 추출용 JavaScript 실행기 (없으면 일부 화질이 빠질 수 있음)
-  final String? deno;
+  /// YouTube 추출용 JavaScript 실행기 "deno:경로" · "quickjs:경로" (없으면 일부 화질이 빠질 수 있음)
+  final String? jsRuntime;
+
+  /// yt-dlp 앞에 붙일 인수 (Android: python 으로 yt-dlp 스크립트를 실행 → [ytdlp] 는 python, 여기에 스크립트 경로)
+  final List<String> prefixArgs;
+
+  /// 추가 환경 변수 (Android: Python · ffmpeg 라이브러리 위치 등)
+  final Map<String, String> environment;
 
   final _procs = <String, Process>{};
   final _stopping = <String>{};
@@ -53,16 +59,22 @@ class YtDlpBackend implements DownloadBackend {
     String? ytdlp,
     this.ffmpegDir,
     String? deno,
+    String? jsRuntime,
+    this.prefixArgs = const [],
+    this.environment = const {},
     List<String> Function()? formatArgs,
     List<String> Function()? cookieArgs,
     List<String> Function()? fallbackCookieArgs,
   })  : ytdlp = ytdlp ?? locateTool('yt-dlp'),
-        deno = deno ?? _existing(locateTool('deno')),
+        jsRuntime = jsRuntime ?? _denoRuntime(deno ?? _existing(locateTool('deno'))),
         formatArgs = formatArgs ?? (() => ytDlpFormatArgs(YtContainer.mp4, YtQuality.best)),
         cookieArgs = cookieArgs ?? (() => const []),
         fallbackCookieArgs = fallbackCookieArgs ?? (() => const []);
 
-  static const _env = {'PYTHONIOENCODING': 'utf-8', 'PYTHONUTF8': '1'};
+  static const _pyEnv = {'PYTHONIOENCODING': 'utf-8', 'PYTHONUTF8': '1'};
+  Map<String, String> get _env => {..._pyEnv, ...environment};
+
+  static String? _denoRuntime(String? deno) => deno == null ? null : 'deno:$deno';
 
   @override
   Future<(String, List<PlaylistEntry>)?> expandPlaylist(String url) async {
@@ -72,8 +84,9 @@ class YtDlpBackend implements DownloadBackend {
     Future<ProcessResult> read(List<String> cookies) => Process.run(
           ytdlp,
           [
+            ...prefixArgs,
             '--flat-playlist', '-J', '--no-warnings', '--encoding', 'utf-8',
-            if (deno != null) ...['--js-runtimes', 'deno:$deno'],
+            if (jsRuntime != null) ...['--js-runtimes', jsRuntime!],
             ...cookies,
             'https://www.youtube.com/playlist?list=$listId',
           ],
@@ -130,7 +143,7 @@ class YtDlpBackend implements DownloadBackend {
         ...formatArgs(),
         ..._cookiesFor(t),
         if (ffmpegDir != null) ...['--ffmpeg-location', ffmpegDir!],
-        if (deno != null) ...['--js-runtimes', 'deno:$deno'],
+        if (jsRuntime != null) ...['--js-runtimes', jsRuntime!],
         t.source,
       ];
 
@@ -145,7 +158,7 @@ class YtDlpBackend implements DownloadBackend {
 
     final Process proc;
     try {
-      proc = await Process.start(ytdlp, argsFor(t), environment: _env);
+      proc = await Process.start(ytdlp, [...prefixArgs, ...argsFor(t)], environment: _env);
     } on ProcessException catch (e) {
       t
         ..state = DownloadState.failed

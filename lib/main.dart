@@ -14,6 +14,7 @@ import 'app/download_manager.dart';
 import 'app/settings.dart';
 import 'core/app_update.dart';
 import 'core/playlist.dart';
+import 'platform/android/android_download_tools.dart';
 import 'platform/android/android_storage.dart';
 import 'platform/windows/app_paths.dart';
 import 'platform/windows/cef_runtime.dart';
@@ -329,10 +330,36 @@ Future<void> runAndroid(String dataDir) async {
   final messengerKey = GlobalKey<ScaffoldMessengerState>();
   AndroidStorageService.navigatorKey = navigatorKey;
 
+  // 다운로드 (앱 안 브라우저의 [다운로드] · 다운로드 목록): 앱에 넣은 yt-dlp · aria2c. 클립보드 감시는 하지 않는다.
+  AndroidDownloadTools.log = controller.note;
+  final downloads = DownloadManager(
+    backends: services.createDownloadBackends?.call(() => controller.settings) ?? const [],
+    settings: () => controller.settings,
+  );
+  downloads.onAdded.listen((t) => messengerKey.currentState
+      ?.showSnackBar(SnackBar(content: Text('다운로드 추가: ${t.source}'))));
+  // 다 받은 동영상 → 편집 목록 (설정에서 끌 수 있음)
+  downloads.onFinished.listen((t) async {
+    if (!controller.settings.addFinishedDownloads) return;
+    final files = DownloadManager.videoFilesOf(t);
+    if (files.isEmpty) return;
+    final n = await controller.addDownloaded(files);
+    downloads.dropFromList(t);
+    if (n > 0) {
+      messengerKey.currentState?.showSnackBar(SnackBar(content: Text('동영상 목록에 추가: ${t.title}')));
+    }
+  });
+  downloads.setAutoAdd = (on) async {
+    await controller.updateSettings((x) => x.addFinishedDownloads = on);
+    downloads.refresh();
+  };
+  downloads.addToEditList = controller.addDownloaded;
+  downloads.log = controller.note;
+
   WidgetsBinding.instance.addPostFrameCallback((_) async {
     if (controller.settings.startScreen == 'browser') {
-      navigatorKey.currentState
-          ?.push(MaterialPageRoute<void>(builder: (_) => BrowserPage(c: controller, bookmarks: bookmarks)));
+      navigatorKey.currentState?.push(MaterialPageRoute<void>(
+          builder: (_) => BrowserPage(c: controller, downloads: downloads, bookmarks: bookmarks)));
     }
     // 동영상을 읽고 옆에 MKV 를 만들려면 저장소 전체 접근이 필요하다
     if (!await AndroidAccess.hasAllFiles()) {
@@ -346,11 +373,13 @@ Future<void> runAndroid(String dataDir) async {
 
   runApp(JjCapCutApp(
     controller: controller,
+    downloads: downloads,
     bookmarks: bookmarks,
     navigatorKey: navigatorKey,
     messengerKey: messengerKey,
     onExit: () async {
       final ctx = navigatorKey.currentContext;
+      if (ctx != null && ctx.mounted && !await confirmExit(ctx, downloads)) return;
       if (controller.busy && ctx != null && ctx.mounted) {
         final ok = await showDialog<bool>(
           context: ctx,
@@ -366,6 +395,7 @@ Future<void> runAndroid(String dataDir) async {
         if (ok != true) return;
       }
       controller.cancel();
+      await downloads.shutdown();
       controller.note('── 정상 종료 ──');
       await services.shell.quit();
     },

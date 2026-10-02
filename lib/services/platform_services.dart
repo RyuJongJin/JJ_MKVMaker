@@ -9,6 +9,7 @@ import '../core/download_detect.dart';
 import '../platform/common/nllb_translator.dart';
 import '../platform/common/opensubtitles_provider.dart';
 import '../platform/common/whisper_recognizer.dart';
+import '../platform/android/android_download_tools.dart';
 import '../platform/android/android_shell.dart';
 import '../platform/android/android_storage.dart';
 import '../platform/android/ffmpeg_kit_media_tool.dart';
@@ -119,7 +120,7 @@ class PlatformServices {
       );
     }
     if (Platform.isAndroid) {
-      // 다운로드 (yt-dlp · aria2) · 업데이트 · 탐색기 연결은 데스크톱 전용
+      // 업데이트 · 탐색기 연결은 데스크톱 전용. 다운로드는 앱에 넣은 yt-dlp · aria2c (youtubedl-android)
       MediaKitPreviewPlayer.ensureInitialized();
       return PlatformServices(
         mediaTool: FfmpegKitMediaTool(),
@@ -128,6 +129,7 @@ class PlatformServices {
         createMediaPlayer: MediaKitFullPlayer.new,
         createRecognizer: WhisperRecognizer.new,
         createTranslator: NllbTranslator.new,
+        createDownloadBackends: AndroidDownloadTools.backends,
         shell: AndroidShell(),
         createSubtitleProviders: (s) => [
           OpenSubtitlesProvider(

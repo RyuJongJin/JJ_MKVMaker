@@ -203,6 +203,8 @@ class AppSettings {
   /// 다운로드 기본 위치: 프로그램 폴더 (쓸 수 없으면 사용자 다운로드 폴더)
   String resolvedDownloadRoot() {
     if (downloadRoot != null && downloadRoot!.isNotEmpty) return downloadRoot!;
+    // Android: 프로그램 폴더가 없으므로 내장 저장소의 Download\JJ_MKVMaker
+    if (Platform.isAndroid) return '/storage/emulated/0/Download/JJ_MKVMaker';
     final appDir = p.dirname(Platform.resolvedExecutable);
     try {
       final probe = File(p.join(appDir, '.jj_write_test'));

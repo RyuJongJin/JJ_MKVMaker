@@ -22,7 +22,12 @@ class Aria2Backend implements DownloadBackend {
   Timer? _poll;
   final _tasks = <String, (DownloadTask, void Function())>{};
 
-  Aria2Backend({String? aria2c}) : aria2c = aria2c ?? locateTool('aria2c');
+  /// 추가 환경 변수 · 인수 (Android: 라이브러리 위치 · 인증서 파일)
+  final Map<String, String> environment;
+  final List<String> extraArgs;
+
+  Aria2Backend({String? aria2c, this.environment = const {}, this.extraArgs = const []})
+      : aria2c = aria2c ?? locateTool('aria2c');
 
   @override
   DownloadKind get kind => DownloadKind.torrent;
@@ -48,7 +53,8 @@ class Aria2Backend implements DownloadBackend {
       '--bt-save-metadata=false', '--follow-torrent=mem',
       '--console-log-level=warn', '--summary-interval=0',
       '--file-allocation=none', '--auto-file-renaming=false',
-    ]);
+      ...extraArgs,
+    ], environment: environment.isEmpty ? null : environment);
     _daemon!.stdout.drain<void>();
     _daemon!.stderr.drain<void>();
     unawaited(_daemon!.exitCode.then((_) => _daemon = null));
