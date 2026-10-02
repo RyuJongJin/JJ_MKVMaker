@@ -394,6 +394,8 @@ Future<void> runAndroid(String dataDir) async {
   downloads.log = controller.note;
   // 진행 중인 일이 있으면 화면에서 내려가도 계속 (알림에 진행 상황)
   AndroidKeepAlive(controller, downloads);
+  // 동영상 목록 기억 (앱을 껐다 켜도 그대로, 없어진 파일은 뺀다) - Windows 와 같은 파일
+  unawaited(controller.shareVideoList(p.join(dataDir, 'videos.json')));
 
   // 연결 프로그램 · 공유로 받은 동영상: 앱이 켜져 있을 때 (MainActivity.onNewIntent)
   const android = MethodChannel('jj_mkvmaker/android');
