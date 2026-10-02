@@ -12,6 +12,7 @@ import '../platform/common/whisper_recognizer.dart';
 import '../platform/android/android_download_tools.dart';
 import '../platform/android/android_shell.dart';
 import '../platform/android/android_storage.dart';
+import '../platform/android/android_updater.dart';
 import '../platform/android/ffmpeg_kit_media_tool.dart';
 import '../platform/windows/aria2_backend.dart';
 import '../platform/windows/desktop_shell.dart';
@@ -120,11 +121,13 @@ class PlatformServices {
       );
     }
     if (Platform.isAndroid) {
-      // 업데이트 · 탐색기 연결은 데스크톱 전용. 다운로드는 앱에 넣은 yt-dlp · aria2c (youtubedl-android)
+      // 탐색기 연결은 데스크톱 전용. 업데이트는 APK 를 받아 Android 설치 화면으로. 다운로드는 앱에 넣은 yt-dlp · aria2c (youtubedl-android)
       MediaKitPreviewPlayer.ensureInitialized();
+      final storage = AndroidStorageService();
       return PlatformServices(
         mediaTool: FfmpegKitMediaTool(),
-        storage: AndroidStorageService(),
+        storage: storage,
+        updater: AndroidUpdater(storage),
         createPlayer: MediaKitPreviewPlayer.new,
         createMediaPlayer: MediaKitFullPlayer.new,
         createRecognizer: WhisperRecognizer.new,

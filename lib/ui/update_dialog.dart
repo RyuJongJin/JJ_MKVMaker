@@ -108,7 +108,7 @@ Future<void> checkForUpdate(BuildContext context, AppController c, {bool manual 
       content: ValueListenableBuilder<double>(
         valueListenable: progress,
         builder: (_, v, _) => Column(mainAxisSize: MainAxisSize.min, children: [
-          Text(v >= 1 ? '확인 · 압축 푸는 중…' : '${(v * 100).round()}%'),
+          Text(v >= 1 ? (up.installsInPlace ? '파일 확인 중…' : '확인 · 압축 푸는 중…') : '${(v * 100).round()}%'),
           const SizedBox(height: 12),
           LinearProgressIndicator(value: v >= 1 ? null : v),
         ]),
@@ -131,7 +131,8 @@ Future<void> checkForUpdate(BuildContext context, AppController c, {bool manual 
     builder: (ctx) => AlertDialog(
       title: const Text('설치 준비 완료'),
       content: Text('v${r!.version} 을 받았고 파일 검증(SHA256)을 마쳤습니다.\n'
-          '프로그램을 종료하고 설치한 뒤 자동으로 다시 시작합니다.'),
+          '${up.installsInPlace ? 'Android 설치 화면에서 [설치] 를 누르세요. 설정 · 받은 파일 · AI 모델은 그대로 남습니다.\n'
+              '(처음이면 "이 출처의 앱 설치 허용" 을 켜야 할 수 있습니다)' : '프로그램을 종료하고 설치한 뒤 자동으로 다시 시작합니다.'}'),
       actions: [
         TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('나중에')),
         FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('지금 설치')),
@@ -139,6 +140,15 @@ Future<void> checkForUpdate(BuildContext context, AppController c, {bool manual 
     ),
   );
   if (go != true) return;
+  // Android: 설치 화면만 연다 (앱을 끝내지 않음, 설치되면 Android 가 앱을 다시 띄움)
+  if (up.installsInPlace) {
+    try {
+      await up.scheduleInstall(dir);
+    } catch (e) {
+      snack('설치 화면을 열 수 없습니다: $e');
+    }
+    return;
+  }
   // 다운로드 중이면 기존 종료 확인 절차
   final ok = await (c.confirmQuit?.call() ?? Future.value(true));
   if (!ok) return;

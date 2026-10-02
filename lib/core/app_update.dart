@@ -61,15 +61,20 @@ class ReleaseInfo {
   bool isNewerThan(String current) => compareVersions(version, current) > 0;
 }
 
-/// GitHub API `releases/latest` 응답 → ReleaseInfo (초안 · 시험판은 null)
-ReleaseInfo? parseLatestRelease(Map<String, dynamic> j) {
+/// 플랫폼별 설치 파일 이름 (Windows zip / Android APK)
+const windowsAssetPattern = r'win64\.zip$';
+const androidAssetPattern = r'android_arm64\.apk$';
+
+/// GitHub API `releases/latest` 응답 → ReleaseInfo (초안 · 시험판은 null).
+/// [assetPattern]: 받을 설치 파일 (기본 Windows zip, Android 는 [androidAssetPattern]). zipUrl · zipName 등에 담는다.
+ReleaseInfo? parseLatestRelease(Map<String, dynamic> j, {String assetPattern = windowsAssetPattern}) {
   if (j['draft'] == true || j['prerelease'] == true) return null;
   final tag = j['tag_name'] as String?;
   if (tag == null) return null;
   Map<String, dynamic>? zip;
   for (final a in (j['assets'] as List? ?? const [])) {
     final m = a as Map<String, dynamic>;
-    if (RegExp(r'win64\.zip$', caseSensitive: false).hasMatch(m['name'] as String? ?? '')) {
+    if (RegExp(assetPattern, caseSensitive: false).hasMatch(m['name'] as String? ?? '')) {
       zip = m;
       break;
     }
@@ -78,8 +83,12 @@ ReleaseInfo? parseLatestRelease(Map<String, dynamic> j) {
   if (sha != null && sha.startsWith('sha256:')) {
     sha = sha.substring(7);
   } else {
-    // digest 가 없으면 설명에 적어 둔 SHA256 (64자리 16진수) 사용
-    sha = RegExp(r'\b([0-9a-fA-F]{64})\b').firstMatch(j['body'] as String? ?? '')?.group(1)?.toLowerCase();
+    // digest 가 없으면 설명에 적어 둔 SHA256 (64자리 16진수): 그 파일 이름이 있는 줄, 없으면 첫 번째
+    final body = j['body'] as String? ?? '';
+    final hex = RegExp(r'\b([0-9a-fA-F]{64})\b');
+    final name = zip?['name'] as String?;
+    final line = name == null ? null : body.split('\n').where((l) => l.contains(name) && hex.hasMatch(l)).firstOrNull;
+    sha = hex.firstMatch(line ?? body)?.group(1)?.toLowerCase();
   }
   return ReleaseInfo(
     version: formatVersion(tag),

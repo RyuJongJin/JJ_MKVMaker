@@ -262,6 +262,28 @@ class _SettingsPageState extends State<SettingsPage> {
               child: ListView(
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
                 children: [
+                  // 맨 위: 지금 버전 · 최신 버전 확인 (Windows · Android)
+                  if (c.services.updater != null) ...[
+                    _section('프로그램 정보 · 업데이트'),
+                    ListTile(
+                      leading: const Icon(Icons.system_update_alt, color: JjColors.accent),
+                      title: FutureBuilder<String>(
+                        future: c.services.updater!.currentVersion(),
+                        builder: (_, v) => Text('JJ_MKVMaker v${v.data ?? '…'}'),
+                      ),
+                      subtitle: const Text('GitHub 의 최신 버전과 비교해, 새 버전이 있으면 받아서 설치합니다'),
+                      trailing: FilledButton.icon(
+                        onPressed: () => checkForUpdate(context, c, manual: true),
+                        icon: const Icon(Icons.refresh, size: 18),
+                        label: const Text('최신 버전 확인'),
+                      ),
+                    ),
+                    SwitchListTile(
+                      value: s.autoCheckUpdates,
+                      onChanged: (v) => c.updateSettings((x) => x.autoCheckUpdates = v),
+                      title: const Text('시작할 때 새 버전 확인 (하루 한 번)'),
+                    ),
+                  ],
                   _section('화면'),
                   ListTile(
                     title: const Text('기본 화면 크기'),
@@ -580,24 +602,6 @@ class _SettingsPageState extends State<SettingsPage> {
                         '언어 ${c.aiOptions.targets.map((t) => t.code).join('/')}, ${c.aiOptions.whisper.label}'),
                   ),
                   _section('프로그램'),
-                  if (c.services.updater != null) ...[
-                    ListTile(
-                      title: const Text('업데이트'),
-                      subtitle: FutureBuilder<String>(
-                        future: c.services.updater!.currentVersion(),
-                        builder: (_, v) => Text('지금 버전: v${v.data ?? '…'} · GitHub 최신 Release 와 비교합니다'),
-                      ),
-                      trailing: OutlinedButton(
-                        onPressed: () => checkForUpdate(context, c, manual: true),
-                        child: const Text('지금 확인'),
-                      ),
-                    ),
-                    SwitchListTile(
-                      value: s.autoCheckUpdates,
-                      onChanged: (v) => c.updateSettings((x) => x.autoCheckUpdates = v),
-                      title: const Text('시작할 때 새 버전 확인 (하루 한 번)'),
-                    ),
-                  ],
                   if (desk) ...[
                   ListTile(
                     title: const Text('필수 프로그램 점검'),

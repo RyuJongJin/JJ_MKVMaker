@@ -28,6 +28,12 @@ class MainActivity : FlutterActivity() {
                 }
                 "storageRoot" -> result.success(Environment.getExternalStorageDirectory().path)
                 "openUrl" -> result.success(openUrl(call.argument<String>("url") ?: ""))
+                "installApk" -> try {
+                    installApk(call.argument<String>("path") ?: "")
+                    result.success(null)
+                } catch (e: Exception) {
+                    result.error("INSTALL", e.message ?: e.toString(), null)
+                }
                 "openFolder" -> result.success(openFolder(call.argument<String>("path") ?: ""))
                 "keepAlive" -> {
                     keepAlive(call.argument<String>("text") ?: "", call.argument<Int>("progress") ?: -1)
@@ -44,6 +50,36 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+    }
+
+    /// 받은 업데이트 APK 로 Android 설치 화면을 연다. 앱 전용 폴더의 파일이라 FileProvider 로 넘긴다.
+    /// 처음이면 "이 출처의 앱 설치 허용" 설정 화면을 먼저 연다 (허용한 뒤 다시 [업데이트])
+    private fun installApk(path: String) {
+        val src = File(path)
+        if (!src.isFile) throw IllegalArgumentException("APK 파일이 없습니다: $path")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !packageManager.canRequestPackageInstalls()) {
+            startActivity(
+                Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName"))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+            throw IllegalStateException("\"이 출처의 앱 설치 허용\" 을 켠 뒤 다시 [업데이트] 를 누르세요")
+        }
+        // FileProvider 가 내보내는 폴더 (cache/updates) 로 옮긴다
+        val dir = File(cacheDir, "updates").apply { mkdirs() }
+        val apk = File(dir, "update.apk")
+        if (src.absolutePath != apk.absolutePath) {
+            apk.delete()
+            if (!src.renameTo(apk)) {
+                src.copyTo(apk, overwrite = true)
+                src.delete()
+            }
+        }
+        val uri = androidx.core.content.FileProvider.getUriForFile(this, "$packageName.files", apk)
+        startActivity(
+            Intent(Intent.ACTION_VIEW)
+                .setDataAndType(uri, "application/vnd.android.package-archive")
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
     }
 
     /// 웹 주소를 기기의 기본 브라우저로

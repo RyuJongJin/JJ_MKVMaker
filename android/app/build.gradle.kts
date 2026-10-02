@@ -84,4 +84,6 @@ dependencies {
     implementation("io.github.junkfood02.youtubedl-android:library:0.18.1")
     implementation("io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1")
     implementation("io.github.junkfood02.youtubedl-android:aria2c:0.18.1")
+    // 업데이트 APK 를 설치 화면에 넘기는 FileProvider
+    implementation("androidx.core:core:1.16.0")
 }

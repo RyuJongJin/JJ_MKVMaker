@@ -364,6 +364,9 @@ Future<void> runAndroid(String dataDir) async {
       navigatorKey.currentState?.push(MaterialPageRoute<void>(
           builder: (_) => BrowserPage(c: controller, downloads: downloads, bookmarks: bookmarks)));
     }
+    // 새 버전 확인 (하루 한 번, 환경 설정에서 끌 수 있음)
+    final ctx = navigatorKey.currentContext;
+    if (ctx != null && ctx.mounted) unawaited(checkForUpdate(ctx, controller));
     // 동영상을 읽고 옆에 MKV 를 만들려면 저장소 전체 접근이 필요하다
     if (!await AndroidAccess.hasAllFiles()) {
       messengerKey.currentState?.showSnackBar(SnackBar(

@@ -29,6 +29,9 @@ class GitHubUpdater implements Updater {
   }) : appDir = appDir ?? AppPaths.root; // Lib 구조면 배포 폴더 맨 위
 
   @override
+  bool get installsInPlace => false;
+
+  @override
   Future<String> currentVersion() async {
     if (versionOverride != null) return versionOverride!;
     // pubspec 의 "2026.9.30+1" → "2026.09.30_001"

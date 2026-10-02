@@ -26,6 +26,8 @@ Map<String, dynamic> _release(String tag, {String? digest, String body = '', boo
     };
 
 class _FakeUpdater implements Updater {
+  @override
+  bool get installsInPlace => false;
   ReleaseInfo? next;
   final calls = <String>[];
   @override

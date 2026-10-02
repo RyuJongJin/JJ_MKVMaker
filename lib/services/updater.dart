@@ -28,4 +28,7 @@ abstract class Updater {
 
   /// 브라우저로 Release 페이지 열기
   Future<void> openPage(ReleaseInfo r);
+
+  /// true 면 [scheduleInstall] 이 설치 화면을 열 뿐 앱을 끝낼 필요가 없다 (Android)
+  bool get installsInPlace => false;
 }

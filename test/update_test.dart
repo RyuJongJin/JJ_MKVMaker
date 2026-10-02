@@ -62,6 +62,24 @@ void main() {
       expect(b.sha256, 'b' * 64);
       expect(parseLatestRelease(_release('v9.0.0', draft: true)), isNull);
     });
+
+    test('Android: APK 파일 · 그 파일 줄의 SHA256', () {
+      final j = _release('v2026.10.03_001',
+          body: '| `JJ_MKVMaker_v2026.10.03_001_win64.zip` | `${'C' * 64}` |\n'
+              '| `JJ_MKVMaker_v2026.10.03_001_android_arm64.apk` | `${'D' * 64}` |');
+      (j['assets'] as List).add({
+        'name': 'JJ_MKVMaker_v2026.10.03_001_android_arm64.apk',
+        'size': 92091507,
+        'browser_download_url': 'https://example.com/x.apk',
+      });
+      final a = parseLatestRelease(j, assetPattern: androidAssetPattern)!;
+      expect([a.zipName, a.zipUrl, a.zipSize, a.sha256],
+          ['JJ_MKVMaker_v2026.10.03_001_android_arm64.apk', 'https://example.com/x.apk', 92091507, 'd' * 64]);
+      // Windows 는 그대로 zip
+      expect(parseLatestRelease(j)!.sha256, 'c' * 64);
+      // APK 가 없는 판
+      expect(parseLatestRelease(_release('v1.0.0'), assetPattern: androidAssetPattern)!.zipUrl, isNull);
+    });
     test('하루 한 번', () {
       final now = DateTime(2026, 10, 1, 12);
       expect(updateCheckDue('', now), isTrue);
