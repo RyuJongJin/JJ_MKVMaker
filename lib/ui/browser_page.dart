@@ -274,7 +274,7 @@ class _BrowserPageState extends State<BrowserPage> {
       color: JjColors.panel,
       padding: const EdgeInsets.only(left: 8, right: appBarRightPadding),
       child: Row(children: [
-        const AppNavButtons(),
+        const AppNavButtons(onBrowserPage: true),
         const SizedBox(width: 8),
         Container(width: 1, height: 24, color: JjColors.border),
         const SizedBox(width: 4),

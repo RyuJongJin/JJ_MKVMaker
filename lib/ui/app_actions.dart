@@ -41,9 +41,12 @@ class AppScope extends InheritedWidget {
 class AppNavButtons extends StatelessWidget {
   /// 다운로드 목록 화면 자신 (그 버튼을 "지금 여기" 로 표시)
   final bool onDownloadsPage;
-  const AppNavButtons({super.key, this.onDownloadsPage = false});
 
-  static const double width = 4 * 40;
+  /// 웹 브라우저 화면 자신
+  final bool onBrowserPage;
+  const AppNavButtons({super.key, this.onDownloadsPage = false, this.onBrowserPage = false});
+
+  static const double width = 5 * 40;
 
   /// MKV 화면 (맨 처음 화면) 까지 돌아가기
   static void toMkv(BuildContext context) => Navigator.of(context).popUntil((r) => r.isFirst);
@@ -90,6 +93,19 @@ class AppNavButtons extends StatelessWidget {
           atRoot ? 'MKV 화면 (지금 여기)' : 'MKV 화면으로',
           atRoot ? null : () => toMkv(context),
           here: atRoot,
+        ),
+        // 웹 브라우저: MKV 화면 버튼 다음 (모든 화면 같은 자리)
+        btn(
+          Icon(Icons.public, color: onBrowserPage ? JjColors.accent : null),
+          onBrowserPage ? '웹 브라우저 (지금 여기)' : '웹 브라우저',
+          scope?.bookmarks == null || onBrowserPage
+              ? null
+              : () => Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(
+                      builder: (_) =>
+                          BrowserPage(c: scope!.controller, downloads: scope.downloads, bookmarks: scope.bookmarks!))),
+          here: onBrowserPage,
         ),
         btn(const Icon(Icons.arrow_back), '뒤로', atRoot ? null : () => Navigator.maybePop(context)),
         btn(

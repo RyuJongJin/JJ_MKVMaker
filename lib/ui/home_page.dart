@@ -12,7 +12,6 @@ import '../core/models.dart';
 import '../core/output_paths.dart';
 import 'ai_dialog.dart';
 import 'app_actions.dart';
-import 'browser_page.dart';
 import 'downloads_page.dart';
 import 'player_page.dart';
 import 'subtitle_editor_page.dart';
@@ -95,6 +94,21 @@ class _TopBar extends StatelessWidget {
   const _TopBar({required this.c, this.downloads, this.onExit, this.bookmarks});
 
   /// 고른 동영상이 없을 때: 목록 전체를 만들지 묻는다
+  /// 보고 있는 동영상의 결과 폴더 (jj_mkv) 를 탐색기 · 파일 앱으로. 아직 없으면 알린다.
+  Future<void> _openOutput(BuildContext context) async {
+    final v = c.selected;
+    if (v == null) return;
+    final dir = outputDirFor(v.path);
+    if (!await Directory(dir).exists()) {
+      if (context.mounted) {
+        ScaffoldMessenger.maybeOf(context)
+            ?.showSnackBar(SnackBar(content: Text('아직 만든 MKV · 자막이 없습니다: $dir')));
+      }
+      return;
+    }
+    await c.services.shell.revealFile(dir);
+  }
+
   Future<void> _confirmBuildAll(BuildContext context) async {
     final todo = c.videos.where((v) => v.status != JobStatus.done).length;
     final ok = await showDialog<bool>(
@@ -139,7 +153,7 @@ class _TopBar extends StatelessWidget {
           (c.busy ? (jobText ? 350 : 60) : 0) +
           (hasPlayer ? (rightText ? 201 : 48) : 0) +
           (mkvText ? 166 + (c.busy && jobText ? 60 : 0) : 48) +
-          (bookmarks != null ? (rightText ? 138 : 48) : 0) +
+          (rightText ? 166 : 48) + // 결과 폴더
           (dlBox ? 162 : 0) +
           (usage ? 220 : 0) + 96 + 92 +
           (c.checked.isEmpty ? 0 : 3 * 26) +
@@ -241,18 +255,13 @@ class _TopBar extends StatelessWidget {
                       icon: Icon(c.busy ? Icons.playlist_add : Icons.play_arrow, size: 20),
                     ),
             ),
-            if (bookmarks != null) ...[
-              const SizedBox(width: 8),
-              action(
-                  Icons.public,
-                  '브라우저',
-                  () => Navigator.push(
-                      context,
-                      MaterialPageRoute<void>(
-                          builder: (_) => BrowserPage(c: c, downloads: downloads, bookmarks: bookmarks!))),
-                  text: rightText,
-                  tip: '웹 브라우저'),
-            ],
+            // 만든 MKV 가 있는 폴더 (jj_mkv). 웹 브라우저 버튼은 왼쪽 공통 버튼으로 옮김
+            const SizedBox(width: 8),
+            action(Icons.folder_special_outlined, '결과 폴더', c.selected == null ? null : () => _openOutput(context),
+                text: rightText,
+                tip: c.selected == null
+                    ? '결과 폴더 열기 (동영상을 고르세요)'
+                    : '결과 폴더 열기: ${outputDirFor(c.selected!.path)}'),
             if (dlBox) ...[
               const SizedBox(width: 12),
               _DownloadBox(d: downloads!),

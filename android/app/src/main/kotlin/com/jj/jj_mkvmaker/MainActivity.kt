@@ -59,13 +59,27 @@ class MainActivity : FlutterActivity() {
         val root = Environment.getExternalStorageDirectory().path
         if (!path.startsWith(root)) return false
         val rel = path.removePrefix(root).trim('/')
+        // 1. 삼성 "내 파일": 그 폴더로 바로 연다
+        try {
+            startActivity(
+                Intent("samsung.myfiles.intent.action.LAUNCH_MY_FILES")
+                    .setPackage("com.sec.android.app.myfiles")
+                    .putExtra("samsung.myfiles.intent.extra.START_PATH", path)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+            return true
+        } catch (e: Exception) {
+        }
+        // 2. 시스템 "파일" 앱 (Google / AOSP). 다른 파일 관리자 (X-plore 등) 는 이 주소의 폴더로 가지 않아 앱을 정해 연다
         val uri = android.provider.DocumentsContract.buildDocumentUri(
             "com.android.externalstorage.documents", "primary:$rel"
         )
-        for (type in listOf(android.provider.DocumentsContract.Document.MIME_TYPE_DIR, "resource/folder")) {
+        for (pkg in listOf("com.google.android.documentsui", "com.android.documentsui", null)) {
             try {
                 startActivity(
-                    Intent(Intent.ACTION_VIEW).setDataAndType(uri, type)
+                    Intent(Intent.ACTION_VIEW)
+                        .setDataAndType(uri, android.provider.DocumentsContract.Document.MIME_TYPE_DIR)
+                        .apply { if (pkg != null) setPackage(pkg) }
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 )
                 return true
