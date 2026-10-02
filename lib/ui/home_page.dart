@@ -65,7 +65,8 @@ class HomePage extends StatelessWidget {
             const Divider(height: 1),
             if (c.settings.showLog)
               SizedBox(
-                height: 140,
+                // 화면이 낮은 기기 (휴대폰 가로) 에서 목록 · 자세히 보기를 가리지 않도록 화면 높이에 맞춘다
+                height: (MediaQuery.sizeOf(context).height * 0.22).clamp(80.0, 140.0),
                 child: _LogPanel(
                   logs: c.logs,
                   onClose: () => c.updateSettings((s) => s.showLog = false),
