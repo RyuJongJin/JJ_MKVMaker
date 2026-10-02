@@ -51,6 +51,22 @@ JJ_MKVMaker - 포함된 오픈 소스 구성 요소 및 라이선스 고지
 
 위 GPL 프로그램은 수정하지 않은 공식 배포 파일이며, 해당 소스는 위 주소에서 받을 수 있습니다.
 
+[Android 판 (APK) 에만 들어 있는 구성 요소]
+
+- FFmpegKit (ffmpeg_kit_flutter_new_min_gpl, JJ_MKVMaker 수정본)
+                                       GPL-3.0 (FFmpeg GPL 빌드 포함) https://pub.dev/packages/ffmpeg_kit_flutter_new_min_gpl
+  수정 내용: app\packages\ffmpeg_kit_flutter_new_min_gpl\JJ_PATCH.md
+- youtubedl-android (Python · yt-dlp · FFmpeg · aria2c 실행 파일 포함)
+                                       GPL-3.0               https://github.com/JunkFood02/youtubedl-android
+  · Python                             PSF License           https://www.python.org
+  · QuickJS                            MIT                   https://bellard.org/quickjs/
+  · yt-dlp                             Unlicense
+  · FFmpeg                             GPL                   https://ffmpeg.org
+  · aria2                              GPL-2.0-or-later      https://github.com/aria2/aria2
+  수정하지 않은 공식 배포본 (Maven Central io.github.junkfood02.youtubedl-android 0.18.1) 이며,
+  소스는 위 주소에서 받을 수 있습니다.
+- libmpv (media_kit_libs_android_video) LGPL-2.1+             https://github.com/media-kit/libmpv-android-video-build
+
 [처음 사용할 때 내려받는 AI 모델]
 
 - Whisper 모델 (ggml-base.bin 등)       MIT (OpenAI Whisper)  https://huggingface.co/ggerganov/whisper.cpp
