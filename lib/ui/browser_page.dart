@@ -87,6 +87,13 @@ class BrowserPage extends StatefulWidget {
   /// 열려 있는 브라우저 화면 수
   static int _open = 0;
 
+  /// 마지막으로 보던 주소: MKV 화면으로 갔다가 브라우저를 다시 열면 홈이 아니라 이 주소로
+  static String? _lastUrl;
+
+  /// 앱 안 웹뷰를 화면이 닫혀도 살려 둔다 (다시 열면 보던 페이지 · 재생 위치 · 뒤로 가기 기록 그대로)
+  static final _keepAlive = InAppWebViewKeepAlive();
+  static bool _keepAliveUsed = false;
+
   /// 웹 브라우저로: 이미 열린 브라우저가 있으면 그 화면으로 돌아가고 (보던 페이지 그대로),
   /// 없으면 새로 연다. 다운로드 목록 · 플레이어 등에서 브라우저 버튼을 눌러도 보던 페이지를 잃지 않는다.
   static Future<void> open(NavigatorState nav,
@@ -107,7 +114,7 @@ class BrowserPage extends StatefulWidget {
 }
 
 class _BrowserPageState extends State<BrowserPage> with RouteAware {
-  late String _url = widget.initialUrl ?? widget.c.settings.homeUrl;
+  late String _url = widget.initialUrl ?? BrowserPage._lastUrl ?? widget.c.settings.homeUrl;
   String _title = '';
   double _progress = 1;
   bool _hasVideo = false, _canBack = false, _canFwd = false, _panel = false;
@@ -123,6 +130,7 @@ class _BrowserPageState extends State<BrowserPage> with RouteAware {
   late final BrowserHost _host = BrowserHost(
     onUrl: (u) {
       if (!mounted || u.isEmpty) return;
+      BrowserPage._lastUrl = u;
       setState(() => _url = u);
       if (!_addressFocus.hasFocus) _address.text = u;
     },
@@ -157,6 +165,12 @@ class _BrowserPageState extends State<BrowserPage> with RouteAware {
   /// 다운로드 목록 · 플레이어 · 설정 등이 위에 올라왔다: 보던 동영상을 멈춘다 (가려진 채 소리만 나지 않게)
   @override
   void didPushNext() {
+    _nav?.pauseMedia();
+  }
+
+  /// MKV 화면 등으로 가며 브라우저 화면이 닫힌다: 살려 둔 웹뷰에서 소리만 나지 않게 멈춘다
+  @override
+  void didPop() {
     _nav?.pauseMedia();
   }
 
@@ -449,6 +463,24 @@ Future<WebViewEnvironment?> _createEnvironment(String dir) async {
 }
 
 class _EdgeViewState extends State<_EdgeView> {
+  /// 살려 둔 웹뷰를 이 화면이 쓰는지 (브라우저 화면은 하나뿐이지만, 혹시 둘이면 둘째는 새 웹뷰)
+  InAppWebViewKeepAlive? _keepAlive;
+
+  @override
+  void initState() {
+    super.initState();
+    if (!BrowserPage._keepAliveUsed) {
+      BrowserPage._keepAliveUsed = true;
+      _keepAlive = BrowserPage._keepAlive;
+    }
+  }
+
+  @override
+  void dispose() {
+    if (_keepAlive != null) BrowserPage._keepAliveUsed = false;
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) => FutureBuilder<WebViewEnvironment?>(
         future: browserEnvironment(widget.dataDir),
@@ -472,6 +504,7 @@ class _EdgeViewState extends State<_EdgeView> {
           }
 
           return InAppWebView(
+            keepAlive: _keepAlive,
             webViewEnvironment: snap.data,
             initialUrlRequest: URLRequest(url: WebUri(normalizeAddress(widget.initialUrl))),
             initialSettings: InAppWebViewSettings(
@@ -479,7 +512,15 @@ class _EdgeViewState extends State<_EdgeView> {
               mediaPlaybackRequiresUserGesture: false,
               supportMultipleWindows: false,
             ),
-            onWebViewCreated: (c) => h.attach(_InAppNav(c, snap.data, widget.dataDir)),
+            onWebViewCreated: (c) async {
+              h.attach(_InAppNav(c, snap.data, widget.dataDir));
+              // 살려 둔 웹뷰를 다시 붙였으면 보던 주소 · 제목 · 뒤로 가기 상태를 다시 알린다
+              final u = await c.getUrl();
+              if (u != null) h.onUrl(u.toString());
+              final t = await c.getTitle();
+              if (t != null) h.onTitle(t);
+              await check(c);
+            },
             onLoadStart: (c, u) {
               h.onUrl(u?.toString() ?? '');
               h.onVideo(false);
