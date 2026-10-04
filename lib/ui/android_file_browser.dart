@@ -149,6 +149,12 @@ class _FileBrowserState extends State<_FileBrowser> {
       },
       child: Scaffold(
         appBar: AppBar(
+          // 닫기: 어느 폴더에 있든 바로 닫는다 (뒤로 가기 키는 위 폴더로)
+          leading: IconButton(
+            tooltip: tr('닫기'),
+            icon: const Icon(Icons.close),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
           title: Text(widget.title),
           actions: [
             if (widget.folder) ...[
