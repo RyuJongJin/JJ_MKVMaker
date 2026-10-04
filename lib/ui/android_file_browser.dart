@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 
 import '../platform/android/android_storage.dart';
+import 'bookmark_ui.dart' show askText;
 import 'theme.dart';
 import '../l10n/tr.dart';
 
@@ -104,6 +105,30 @@ class _FileBrowserState extends State<_FileBrowser> {
     });
   }
 
+  /// 폴더 만들기: 이름을 물어 [parent] 아래에 만들고 그 폴더로 들어간다
+  Future<void> _makeFolder(String parent) async {
+    final name = (await askText(context, tr('폴더 만들기'), tr('폴더 이름'), tr('새 폴더'),
+            help: trf('{0} 아래에 만듭니다', [parent])))
+        ?.trim();
+    if (name == null || name.isEmpty || !mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    if (RegExp(r'[\\/:*?"<>|]').hasMatch(name) || name == '.' || name == '..') {
+      messenger.showSnackBar(SnackBar(content: Text(tr('폴더 이름에 쓸 수 없는 글자가 있습니다 (\\ / : * ? " < > |)'))));
+      return;
+    }
+    final path = p.join(parent, name);
+    try {
+      if (Directory(path).existsSync()) {
+        messenger.showSnackBar(SnackBar(content: Text(trf('이미 있는 폴더입니다: {0}', [name]))));
+      } else {
+        Directory(path).createSync();
+      }
+      _open(path);
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(trf('폴더를 만들 수 없습니다: {0}', [e]))));
+    }
+  }
+
   static String _size(int b) {
     if (b >= 1 << 30) return '${(b / (1 << 30)).toStringAsFixed(1)}GB';
     if (b >= 1 << 20) return '${(b / (1 << 20)).toStringAsFixed(1)}MB';
@@ -126,7 +151,14 @@ class _FileBrowserState extends State<_FileBrowser> {
         appBar: AppBar(
           title: Text(widget.title),
           actions: [
-            if (widget.folder)
+            if (widget.folder) ...[
+              // 지금 보고 있는 폴더 아래에 새 폴더 (만든 뒤 그 폴더로 들어간다)
+              OutlinedButton.icon(
+                onPressed: dir == null ? null : () => _makeFolder(dir),
+                icon: const Icon(Icons.create_new_folder_outlined, size: 18),
+                label: Text(tr('폴더 만들기')),
+              ),
+              const SizedBox(width: 8),
               Padding(
                 padding: const EdgeInsets.only(right: 8),
                 child: FilledButton.icon(
@@ -134,8 +166,8 @@ class _FileBrowserState extends State<_FileBrowser> {
                   icon: const Icon(Icons.check, size: 18),
                   label: Text(tr('이 폴더 선택')),
                 ),
-              )
-            else ...[
+              ),
+            ] else ...[
               if (_files.isNotEmpty)
                 TextButton(
                   onPressed: () => setState(() {
