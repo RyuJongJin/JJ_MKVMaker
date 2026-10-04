@@ -134,15 +134,30 @@ void main() {
     await settle(tester, () => find.text('inner.txt').evaluate().isNotEmpty);
     expect(find.text('inner.txt'), findsOneWidget);
 
-    // Total Commander: [폴더] · <DIR> · 확장자 칸
+    // 이 배치에도 복사 · 이동: 길게 눌러 [복사] 로 담고 → 다른 폴더를 골라 [붙여넣기]
+    await tester.longPress(find.text('inner.txt'));
+    await tester.pumpAndSettle();
+    expect(find.text('다른 창으로 복사'), findsNothing);
+    await tester.tap(find.text('복사').last);
+    await tester.pumpAndSettle();
     await act(tester, () => tester.tap(find.text('..')));
     await settle(tester, () => find.text('doc.txt').evaluate().isNotEmpty);
+    await act(tester, () => tester.tap(find.text('붙여넣기')));
+    await tester.pumpAndSettle();
+    await act(tester, () => tester.tap(find.widgetWithText(FilledButton, '복사')));
+    await settle(tester, () => File(p.join(left, 'inner.txt')).existsSync() && find.byType(LinearProgressIndicator).evaluate().isEmpty);
+    expect(File(p.join(left, 'inner.txt')).readAsStringSync(), 'inner');
+    expect(File(p.join(left, 'sub', 'inner.txt')).existsSync(), isTrue); // 복사이므로 원본은 그대로
+    await settle(tester, () => find.text('inner.txt').evaluate().isNotEmpty);
+    expect(find.text('inner.txt'), findsOneWidget); // 목록에 바로 보임
+
+    // Total Commander: [폴더] · <DIR> · 확장자 칸
     await c.updateSettings((s) => s.explorerStyle = 'totalcmd');
     await settle(tester, () => find.text('[sub]').evaluate().length == 2);
     expect(find.text('[sub]'), findsNWidgets(2));
     expect(find.text('<DIR>'), findsOneWidget);
     expect(find.text('doc'), findsOneWidget); // 확장자를 뺀 이름
-    expect(find.text('txt'), findsOneWidget); // 확장자 칸
+    expect(find.text('txt'), findsNWidgets(2)); // 확장자 칸 (doc.txt · 붙여넣은 inner.txt)
     expect(find.text('확장자'), findsOneWidget);
   });
 
@@ -180,7 +195,9 @@ void main() {
 
   testWidgets('창 배치: 한 창 · 버튼 줄 숨김, 버튼 구성: 버튼 빼기 → 설정에 저장', (tester) async {
     await open(tester);
-    await tester.tap(find.text('창 배치').first);
+    await tester.tap(find.byTooltip('창 배치 · 버튼 구성'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('창 배치').last);
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(ChoiceChip, '한 창'));
     await tester.pump();

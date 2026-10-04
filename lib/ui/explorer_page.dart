@@ -62,6 +62,7 @@ enum ExplorerButton {
   rename(Icons.drive_file_rename_outline, '이름 변경'),
   copy(Icons.copy_outlined, '복사'),
   move(Icons.drive_file_move_outline, '이동'),
+  paste(Icons.content_paste, '붙여넣기'),
   delete(Icons.delete_outline, '삭제'),
   search(Icons.search, '찾기'),
   sort(Icons.sort, '정렬 기준'),
@@ -387,6 +388,11 @@ class _ExplorerPageState extends State<ExplorerPage> {
       ('rename', Icons.drive_file_rename_outline, tr('이름 변경')),
       if (dual) ('copy', Icons.copy_outlined, tr('다른 창으로 복사')),
       if (dual) ('move', Icons.drive_file_move_outline, tr('다른 창으로 이동')),
+      // 어느 배치에서나: 담아 두었다가 원하는 폴더에서 붙여넣기
+      ('clipCopy', Icons.content_copy, dual ? tr('복사 (붙여넣기로)') : tr('복사')),
+      ('clipMove', Icons.content_cut, dual ? tr('이동 (붙여넣기로)') : tr('이동')),
+      if (_clip.isNotEmpty)
+        ('paste', Icons.content_paste, trf('{0} 에 붙여넣기 ({1}개)', [p.basename(e.isDir ? e.path : p.dirname(e.path)), _clip.length])),
       ('delete', Icons.delete_outline, tr('삭제')),
       if (!Platform.isAndroid || e.isDir) ('reveal', Icons.folder_outlined, tr('파일 관리자에서 보기')),
       ('info', Icons.info_outline, tr('정보')),
@@ -427,6 +433,12 @@ class _ExplorerPageState extends State<ExplorerPage> {
         await _transfer(pane, [e.path], move: false);
       case 'move':
         await _transfer(pane, [e.path], move: true);
+      case 'clipCopy':
+        _toClipboard(pane.marked.contains(e.path) ? pane.marked.toList() : [e.path], move: false);
+      case 'clipMove':
+        _toClipboard(pane.marked.contains(e.path) ? pane.marked.toList() : [e.path], move: true);
+      case 'paste':
+        await _paste(pane, e.isDir ? e.path : p.dirname(e.path));
       case 'delete':
         await _delete(pane, [e.path]);
       case 'reveal':
@@ -513,6 +525,8 @@ class _ExplorerPageState extends State<ExplorerPage> {
         await _transfer(pane, _targets(pane), move: false);
       case ExplorerButton.move:
         await _transfer(pane, _targets(pane), move: true);
+      case ExplorerButton.paste:
+        await _paste(pane, pane.current);
       case ExplorerButton.delete:
         await _delete(pane, _targets(pane));
       case ExplorerButton.search:
@@ -623,17 +637,50 @@ class _ExplorerPageState extends State<ExplorerPage> {
   }
 
   /// 다른 창의 지금 폴더로 복사 · 이동 (진행 창 · 취소)
+  /// 복사 · 이동 버튼: 두 창이면 다른 창의 지금 폴더로, 그 밖의 배치는 담아 두기 (붙여넣기로)
   Future<void> _transfer(_Pane pane, List<String> sources, {required bool move}) async {
     final other = _other;
     if (other == null) {
-      _snack(tr('복사 · 이동은 두 창에서 씁니다 (창 배치 > 두 창).'));
+      _toClipboard(sources, move: move);
       return;
     }
+    await _runTransfer(pane, sources, other.current, move: move);
+  }
+
+  /// 복사 · 이동할 항목 (붙여넣기 전까지 담아 둠)
+  List<String> _clip = [];
+  bool _clipMove = false;
+
+  void _toClipboard(List<String> sources, {required bool move}) {
     if (sources.isEmpty) {
       _snack(tr('복사 · 이동할 항목을 고르세요 (누르거나 오른쪽 동그라미로 표시).'));
       return;
     }
-    final dest = other.current;
+    setState(() {
+      _clip = [...sources];
+      _clipMove = move;
+    });
+    _snack(trf('{0}개 항목을 담았습니다. 넣을 폴더에서 [붙여넣기] 를 누르세요 ({1}).',
+        [sources.length, move ? tr('이동') : tr('복사')]));
+  }
+
+  Future<void> _paste(_Pane pane, String dest) async {
+    if (_clip.isEmpty) {
+      _snack(tr('붙여넣을 항목이 없습니다. 먼저 [복사] · [이동] 으로 담으세요.'));
+      return;
+    }
+    final items = _clip, move = _clipMove;
+    final done = await _runTransfer(pane, items, dest, move: move);
+    // 옮긴 것은 다시 붙여넣을 수 없으므로 비운다 (복사는 여러 곳에 붙여넣을 수 있게 남김)
+    if (done && move && mounted) setState(() => _clip = []);
+  }
+
+  /// [dest] 로 복사 · 이동 (확인 · 진행 창 · 취소). 끝까지 했으면 true.
+  Future<bool> _runTransfer(_Pane pane, List<String> sources, String dest, {required bool move}) async {
+    if (sources.isEmpty) {
+      _snack(tr('복사 · 이동할 항목을 고르세요 (누르거나 오른쪽 동그라미로 표시).'));
+      return false;
+    }
     final go = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -645,7 +692,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
         ],
       ),
     );
-    if (go != true || !mounted) return;
+    if (go != true || !mounted) return false;
     final ops = FileOps();
     final progress = ValueNotifier<(String, double)>(('', 0));
     showDialog<void>(
@@ -679,11 +726,18 @@ class _ExplorerPageState extends State<ExplorerPage> {
     if (mounted) Navigator.of(context).pop();
     pane.marked.clear();
     await _refreshAll([dest, ...sources.map(p.dirname)]);
-    other.expanded.add(dest);
-    other.changed();
+    // 넣은 폴더가 창의 지금 폴더면 펼쳐서 새 항목이 보이게
+    for (final x in _panes) {
+      if (samePath(x.current, dest)) {
+        x.expanded.add(dest);
+        await _load(x, dest, force: true);
+      }
+      x.changed();
+    }
     _snack(error != null
         ? trf('끝나지 못했습니다: {0}', [error])
         : trf('{0}개 항목을 {1}', [made.length, move ? tr('옮겼습니다.') : tr('복사했습니다.')]));
+    return error == null;
   }
 
   Future<String?> _askName(String title, String initial) {
@@ -1020,7 +1074,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
               vertical: side,
               onPressed: _button,
               enabled: (b) => switch (b) {
-                ExplorerButton.copy || ExplorerButton.move => dual,
+                ExplorerButton.paste => _clip.isNotEmpty,
                 _ => true,
               },
               selected: (b) => b == ExplorerButton.hidden && s.explorerShowHidden,
