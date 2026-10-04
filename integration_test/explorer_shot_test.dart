@@ -21,11 +21,16 @@ void main() {
     final c = AppController(PlatformServices.create());
     c.settings.explorerPaths = [env['JJ_SHOT_LEFT'] ?? Directory.current.path, env['JJ_SHOT_RIGHT'] ?? Directory.current.path];
     final key = GlobalKey();
-    for (final (name, size, orient) in [
-      ('wide', const Size(1600, 900), 'auto'),
-      ('tall', const Size(900, 1400), 'auto'),
+    for (final (name, size, layout, style) in [
+      ('wide', const Size(1600, 900), 'dual', 'xplore'),
+      ('tall', const Size(900, 1400), 'dual', 'xplore'),
+      ('windows', const Size(1600, 900), 'dual', 'windows'),
+      ('totalcmd', const Size(1600, 900), 'dual', 'totalcmd'),
+      ('split', const Size(1600, 900), 'split', 'windows'),
     ]) {
-      c.settings.explorerOrientation = orient;
+      c.settings
+        ..explorerLayout = layout
+        ..explorerStyle = style;
       tester.view.physicalSize = size;
       tester.view.devicePixelRatio = 1;
       await tester.runAsync(() => tester.pumpWidget(MaterialApp(

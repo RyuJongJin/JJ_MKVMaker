@@ -22,6 +22,7 @@ import 'language_settings.dart';
 import 'app_actions.dart';
 import 'cef_setup.dart';
 import 'cleanup_dialog.dart';
+import 'explorer_look.dart' show ExplorerStyle;
 import 'theme.dart';
 import '../l10n/tr.dart';
 
@@ -554,6 +555,47 @@ class _SettingsPageState extends State<SettingsPage> {
                     ),
                     ],
                   ]),
+                  _group('files', Icons.folder_copy_outlined, tr('파일 탐색기'), [
+                    ListTile(
+                      title: Text(tr('누르기')),
+                      subtitle: Text(tr('길게 누르기 · 오른쪽 클릭은 늘 기능 메뉴 (복사 · 이동 · 삭제 · 이름 변경 …). '
+                          'Ctrl + 클릭: 여러 개 고르기')),
+                      trailing: DropdownButton<String>(
+                        value: s.explorerClick,
+                        items: [
+                          DropdownMenuItem(value: 'select', child: Text(tr('한 번: 선택 · 두 번: 실행 (기본)'))),
+                          DropdownMenuItem(value: 'open', child: Text(tr('한 번: 바로 실행'))),
+                        ],
+                        onChanged: (v) => c.updateSettings((x) => x.explorerClick = v!),
+                      ),
+                    ),
+                    ListTile(
+                      title: Text(tr('스타일')),
+                      subtitle: Text(tr('아이콘 · 목록 모양: X-plore (썸네일 · 두 줄) · Windows 탐색기 (컬러 아이콘 · 열) · '
+                          'Total Commander (촘촘한 목록 · [폴더])')),
+                      trailing: DropdownButton<String>(
+                        value: s.explorerStyle,
+                        items: [
+                          for (final st in ExplorerStyle.values)
+                            DropdownMenuItem(value: st.name, child: Text(tr(st.label))),
+                        ],
+                        onChanged: (v) => c.updateSettings((x) => x.explorerStyle = v!),
+                      ),
+                    ),
+                    ListTile(
+                      title: Text(tr('창 배치')),
+                      subtitle: Text(tr('파일 탐색기 위쪽 ⋮ 메뉴에서도 바꿀 수 있습니다 (좌우 · 위아래 · 버튼 줄 위치 · 버튼 구성)')),
+                      trailing: DropdownButton<String>(
+                        value: s.explorerLayout,
+                        items: [
+                          DropdownMenuItem(value: 'dual', child: Text(tr('두 창'))),
+                          DropdownMenuItem(value: 'split', child: Text(tr('폴더 + 파일 목록'))),
+                          DropdownMenuItem(value: 'single', child: Text(tr('한 창'))),
+                        ],
+                        onChanged: (v) => c.updateSettings((x) => x.explorerLayout = v!),
+                      ),
+                    ),
+                  ]),
                   _group('download', Icons.download_outlined, tr('다운로드'), [
                     if (desk)
                     SwitchListTile(
@@ -791,7 +833,7 @@ class _SettingsPageState extends State<SettingsPage> {
   final _groupKeys = <String, GlobalKey>{};
 
   static const _groupIds = [
-    'general', 'display', 'mkv', 'subtitle', 'play', 'browser', 'download', 'run', 'cleanup', 'about', //
+    'general', 'display', 'mkv', 'subtitle', 'play', 'browser', 'files', 'download', 'run', 'cleanup', 'about', //
   ];
 
   String _groupTitle(String id) => switch (id) {
@@ -801,6 +843,7 @@ class _SettingsPageState extends State<SettingsPage> {
         'subtitle' => tr('자막 (AI · 인터넷)'),
         'play' => tr('재생'),
         'browser' => tr('웹 브라우저'),
+        'files' => tr('파일 탐색기'),
         'download' => tr('다운로드'),
         'run' => tr('실행 · 종료'),
         'cleanup' => tr('저장 공간 정리'),

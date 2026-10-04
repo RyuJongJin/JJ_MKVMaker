@@ -13,6 +13,7 @@ import '../core/file_ops.dart';
 import '../core/playlist.dart' show isVideoFile;
 import '../platform/android/android_storage.dart';
 import 'app_actions.dart';
+import 'explorer_look.dart';
 import 'player_page.dart';
 import 'theme.dart';
 import '../l10n/tr.dart';
@@ -97,6 +98,9 @@ class _Pane extends ChangeNotifier {
   /// 목록 스크롤 (폴더로 이동하면 그 폴더가 보이게)
   final scroll = ScrollController();
 
+  /// "폴더 + 파일 목록" 배치의 오른쪽 파일 목록 스크롤
+  final listScroll = ScrollController();
+
   _Pane(this.root) : current = root;
 
   void changed() => notifyListeners();
@@ -104,16 +108,20 @@ class _Pane extends ChangeNotifier {
   @override
   void dispose() {
     scroll.dispose();
+    listScroll.dispose();
     super.dispose();
   }
 }
 
-/// 트리 목록의 한 줄
+/// 트리 · 목록의 한 줄
 class _Row {
   final FileEntry entry;
   final int depth;
   final bool isRoot;
-  const _Row(this.entry, this.depth, {this.isRoot = false});
+
+  /// 파일 목록 맨 위의 ".." (상위 폴더로)
+  final bool isUp;
+  const _Row(this.entry, this.depth, {this.isRoot = false, this.isUp = false});
 }
 
 class _ExplorerPageState extends State<ExplorerPage> {
@@ -228,21 +236,19 @@ class _ExplorerPageState extends State<ExplorerPage> {
       ..current = dir
       ..focused = dir;
     pane.changed();
+    if (pane.listScroll.hasClients) pane.listScroll.jumpTo(0);
     _reveal(pane, dir);
     if (remember) _remember(pane, dir);
   }
-
-  /// 목록 줄 높이
-  static const _rowHeight = 52.0;
 
   /// 그 항목이 목록 위쪽 1/4 쯤에 보이게 스크롤 (깊은 폴더로 가면 위쪽 폴더들의 다른 항목에 밀려 안 보이므로)
   void _reveal(_Pane pane, String path) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !pane.scroll.hasClients) return;
-      final i = _rows(pane).indexWhere((r) => samePath(r.entry.path, path));
+      final i = _rows(pane, foldersOnly: _split).indexWhere((r) => samePath(r.entry.path, path));
       if (i < 0) return;
       final pos = pane.scroll.position;
-      final want = (i * _rowHeight - pos.viewportDimension / 4).clamp(0.0, pos.maxScrollExtent);
+      final want = (i * _look.rowHeight - pos.viewportDimension / 4).clamp(0.0, pos.maxScrollExtent);
       pane.scroll.jumpTo(want);
     });
   }
@@ -258,13 +264,24 @@ class _ExplorerPageState extends State<ExplorerPage> {
     if (i >= 0) _active = i;
   }
 
-  List<_Row> _rows(_Pane pane) {
+  /// 지금 모양 (환경 설정 > 파일 탐색기 > 스타일)
+  ExplorerStyle get _look => ExplorerStyle.of(c.settings.explorerStyle);
+
+  /// 왼쪽 폴더 트리 + 오른쪽 파일 목록 배치
+  bool get _split => c.settings.explorerLayout == 'split';
+
+  /// 한 번 누르면 선택 · 두 번 누르면 열기 (아니면 한 번에 바로 열기)
+  bool get _selectMode => c.settings.explorerClick != 'open';
+
+  /// 트리 줄. [foldersOnly]: 폴더만 ("폴더 + 파일 목록" 배치의 왼쪽)
+  List<_Row> _rows(_Pane pane, {bool foldersOnly = false}) {
     final out = <_Row>[];
     final rootEntry = FileEntry(pane.root, isDir: true, modified: DateTime(0));
     out.add(_Row(rootEntry, 0, isRoot: true));
     void walk(String dir, int depth) {
       if (!pane.expanded.contains(dir)) return;
       for (final e in pane.cache[dir] ?? const <FileEntry>[]) {
+        if (foldersOnly && !e.isDir) continue;
         out.add(_Row(e, depth));
         if (e.isDir) walk(e.path, depth + 1);
       }
@@ -276,26 +293,71 @@ class _ExplorerPageState extends State<ExplorerPage> {
 
   // ───────── 누르기 ─────────
 
-  Future<void> _tap(_Pane pane, FileEntry e) async {
+  /// 한 번 누르기.
+  /// - 선택 (기본): 고르기만. 폴더는 그 폴더가 "지금 폴더" (오른쪽 파일 목록 · 새 폴더 등의 기준).
+  /// - 바로 열기: 열기 ([_onOpen]).
+  /// Ctrl 을 누른 채면 표시 (여러 개 고르기). 목록의 ".." 은 늘 상위 폴더로.
+  Future<void> _onTap(_Pane pane, _Row row, {bool list = false}) async {
+    final e = row.entry;
     setState(() => _active = _panes.indexOf(pane));
-    pane.focused = e.path;
-    if (e.isDir) {
-      if (pane.expanded.contains(e.path) && samePath(pane.current, e.path)) {
-        pane.expanded.remove(e.path); // 지금 폴더를 다시 누르면 접기
-        pane.current = p.dirname(e.path).length < pane.root.length ? pane.root : p.dirname(e.path);
-        pane.changed();
-      } else {
-        pane
-          ..expanded.add(e.path)
-          ..current = e.path;
-        await _load(pane, e.path);
-        _remember(pane, e.path);
-      }
+    if (row.isUp) {
+      await _goTo(pane, e.path);
       return;
     }
-    pane.current = p.dirname(e.path);
+    if (HardwareKeyboard.instance.isControlPressed && !row.isRoot) {
+      setState(() => pane.marked.contains(e.path) ? pane.marked.remove(e.path) : pane.marked.add(e.path));
+      return;
+    }
+    if (!_selectMode) return _onOpen(pane, row, list: list);
+    pane.focused = e.path;
+    if (e.isDir && !list) {
+      pane.current = e.path;
+      pane.changed();
+      await _load(pane, e.path);
+      if (pane.listScroll.hasClients) pane.listScroll.jumpTo(0);
+      _remember(pane, e.path);
+    } else {
+      if (!list) pane.current = p.dirname(e.path);
+      pane.changed();
+    }
+  }
+
+  /// 열기 (선택 모드는 두 번 누르기, 바로 열기 모드는 한 번 누르기):
+  /// 트리의 폴더는 펼치기 · 접기, 목록의 폴더는 들어가기 (왼쪽 트리도 따라감), 파일은 실행.
+  Future<void> _onOpen(_Pane pane, _Row row, {bool list = false}) async {
+    final e = row.entry;
+    setState(() => _active = _panes.indexOf(pane));
+    pane.focused = e.path;
+    if (row.isUp || (e.isDir && list)) {
+      await _goTo(pane, e.path);
+      return;
+    }
+    if (e.isDir) {
+      await _toggle(pane, e);
+      return;
+    }
+    if (!list) pane.current = p.dirname(e.path);
     pane.changed();
     await _open(e.path);
+  }
+
+  /// 트리 폴더 펼치기 · 접기 (› 화살표 · 열기)
+  Future<void> _toggle(_Pane pane, FileEntry e) async {
+    setState(() => _active = _panes.indexOf(pane));
+    if (pane.expanded.contains(e.path)) {
+      pane.expanded.remove(e.path);
+      // 접은 폴더 안이 지금 폴더였으면 접은 폴더로
+      if (isSameOrInside(pane.current, e.path)) pane.current = e.path;
+      pane.changed();
+      return;
+    }
+    pane
+      ..expanded.add(e.path)
+      ..current = e.path
+      ..focused = e.path;
+    await _load(pane, e.path);
+    if (pane.listScroll.hasClients) pane.listScroll.jumpTo(0);
+    _remember(pane, e.path);
   }
 
   /// 파일 열기 (기본 동작): 동영상은 내장 플레이어 (또는 확장자별 프로그램), 그 밖은 기본 연결 프로그램
@@ -762,15 +824,25 @@ class _ExplorerPageState extends State<ExplorerPage> {
             content: SizedBox(
               width: 420,
               child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-                group(tr('창'), layout, [('dual', tr('두 창')), ('single', tr('한 창'))], (v) => layout = v),
-                if (layout == 'dual')
+                group(tr('창'), layout, [
+                  ('dual', tr('두 창')),
+                  ('split', tr('폴더 + 파일 목록')),
+                  ('single', tr('한 창')),
+                ], (v) => layout = v),
+                if (layout == 'split')
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6, left: 4),
+                    child: Text(tr('왼쪽에 폴더, 오른쪽에 왼쪽에서 고른 폴더의 파일들을 보여 줍니다 (Windows 탐색기처럼).'),
+                        style: const TextStyle(fontSize: 12, color: JjColors.textDim)),
+                  ),
+                if (layout != 'single')
                   group(tr('두 창 배치'), orient, [
                     ('auto', tr('화면 모양 따라')),
                     ('side', tr('좌우')),
                     ('stacked', tr('위아래')),
                   ], (v) => orient = v),
                 group(tr('기능 버튼 줄'), bar, [
-                  ('middle', layout == 'dual' ? tr('두 창 사이') : tr('왼쪽')),
+                  ('middle', layout != 'single' ? tr('두 창 사이') : tr('왼쪽')),
                   ('edge', tr('끝 (오른쪽 · 아래)')),
                   ('hidden', tr('숨김')),
                 ], (v) => bar = v),
@@ -918,46 +990,67 @@ class _ExplorerPageState extends State<ExplorerPage> {
         ]),
       );
 
+  /// 모양 · 배치가 바뀌면 (줄 높이 · 창 너비가 달라져) 보던 폴더가 밀려나므로 다시 그 폴더로
+  String _shape = '';
+
   Widget _body() {
     final s = c.settings;
+    final shape = '${s.explorerStyle}|${s.explorerLayout}|${s.explorerOrientation}|${s.explorerToolbar}';
+    if (_ready && shape != _shape) {
+      if (_shape.isNotEmpty) {
+        for (final pane in _panes) {
+          _reveal(pane, pane.current);
+        }
+      }
+      _shape = shape;
+    }
     final dual = s.explorerLayout == 'dual';
+    final split = _split;
     return LayoutBuilder(builder: (context, box) {
-      final side = !dual || switch (s.explorerOrientation) {
-        'side' => true,
-        'stacked' => false,
-        _ => box.maxWidth >= box.maxHeight,
-      };
-      final bar = s.explorerToolbar == 'hidden' ? null : _Toolbar(
-        buttons: ExplorerButton.fromSettings(s.explorerButtons),
-        vertical: side,
-        onPressed: _button,
-        enabled: (b) => switch (b) {
-          ExplorerButton.copy || ExplorerButton.move => dual,
-          _ => true,
-        },
-        selected: (b) => b == ExplorerButton.hidden && s.explorerShowHidden,
-      );
-      Widget pane(int i) => Expanded(child: _paneView(i));
+      final side = !(dual || split) ||
+          switch (s.explorerOrientation) {
+            'side' => true,
+            'stacked' => false,
+            _ => box.maxWidth >= box.maxHeight,
+          };
+      final bar = s.explorerToolbar == 'hidden'
+          ? null
+          : _Toolbar(
+              buttons: ExplorerButton.fromSettings(s.explorerButtons),
+              vertical: side,
+              onPressed: _button,
+              enabled: (b) => switch (b) {
+                ExplorerButton.copy || ExplorerButton.move => dual,
+                _ => true,
+              },
+              selected: (b) => b == ExplorerButton.hidden && s.explorerShowHidden,
+            );
+      final middle = bar != null && s.explorerToolbar == 'middle';
+      final edge = bar != null && s.explorerToolbar == 'edge';
       final children = <Widget>[
         if (dual) ...[
-          pane(0),
-          if (bar != null && s.explorerToolbar == 'middle') bar,
-          pane(1),
-          if (bar != null && s.explorerToolbar == 'edge') bar,
+          Expanded(child: _paneView(0)),
+          if (middle) bar,
+          Expanded(child: _paneView(1)),
+          if (edge) bar,
+        ] else if (split) ...[
+          // 왼쪽 폴더 트리 (좁게) · 오른쪽 그 폴더의 파일 목록
+          Expanded(flex: 2, child: _paneView(0, foldersOnly: true)),
+          if (middle) bar,
+          Expanded(flex: 3, child: _listView(_panes[0])),
+          if (edge) bar,
         ] else ...[
-          if (bar != null && s.explorerToolbar == 'middle') bar,
-          pane(0),
-          if (bar != null && s.explorerToolbar == 'edge') bar,
+          if (middle) bar,
+          Expanded(child: _paneView(0)),
+          if (edge) bar,
         ],
       ];
       return side ? Row(children: children) : Column(children: children);
     });
   }
 
-  Widget _paneView(int i) {
-    final pane = _panes[i];
+  Widget _frame(int i, List<Widget> children) {
     final active = i == _active;
-    final rows = _rows(pane);
     return GestureDetector(
       onTapDown: (_) {
         if (_active != i) setState(() => _active = i);
@@ -969,30 +1062,75 @@ class _ExplorerPageState extends State<ExplorerPage> {
           border: Border.all(color: active ? JjColors.accent : JjColors.border, width: active ? 1.5 : 1),
           borderRadius: BorderRadius.circular(6),
         ),
-        child: Column(children: [
-          _paneHeader(pane),
-          const Divider(height: 1),
-          Expanded(
-            child: ListView.builder(
-              controller: pane.scroll,
-              itemCount: rows.length,
-              itemExtent: _rowHeight,
-              itemBuilder: (_, k) => _rowView(pane, rows[k]),
-            ),
-          ),
-          if (pane.marked.isNotEmpty)
-            Container(
-              color: JjColors.panel,
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              child: Row(children: [
-                Text(trf('{0}개 표시함', [pane.marked.length]), style: const TextStyle(fontSize: 12)),
-                const Spacer(),
-                TextButton(onPressed: () => setState(pane.marked.clear), child: Text(tr('표시 지우기'))),
-              ]),
-            ),
-        ]),
+        child: Column(children: children),
       ),
     );
+  }
+
+  Widget _marksBar(_Pane pane) => Container(
+        color: JjColors.panel,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        child: Row(children: [
+          Text(trf('{0}개 표시함', [pane.marked.length]), style: const TextStyle(fontSize: 12)),
+          const Spacer(),
+          TextButton(onPressed: () => setState(pane.marked.clear), child: Text(tr('표시 지우기'))),
+        ]),
+      );
+
+  /// 트리 창 (저장 장치 고르기 + 트리)
+  Widget _paneView(int i, {bool foldersOnly = false}) {
+    final pane = _panes[i];
+    final rows = _rows(pane, foldersOnly: foldersOnly);
+    final look = _look;
+    return _frame(i, [
+      _paneHeader(pane),
+      const Divider(height: 1),
+      if (look.columns && !foldersOnly) ExplorerColumnsHeader(style: look),
+      Expanded(
+        child: ListView.builder(
+          controller: pane.scroll,
+          itemCount: rows.length,
+          itemExtent: look.rowHeight,
+          itemBuilder: (_, k) => _rowView(pane, rows[k], compact: foldersOnly),
+        ),
+      ),
+      if (pane.marked.isNotEmpty && !foldersOnly) _marksBar(pane),
+    ]);
+  }
+
+  /// "폴더 + 파일 목록" 배치의 오른쪽: 왼쪽 트리에서 고른 폴더의 내용 (맨 위 ".." = 상위 폴더)
+  Widget _listView(_Pane pane) {
+    final dir = pane.current;
+    final entries = pane.cache[dir] ?? const <FileEntry>[];
+    final up = !samePath(dir, pane.root);
+    final rows = [
+      if (up) _Row(FileEntry(p.dirname(dir), isDir: true, modified: DateTime(0)), 0, isUp: true),
+      for (final e in entries) _Row(e, 0),
+    ];
+    final look = _look;
+    return _frame(0, [
+      Container(
+        height: 40,
+        alignment: Alignment.centerLeft,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: Text(dir, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: JjColors.textDim)),
+      ),
+      const Divider(height: 1),
+      if (look.columns) ExplorerColumnsHeader(style: look),
+      Expanded(
+        child: pane.loading.contains(dir)
+            ? const Center(child: CircularProgressIndicator())
+            : entries.isEmpty && !up
+                ? Center(child: Text(tr('비어 있음'), style: const TextStyle(color: JjColors.textDim)))
+                : ListView.builder(
+                    controller: pane.listScroll,
+                    itemCount: rows.length,
+                    itemExtent: look.rowHeight,
+                    itemBuilder: (_, k) => _rowView(pane, rows[k], list: true),
+                  ),
+      ),
+      if (pane.marked.isNotEmpty) _marksBar(pane),
+    ]);
   }
 
   /// 창 위쪽: 저장 장치 고르기
@@ -1024,106 +1162,166 @@ class _ExplorerPageState extends State<ExplorerPage> {
         ),
       );
 
-  Widget _rowView(_Pane pane, _Row row) {
+  /// 한 줄. [list]: "폴더 + 파일 목록" 의 오른쪽 목록 (트리 아님). [compact]: 폴더 트리 (열 · 표시 버튼 없이)
+  Widget _rowView(_Pane pane, _Row row, {bool list = false, bool compact = false}) {
     final e = row.entry;
-    final isCurrent = e.isDir && samePath(pane.current, e.path);
-    final isFocused = pane.focused != null && samePath(pane.focused!, e.path);
+    final look = _look;
+    final isCurrent = e.isDir && !list && !row.isUp && samePath(pane.current, e.path);
+    final isFocused = !row.isUp && pane.focused != null && samePath(pane.focused!, e.path);
     final marked = pane.marked.contains(e.path);
-    final open = e.isDir && pane.expanded.contains(e.path);
+    final open = e.isDir && !list && pane.expanded.contains(e.path);
     final loading = pane.loading.contains(e.path);
-    final video = !e.isDir && isVideoFile(e.path);
-    final name = row.isRoot ? (_volumes.firstWhere((v) => samePath(v.$1, e.path), orElse: () => (e.path, e.path)).$2) : e.name;
+    final name = row.isUp
+        ? '..'
+        : row.isRoot
+            ? (_volumes.firstWhere((v) => samePath(v.$1, e.path), orElse: () => (e.path, e.path)).$2)
+            : look == ExplorerStyle.totalcmd
+                ? totalCmdName(e)
+                : e.name;
+    final dim = TextStyle(fontSize: look.fontSize - 2, color: JjColors.textDim);
+    final nameStyle = TextStyle(
+      fontSize: look.fontSize,
+      fontWeight: isCurrent || (look == ExplorerStyle.totalcmd && e.isDir) ? FontWeight.w600 : FontWeight.normal,
+      color: isCurrent ? JjColors.accent : null,
+    );
+
+    // 트리의 펼치기 화살표 (따로 누름)
+    Widget chevron() => SizedBox(
+          width: 20,
+          child: e.isDir && !list && !row.isUp
+              ? (loading
+                  ? const Center(
+                      child: SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5)))
+                  : InkResponse(
+                      radius: 16,
+                      onTap: () => _toggle(pane, e),
+                      child: Icon(open ? Icons.expand_more : Icons.chevron_right, size: 18, color: JjColors.textDim),
+                    ))
+              : null,
+        );
+
+    Widget nameCell() => Row(children: [
+          SizedBox(width: list ? 0 : row.depth * look.indent),
+          if (!list) chevron(),
+          SizedBox(
+            width: look.rich ? 56 : look.iconSize + 6,
+            height: look.rowHeight - 8,
+            child: Center(child: _icon(e, row.isRoot, open, up: row.isUp)),
+          ),
+          SizedBox(width: look.rich ? 8 : 6),
+          Expanded(
+            child: look.rich && !e.isDir && !row.isUp
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: nameStyle),
+                      Row(children: [
+                        Text('${formatSize(e.size)} · ${_date(e.modified)}', style: dim),
+                        if (isVideoFile(e.path)) ...[
+                          const SizedBox(width: 8),
+                          Flexible(child: _MetaText(c: c, path: e.path)),
+                        ],
+                      ]),
+                    ],
+                  )
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: nameStyle),
+                      if (look.rich && e.isDir && pane.errors[e.path] != null)
+                        Text(tr('읽을 수 없음'), style: dim.copyWith(color: Colors.redAccent)),
+                    ],
+                  ),
+          ),
+        ]);
+
+    final real = !row.isRoot && !row.isUp;
+    Widget cell(String t, int flex, {TextAlign align = TextAlign.start}) => Expanded(
+          flex: flex,
+          child: Text(t, style: dim, textAlign: align, maxLines: 1, overflow: TextOverflow.ellipsis),
+        );
+    final cells = !look.columns || compact || !real
+        ? <Widget>[Expanded(child: nameCell())]
+        : look == ExplorerStyle.windows
+            ? [
+                Expanded(flex: 6, child: nameCell()),
+                cell(_date(e.modified), 3),
+                cell(typeLabel(e), 2),
+                cell(e.isDir ? '' : formatSize(e.size), 2, align: TextAlign.end),
+              ]
+            : [
+                Expanded(flex: 6, child: nameCell()),
+                cell(e.isDir ? '' : e.ext, 1),
+                cell(e.isDir ? '<DIR>' : formatSize(e.size), 2, align: TextAlign.end),
+                const SizedBox(width: 8),
+                cell(_date(e.modified), 3),
+              ];
+
     return GestureDetector(
-      onSecondaryTapUp: (d) => _menu(pane, e, d.globalPosition),
-      onLongPressStart: (d) => _menu(pane, e, d.globalPosition),
+      onSecondaryTapUp: real ? (d) => _menu(pane, e, d.globalPosition) : null,
+      onLongPressStart: real ? (d) => _menu(pane, e, d.globalPosition) : null,
       child: Material(
         color: marked
             ? JjColors.accent.withValues(alpha: 0.18)
             : isFocused
                 ? JjColors.panel
                 : Colors.transparent,
-        child: InkWell(
-          onTap: () => _tap(pane, e),
-          child: Padding(
-            padding: EdgeInsets.only(left: 6.0 + row.depth * 16, right: 4),
-            child: Row(children: [
-              SizedBox(
-                width: 18,
-                child: e.isDir
-                    ? (loading
-                        ? const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5))
-                        : Icon(open ? Icons.expand_more : Icons.chevron_right, size: 18, color: JjColors.textDim))
-                    : null,
+        child: Row(children: [
+          Expanded(
+            child: InkWell(
+              onTap: () => _onTap(pane, row, list: list),
+              // 선택 모드: 두 번 누르면 열기 (바로 열기 모드는 두 번 누르기를 받지 않음 - 한 번 누르기가 늦어지지 않게)
+              onDoubleTap: _selectMode ? () => _onOpen(pane, row, list: list) : null,
+              child: Padding(
+                padding: const EdgeInsets.only(left: 6, right: 4),
+                child: Row(children: cells),
               ),
-              const SizedBox(width: 4),
-              SizedBox(width: 56, height: 44, child: Center(child: _icon(e, row.isRoot, open))),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                            fontWeight: isCurrent ? FontWeight.w600 : FontWeight.normal,
-                            color: isCurrent ? JjColors.accent : null)),
-                    if (!e.isDir)
-                      Row(children: [
-                        Text('${formatSize(e.size)} · ${_date(e.modified)}',
-                            style: const TextStyle(fontSize: 11, color: JjColors.textDim)),
-                        if (video) ...[
-                          const SizedBox(width: 8),
-                          Flexible(child: _MetaText(c: c, path: e.path)),
-                        ],
-                      ]),
-                    if (e.isDir && pane.errors[e.path] != null)
-                      Text(tr('읽을 수 없음'), style: const TextStyle(fontSize: 11, color: Colors.redAccent)),
-                  ],
-                ),
-              ),
-              if (!row.isRoot)
-                IconButton(
-                  tooltip: marked ? tr('표시 지우기') : tr('표시 (여러 개 고르기)'),
-                  visualDensity: VisualDensity.compact,
-                  icon: Icon(marked ? Icons.check_circle : Icons.radio_button_unchecked,
-                      size: 20, color: marked ? JjColors.accent : JjColors.textDim),
-                  onPressed: () => setState(() {
-                    _active = _panes.indexOf(pane);
-                    marked ? pane.marked.remove(e.path) : pane.marked.add(e.path);
-                  }),
-                ),
-            ]),
+            ),
           ),
-        ),
+          // 표시 동그라미는 두 번 누르기 영역 밖 (기다리지 않고 바로)
+          if (real && !compact)
+            SizedBox(
+              width: 36,
+              child: IconButton(
+                tooltip: marked ? tr('표시 지우기') : tr('표시 (여러 개 고르기)'),
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                icon: Icon(marked ? Icons.check_circle : Icons.radio_button_unchecked,
+                    size: look.rich ? 20 : 16, color: marked ? JjColors.accent : JjColors.textDim),
+                onPressed: () => setState(() {
+                  _active = _panes.indexOf(pane);
+                  marked ? pane.marked.remove(e.path) : pane.marked.add(e.path);
+                }),
+              ),
+            )
+          else if (!compact)
+            const SizedBox(width: 36),
+        ]),
       ),
     );
   }
 
-  Widget _icon(FileEntry e, bool isRoot, bool open) {
-    if (isRoot) return const Icon(Icons.sd_storage, color: JjColors.accent, size: 28);
-    if (e.isDir) return Icon(open ? Icons.folder_open : Icons.folder, color: Colors.amber, size: 30);
-    if (isVideoFile(e.path)) return _Thumb(c: c, entry: e);
-    const images = {'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'};
-    if (images.contains(e.ext)) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(3),
-        child: Image.file(File(e.path),
-            width: 56, height: 44, fit: BoxFit.cover, cacheWidth: 112,
-            errorBuilder: (_, _, _) => const Icon(Icons.image_outlined, size: 28)),
-      );
+  Widget _icon(FileEntry e, bool isRoot, bool open, {bool up = false}) {
+    final look = _look;
+    if (up) return Icon(Icons.arrow_upward, size: look.iconSize, color: JjColors.textDim);
+    if (isRoot) return Icon(Icons.sd_storage, color: JjColors.accent, size: look.iconSize - 2);
+    // X-plore: 동영상 썸네일 · 그림 미리 보기
+    if (look.rich && !e.isDir) {
+      if (isVideoFile(e.path)) return _Thumb(c: c, entry: e);
+      const images = {'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'};
+      if (images.contains(e.ext)) {
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(3),
+          child: Image.file(File(e.path),
+              width: 56, height: 44, fit: BoxFit.cover, cacheWidth: 112,
+              errorBuilder: (_, _, _) => const Icon(Icons.image_outlined, size: 28)),
+        );
+      }
     }
-    final icon = switch (e.ext) {
-      'srt' || 'ass' || 'ssa' || 'smi' || 'sami' || 'vtt' => Icons.subtitles_outlined,
-      'mp3' || 'm4a' || 'flac' || 'wav' || 'ogg' || 'aac' || 'opus' => Icons.audiotrack_outlined,
-      'pdf' => Icons.picture_as_pdf_outlined,
-      'zip' || '7z' || 'rar' || 'tar' || 'gz' => Icons.folder_zip_outlined,
-      'apk' => Icons.android,
-      'txt' || 'log' || 'md' || 'json' || 'xml' => Icons.description_outlined,
-      _ => Icons.insert_drive_file_outlined,
-    };
-    return Icon(icon, size: 28, color: JjColors.textDim);
+    final (icon, color) = fileIcon(look, e, open: open);
+    return Icon(icon, size: look.rich && !e.isDir ? 28 : look.iconSize, color: color);
   }
 }
 

@@ -53,19 +53,27 @@ void main() {
     await settle(tester, () => find.text('doc.txt').evaluate().isNotEmpty);
   }
 
-  testWidgets('두 창: 폴더 펼치기 · 파일 누르면 기본 앱 · 길게 눌러 다른 앱으로 · 다른 창으로 복사', (tester) async {
+  testWidgets('두 창 (선택 모드): 한 번 = 선택 · 화살표 = 펼치기 · 두 번 = 실행 · 길게 = 메뉴 · 다른 창으로 복사', (tester) async {
     await open(tester);
     // 두 창 + 가운데 버튼 줄
     expect(find.text('상위 폴더'), findsOneWidget);
     expect(find.text('doc.txt'), findsOneWidget);
 
-    // 폴더를 누르면 그 자리에서 펼친다
+    // 폴더를 한 번 누르면 고르기만 (펼치지 않음)
     await act(tester, () => tester.tap(find.text('sub')));
+    await settle(tester, () => false, rounds: 15);
+    expect(find.text('inner.txt'), findsNothing);
+    // › 화살표로 펼친다
+    await act(tester, () => tester.tap(chevronOf('sub')));
     await settle(tester, () => find.text('inner.txt').evaluate().isNotEmpty);
     expect(find.text('inner.txt'), findsOneWidget);
 
-    // 파일 (동영상 아님) 을 누르면 기본 앱으로
+    // 파일을 한 번 누르면 고르기만 (실행 안 함)
     await act(tester, () => tester.tap(find.text('doc.txt')));
+    await settle(tester, () => false, rounds: 15);
+    expect(shell.opened, isEmpty);
+    // 두 번 누르면 기본 앱으로 실행
+    await doubleTap(tester, find.text('doc.txt'));
     await settle(tester, () => shell.opened.isNotEmpty);
     expect(shell.opened.last, (p.join(left, 'doc.txt'), false));
 
@@ -73,13 +81,14 @@ void main() {
     await tester.longPress(find.text('doc.txt'));
     await tester.pumpAndSettle();
     expect(find.text('다른 창으로 복사'), findsOneWidget);
+    expect(find.text('삭제'), findsWidgets);
     await act(tester, () => tester.tap(find.text('다른 앱으로 열기')));
     await settle(tester, () => shell.opened.length == 2);
     expect(shell.opened.last, (p.join(left, 'doc.txt'), true));
 
     // doc.txt 를 고른 채 [복사] → 확인 → 오른쪽 창 폴더에 생긴다
     await act(tester, () => tester.tap(find.text('doc.txt')));
-    await tester.pump();
+    await settle(tester, () => false, rounds: 15);
     await act(tester, () => tester.tap(find.text('복사').first));
     await tester.pumpAndSettle();
     await act(tester, () => tester.tap(find.widgetWithText(FilledButton, '복사')));
@@ -88,11 +97,61 @@ void main() {
     expect(File(p.join(left, 'doc.txt')).existsSync(), isTrue);
   });
 
+  testWidgets('바로 실행 모드: 폴더를 누르면 펼치고, 파일을 누르면 바로 실행', (tester) async {
+    c.settings.explorerClick = 'open';
+    await open(tester);
+    await act(tester, () => tester.tap(find.text('sub')));
+    await settle(tester, () => find.text('inner.txt').evaluate().isNotEmpty);
+    expect(find.text('inner.txt'), findsOneWidget);
+    await act(tester, () => tester.tap(find.text('doc.txt')));
+    await settle(tester, () => shell.opened.isNotEmpty);
+    expect(shell.opened.single, (p.join(left, 'doc.txt'), false));
+  });
+
+  testWidgets('폴더 + 파일 목록 배치 · Windows 탐색기 / Total Commander 스타일', (tester) async {
+    c.settings
+      ..explorerLayout = 'split'
+      ..explorerStyle = 'windows';
+    await open(tester);
+    // 왼쪽 트리는 폴더만, 오른쪽 목록은 고른 폴더 (left) 의 내용
+    expect(find.text('sub'), findsNWidgets(2)); // 트리 + 목록
+    expect(find.text('doc.txt'), findsOneWidget); // 목록에만
+    expect(find.text('수정한 날짜'), findsOneWidget); // Windows 탐색기 열 머리
+    expect(find.text('TXT 파일'), findsOneWidget);
+    expect(find.text('상위 폴더'), findsOneWidget); // 버튼 줄은 두 창 사이
+
+    // 왼쪽 트리에서 sub 를 고르면 오른쪽 목록이 그 폴더로
+    await act(tester, () => tester.tap(find.text('sub').first));
+    await settle(tester, () => find.text('inner.txt').evaluate().isNotEmpty);
+    expect(find.text('inner.txt'), findsOneWidget);
+    expect(find.text('doc.txt'), findsNothing);
+    // 목록의 ".." 을 누르면 상위 폴더로
+    await act(tester, () => tester.tap(find.text('..')));
+    await settle(tester, () => find.text('doc.txt').evaluate().isNotEmpty);
+    expect(find.text('doc.txt'), findsOneWidget);
+    // 목록의 폴더를 두 번 누르면 들어간다
+    await doubleTap(tester, find.text('sub').last);
+    await settle(tester, () => find.text('inner.txt').evaluate().isNotEmpty);
+    expect(find.text('inner.txt'), findsOneWidget);
+
+    // Total Commander: [폴더] · <DIR> · 확장자 칸
+    await act(tester, () => tester.tap(find.text('..')));
+    await settle(tester, () => find.text('doc.txt').evaluate().isNotEmpty);
+    await c.updateSettings((s) => s.explorerStyle = 'totalcmd');
+    await settle(tester, () => find.text('[sub]').evaluate().length == 2);
+    expect(find.text('[sub]'), findsNWidgets(2));
+    expect(find.text('<DIR>'), findsOneWidget);
+    expect(find.text('doc'), findsOneWidget); // 확장자를 뺀 이름
+    expect(find.text('txt'), findsOneWidget); // 확장자 칸
+    expect(find.text('확장자'), findsOneWidget);
+  });
+
   testWidgets('여러 개 표시 → 삭제 · 새 폴더 · 이름 변경', (tester) async {
     await open(tester);
     // 동그라미로 doc.txt · sub 표시 (반드시 이름으로 찾은 줄의 버튼만: 목록에는 시험 폴더 위쪽의 실제 폴더도 보인다)
     await act(tester, () => tester.tap(markOf('sub')));
     await act(tester, () => tester.tap(markOf('doc.txt')));
+    // 표시 버튼은 두 번 누르기를 기다리지 않고 바로
     expect(find.text('2개 표시함'), findsOneWidget);
     await act(tester, () => tester.tap(find.text('삭제').first));
     await tester.pumpAndSettle();
@@ -157,7 +216,7 @@ void main() {
 
 /// [name] 줄의 "표시" 동그라미 버튼
 Finder markOf(String name) => find.descendant(
-      of: find.ancestor(of: find.text(name), matching: find.byType(InkWell)).first,
+      of: find.ancestor(of: find.text(name), matching: find.byType(Material)).first,
       matching: find.byTooltip('표시 (여러 개 고르기)'),
     );
 
@@ -167,9 +226,25 @@ Future<void> act(WidgetTester tester, Future<void> Function() f) async {
   await tester.pump();
 }
 
+/// [name] 트리 줄의 › (펼치기) 화살표
+Finder chevronOf(String name) => find.descendant(
+      of: find.ancestor(of: find.text(name), matching: find.byType(InkWell)).first,
+      matching: find.byIcon(Icons.chevron_right),
+    );
+
+/// 두 번 누르기 (실제 비동기 구역에서: 그때 시작한 파일 작업이 테스트의 가짜 시간에 묶이지 않게)
+Future<void> doubleTap(WidgetTester tester, Finder f) async {
+  await tester.runAsync(() async {
+    await tester.tap(f);
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+    await tester.tap(f);
+  });
+  await tester.pump();
+}
+
 /// 실제 파일 작업 (비동기 IO) 이 끝나기를 기다리며 화면을 갱신
-Future<void> settle(WidgetTester tester, bool Function() done) async {
-  for (var i = 0; i < 100; i++) {
+Future<void> settle(WidgetTester tester, bool Function() done, {int rounds = 100}) async {
+  for (var i = 0; i < rounds; i++) {
     await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 30)));
     await tester.pump();
     if (done()) break;

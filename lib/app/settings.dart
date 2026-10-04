@@ -134,8 +134,15 @@ class AppSettings {
   bool webJavaScript = true;
 
   // ── 파일 탐색기 (X-plore 참고) ──
-  /// 창: 'dual' 두 창 (기본) · 'single' 한 창
+  /// 창: 'dual' 두 창 (기본) · 'split' 왼쪽 폴더 트리 + 오른쪽 그 폴더의 파일 목록 · 'single' 한 창
   String explorerLayout = 'dual';
+
+  /// 누르기: 'select' 한 번 = 선택 · 두 번 = 열기 (기본) / 'open' 한 번 = 바로 열기.
+  /// 길게 누르기 · 오른쪽 클릭은 늘 기능 메뉴.
+  String explorerClick = 'select';
+
+  /// 모양: 'xplore' (기본) · 'windows' Windows 탐색기 · 'totalcmd' Total Commander
+  String explorerStyle = 'xplore';
 
   /// 두 창 배치: 'auto' 화면 모양 따라 (가로로 넓으면 좌우, 세로로 길면 위아래) · 'side' 좌우 · 'stacked' 위아래
   String explorerOrientation = 'auto';
@@ -224,6 +231,8 @@ class AppSettings {
         'webTranslate': webTranslate,
         'webJavaScript': webJavaScript,
         'explorerLayout': explorerLayout,
+        'explorerClick': explorerClick,
+        'explorerStyle': explorerStyle,
         'explorerOrientation': explorerOrientation,
         'explorerToolbar': explorerToolbar,
         'explorerButtons': explorerButtons,
@@ -306,7 +315,9 @@ class AppSettings {
       ..externalBrowser = j['externalBrowser'] as String? ?? 'system'
       ..webTranslate = j['webTranslate'] as bool? ?? false
       ..webJavaScript = j['webJavaScript'] as bool? ?? true
-      ..explorerLayout = j['explorerLayout'] == 'single' ? 'single' : 'dual'
+      ..explorerLayout = const ['single', 'split'].contains(j['explorerLayout']) ? j['explorerLayout'] as String : 'dual'
+      ..explorerClick = j['explorerClick'] == 'open' ? 'open' : 'select'
+      ..explorerStyle = const ['windows', 'totalcmd'].contains(j['explorerStyle']) ? j['explorerStyle'] as String : 'xplore'
       ..explorerOrientation = const ['side', 'stacked'].contains(j['explorerOrientation'])
           ? j['explorerOrientation'] as String
           : 'auto'
