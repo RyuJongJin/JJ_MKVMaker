@@ -7,6 +7,7 @@ import '../core/languages.dart';
 import '../core/models.dart';
 import '../services/model_store.dart';
 import 'theme.dart';
+import '../l10n/tr.dart';
 
 /// AI 자막 만들기 설정 창
 /// [targets] 를 주면 그 동영상들만 (탐색기 "자막 만들기" 메뉴 · 여러 개 선택)
@@ -62,7 +63,7 @@ class _AiDialogState extends State<_AiDialog> {
   Widget _status(ModelSpec m) {
     final ok = _installed[m.id];
     if (ok == null) return const SizedBox();
-    return Text(ok ? '설치됨' : '처음 사용 시 내려받기 ${m.sizeLabel}',
+    return Text(ok ? tr('설치됨') : trf('처음 사용 시 내려받기 {0}', [m.sizeLabel]),
         style: TextStyle(fontSize: 11, color: ok ? JjColors.success : JjColors.textDim));
   }
 
@@ -70,8 +71,7 @@ class _AiDialogState extends State<_AiDialog> {
   Widget build(BuildContext context) {
     final extra = languages.where((l) => !_o.targets.contains(l)).toList();
     return AlertDialog(
-      title: Text('AI 자막 만들기${widget.thenBuild ? ' → MKV 만들기' : ''}'
-          '${widget.targetCount > 1 ? ' (동영상 ${widget.targetCount}개)' : ''}'),
+      title: Text(trf('AI 자막 만들기{0}' '{1}', [widget.thenBuild ? tr(' → MKV 만들기') : '', widget.targetCount > 1 ? trf(' (동영상 {0}개)', [widget.targetCount]) : ''])),
       content: SizedBox(
         width: 520,
         child: SingleChildScrollView(
@@ -79,22 +79,22 @@ class _AiDialogState extends State<_AiDialog> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('영상의 음성을 인식하고 선택한 언어로 번역합니다. 모든 처리는 이 ${Platform.isAndroid ? '기기' : 'PC'} 에서 이루어집니다.',
+              Text(trf('영상의 음성을 인식하고 선택한 언어로 번역합니다. 모든 처리는 이 {0} 에서 이루어집니다.', [Platform.isAndroid ? tr('기기') : 'PC']),
                   style: const TextStyle(fontSize: 12, color: JjColors.textDim)),
               const SizedBox(height: 16),
-              _label('원어 (영상 속 언어)'),
+              _label(tr('원어 (영상 속 언어)')),
               DropdownButton<Language>(
                 value: _o.source,
                 isExpanded: true,
                 items: [
-                  const DropdownMenuItem(value: undetermined, child: Text('자동 감지')),
+                  DropdownMenuItem(value: undetermined, child: Text(tr('자동 감지'))),
                   for (final l in languages)
                     DropdownMenuItem(value: l, child: Text('${l.name} (${l.code})')),
                 ],
                 onChanged: (l) => setState(() => _o = _o.copyWith(source: l)),
               ),
               const SizedBox(height: 16),
-              _label('만들 자막 언어 (파일명_언어코드.srt)'),
+              _label(tr('만들 자막 언어 (파일명_언어코드.srt)')),
               Wrap(
                 spacing: 6,
                 runSpacing: 6,
@@ -107,18 +107,18 @@ class _AiDialogState extends State<_AiDialog> {
                           : null,
                     ),
                   PopupMenuButton<Language>(
-                    tooltip: '언어 추가',
+                    tooltip: tr('언어 추가'),
                     itemBuilder: (_) => [
                       for (final l in extra)
                         PopupMenuItem(value: l, child: Text('${l.name} (${l.code})')),
                     ],
                     onSelected: (l) => setState(() => _o = _o.copyWith(targets: {..._o.targets, l})),
-                    child: const Chip(avatar: Icon(Icons.add, size: 16), label: Text('언어 추가')),
+                    child: Chip(avatar: Icon(Icons.add, size: 16), label: Text(tr('언어 추가'))),
                   ),
                 ],
               ),
               const SizedBox(height: 16),
-              _label('음성인식 모델'),
+              _label(tr('음성인식 모델')),
               RadioGroup<String>(
                 groupValue: _o.whisper.id,
                 onChanged: (id) => setState(() => _o =
@@ -135,7 +135,7 @@ class _AiDialogState extends State<_AiDialog> {
                 ]),
               ),
               Row(children: [
-                const Text('번역 모델: NLLB-200 (로컬)  ', style: TextStyle(fontSize: 13)),
+                Text(tr('번역 모델: NLLB-200 (로컬)  '), style: TextStyle(fontSize: 13)),
                 _status(nllbModel),
               ]),
               if (widget.videoCount > 1) ...[
@@ -145,22 +145,22 @@ class _AiDialogState extends State<_AiDialog> {
                   contentPadding: EdgeInsets.zero,
                   value: _all,
                   onChanged: (v) => setState(() => _all = v ?? false),
-                  title: Text('목록의 동영상 ${widget.videoCount}개 모두'),
+                  title: Text(trf('목록의 동영상 {0}개 모두', [widget.videoCount])),
                 ),
               ],
               const SizedBox(height: 8),
-              const Text('※ 시간이 오래 걸립니다 (영상 1시간 ≈ 음성인식 15~30분 + 언어당 번역 10~20분)',
+              Text(tr('※ 시간이 오래 걸립니다 (영상 1시간 ≈ 음성인식 15~30분 + 언어당 번역 10~20분)'),
                   style: TextStyle(fontSize: 11, color: JjColors.textDim)),
             ],
           ),
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('취소')),
+        TextButton(onPressed: () => Navigator.pop(context), child: Text(tr('취소'))),
         FilledButton.icon(
           onPressed: () => Navigator.pop(context, (_o, _all)),
           icon: const Icon(Icons.auto_awesome, size: 18),
-          label: const Text('시작'),
+          label: Text(tr('시작')),
         ),
       ],
     );

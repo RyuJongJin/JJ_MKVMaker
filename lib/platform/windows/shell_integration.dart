@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import '../../core/subtitle_detector.dart';
+import '../../l10n/tr.dart';
 
 /// 탐색기 오른쪽 클릭 메뉴 등록 (현재 사용자만, 관리자 권한 불필요)
 ///
@@ -10,9 +11,9 @@ import '../../core/subtitle_detector.dart';
 /// Windows 11 에서는 "더 많은 옵션 표시" 안에 나타난다.
 class ShellIntegration {
   static const _root = r'HKCU\Software\Classes\SystemFileAssociations';
-  static const _verbs = {
-    'JJMKVMaker.Play': ('JJ_MKVMaker 로 재생', '--play'),
-    'JJMKVMaker.Subtitle': ('JJ_MKVMaker 로 자막 만들기', '--subtitle'),
+  static final _verbs = {
+    'JJMKVMaker.Play': (tr('JJ_MKVMaker 로 재생'), '--play'),
+    'JJMKVMaker.Subtitle': (tr('JJ_MKVMaker 로 자막 만들기'), '--subtitle'),
   };
 
   final String exePath;

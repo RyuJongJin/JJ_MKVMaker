@@ -9,6 +9,7 @@ import '../core/download_detect.dart';
 import '../core/playlist.dart';
 import '../services/downloader.dart';
 import 'settings.dart';
+import '../l10n/tr.dart';
 
 /// 다운로드 목록 · 클립보드 감시 (플랫폼 무관)
 class DownloadManager extends ChangeNotifier {
@@ -144,7 +145,7 @@ class DownloadManager extends ChangeNotifier {
     if (link.kind == DownloadKind.video && s.ytExpandPlaylists && youtubePlaylistId(link.url) != null) {
       t
         ..expanding = true
-        ..title = '재생목록 불러오는 중…  ${link.url}';
+        ..title = trf('재생목록 불러오는 중…  {0}', [link.url]);
       notifyListeners();
       unawaited(_expand(t, backend));
       return t;
@@ -221,11 +222,11 @@ class DownloadManager extends ChangeNotifier {
         final name = t.title == t.source ? t.source : '${t.title} (${t.source})';
         switch (t.state) {
           case DownloadState.downloading when before != DownloadState.downloading:
-            log?.call('다운로드 시작: $name');
+            log?.call(trf('다운로드 시작: {0}', [name]));
           case DownloadState.done:
-            log?.call('다운로드 완료: $name${t.totalBytes == null ? '' : ' (${formatBytes(t.totalBytes!)})'}');
+            log?.call(trf('다운로드 완료: {0}{1}', [name, t.totalBytes == null ? '' : ' (${formatBytes(t.totalBytes!)})']));
           case DownloadState.failed:
-            log?.call('다운로드 실패: $name - ${t.error ?? ''}');
+            log?.call(trf('다운로드 실패: {0} - {1}', [name, t.error ?? '']));
           default:
             break;
         }

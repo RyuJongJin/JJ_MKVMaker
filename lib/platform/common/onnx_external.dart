@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
+import '../../l10n/tr.dart';
 
 import 'package:path/path.dart' as p;
 
@@ -426,10 +427,10 @@ class _Rewriter {
           valStart = pos + n;
           valLen = l;
         default:
-          throw FormatException('지원하지 않는 protobuf 형식 (wire type $wt, 위치 $keyStart)');
+          throw FormatException(trf('지원하지 않는 protobuf 형식 (wire type {0}, 위치 {1})', [wt, keyStart]));
       }
       final fieldEnd = valStart + valLen;
-      if (fieldEnd > end) throw FormatException('모델 파일이 잘렸습니다 (위치 $keyStart)');
+      if (fieldEnd > end) throw FormatException(trf('모델 파일이 잘렸습니다 (위치 {0})', [keyStart]));
       f(no, wt, keyStart, valStart, valLen, fieldEnd);
       pos = fieldEnd;
     }
@@ -445,13 +446,13 @@ class _Rewriter {
       if (b < 0x80) return (v, i + 1);
       shift += 7;
     }
-    throw FormatException('잘못된 varint (위치 $pos)');
+    throw FormatException(trf('잘못된 varint (위치 {0})', [pos]));
   }
 
   Uint8List _read(int pos, int len) {
     src.setPositionSync(pos);
     final b = src.readSync(len);
-    if (b.length != len) throw FormatException('모델 파일이 잘렸습니다 (위치 $pos)');
+    if (b.length != len) throw FormatException(trf('모델 파일이 잘렸습니다 (위치 {0})', [pos]));
     return b;
   }
 

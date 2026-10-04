@@ -86,6 +86,12 @@ class AppSettings {
   /// Android 화면 방향: 'landscape' 가로 고정 (기본) / 'portrait' 세로 고정 / 'auto' 기기 방향 따라
   String screenOrientation = 'landscape';
 
+  /// 화면 언어 (ko · en · ja · zh-Hans, 또는 더한 언어)
+  String uiLanguage = 'ko';
+
+  /// 더한 화면 언어 (AI 로 자동 번역한 사전이 설정 폴더 l10n 에 있음)
+  List<String> uiLanguagesAdded = [];
+
   /// 프로그램이 켜져 있을 때 탐색기에서 연 동영상 재생: 'same' 켜져 있는 창에서 / 'new' 새 재생 창
   String openFileWindow = 'same';
   String homeUrl = 'https://www.youtube.com/';
@@ -150,6 +156,8 @@ class AppSettings {
         'uiScaleDefault': uiScaleDefault,
         'openFileAction': openFileAction,
         'screenOrientation': screenOrientation,
+        'uiLanguage': uiLanguage,
+        'uiLanguagesAdded': uiLanguagesAdded,
         'openFileWindow': openFileWindow,
         'homeUrl': homeUrl,
         'browserEngine': browserEngine,
@@ -200,6 +208,8 @@ class AppSettings {
       ..uiScale = clampUiScale(j['uiScale'] as num?)
       ..uiScaleDefault = clampUiScale(j['uiScaleDefault'] as num?)
       ..openFileAction = j['openFileAction'] == 'add' ? 'add' : 'play'
+      ..uiLanguage = j['uiLanguage'] as String? ?? 'ko'
+      ..uiLanguagesAdded = [for (final x in (j['uiLanguagesAdded'] as List?) ?? const []) '$x']
       ..screenOrientation = const ['portrait', 'auto'].contains(j['screenOrientation'])
           ? j['screenOrientation'] as String
           : 'landscape'

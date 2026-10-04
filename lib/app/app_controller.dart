@@ -25,6 +25,7 @@ import '../services/model_store.dart';
 import '../services/platform_services.dart';
 import '../services/system_usage.dart';
 import 'settings.dart';
+import '../l10n/tr.dart';
 
 extension<T> on Set<T> {
   Set<T> ifEmpty(Set<T> other) => isEmpty ? other : this;
@@ -168,7 +169,7 @@ class AppController extends ChangeNotifier {
     }
     ffmpegVersion = await _tool.version();
     if (ffmpegVersion == null) {
-      _log('⚠ FFmpeg 를 찾을 수 없습니다. MKV 만들기를 사용할 수 없습니다.');
+      _log(tr('⚠ FFmpeg 를 찾을 수 없습니다. MKV 만들기를 사용할 수 없습니다.'));
       return;
     }
     encoders = await _tool.encoders();
@@ -176,8 +177,7 @@ class AppController extends ChangeNotifier {
       for (final c in VideoCodecChoice.values)
         if (c != VideoCodecChoice.copy && !isCodecAvailable(c)) c.label,
     ];
-    _log('FFmpeg 준비됨: $ffmpegVersion'
-        '${missing.isEmpty ? '' : ' ⚠ 사용할 수 없는 코덱: ${missing.join(', ')}'}');
+    _log(trf('FFmpeg 준비됨: {0}' '{1}', [ffmpegVersion, missing.isEmpty ? '' : trf(' ⚠ 사용할 수 없는 코덱: {0}', [missing.join(', ')])]));
   }
 
   bool isCodecAvailable(VideoCodecChoice c) =>
@@ -229,7 +229,7 @@ class AppController extends ChangeNotifier {
       if (videos.any((v) => p.equals(v.path, path))) continue;
       // jj_mkv 출력 폴더 안의 파일은 제외 (폴더째 넣을 때 만든 결과물이 다시 들어가지 않게)
       if (!allowOutputFolder && p.basename(p.dirname(path)) == outputFolderName) {
-        _log('건너뜀 (출력 폴더의 파일): ${p.basename(path)}');
+        _log(trf('건너뜀 (출력 폴더의 파일): {0}', [p.basename(path)]));
         continue;
       }
       final v = VideoItem(path);
@@ -325,7 +325,7 @@ class AppController extends ChangeNotifier {
       }
     } on MediaToolException catch (e) {
       v.message = e.message;
-      _log('분석 실패: ${v.fileName} - ${e.message}');
+      _log(trf('분석 실패: {0} - {1}', [v.fileName, e.message]));
     }
 
     // 같은 폴더의 자막 자동 추가 (기능 4)
@@ -336,7 +336,7 @@ class AppController extends ChangeNotifier {
     }
     final embeddedCount =
         v.subtitles.where((s) => s.kind == SubtitleKind.embedded).length;
-    _log('추가: ${v.fileName} (내장 자막 $embeddedCount개, 같은 폴더 자막 ${siblings.length}개)');
+    _log(trf('추가: {0} (내장 자막 {1}개, 같은 폴더 자막 {2}개)', [v.fileName, embeddedCount, siblings.length]));
     notifyListeners();
   }
 
@@ -397,7 +397,7 @@ class AppController extends ChangeNotifier {
     await addVideos(files);
     final n = videos.length - before;
     for (final v in videos.skip(before)) {
-      _log('받은 동영상을 편집 목록에 추가: ${v.fileName}');
+      _log(trf('받은 동영상을 편집 목록에 추가: {0}', [v.fileName]));
     }
     return n;
   }
@@ -406,21 +406,21 @@ class AppController extends ChangeNotifier {
   /// 옮긴 동영상은 목록에서 뺀다. 작업 중인 것은 옮기지 않는다. 반환: (옮긴 수, 못 옮긴 이유들)
   Future<(int, List<String>)> moveVideos(List<VideoItem> targets) async {
     final dest = settings.moveTargetDir;
-    if (dest == null || dest.isEmpty) return (0, ['이동할 폴더가 정해지지 않았습니다 (환경 설정 > 저장 위치)']);
+    if (dest == null || dest.isEmpty) return (0, [tr('이동할 폴더가 정해지지 않았습니다 (환경 설정 > 저장 위치)')]);
     var moved = 0;
     final errors = <String>[];
     try {
       await Directory(dest).create(recursive: true);
     } catch (e) {
-      return (0, ['이동할 폴더를 만들 수 없습니다: $dest ($e)']);
+      return (0, [trf('이동할 폴더를 만들 수 없습니다: {0} ({1})', [dest, e])]);
     }
     for (final v in List.of(targets)) {
       if (v.status == JobStatus.running) {
-        errors.add('${v.fileName}: 작업 중이라 옮기지 않았습니다');
+        errors.add(trf('{0}: 작업 중이라 옮기지 않았습니다', [v.fileName]));
         continue;
       }
       if (p.equals(v.directory, dest)) {
-        errors.add('${v.fileName}: 이미 이동 폴더에 있습니다');
+        errors.add(trf('{0}: 이미 이동 폴더에 있습니다', [v.fileName]));
         continue;
       }
       try {
@@ -437,10 +437,10 @@ class AppController extends ChangeNotifier {
           try {
             await moveFileInto(s, dest);
           } catch (e) {
-            _log('자막 이동 실패: ${p.basename(s)} ($e)');
+            _log(trf('자막 이동 실패: {0} ({1})', [p.basename(s), e]));
           }
         }
-        _log('이동: ${v.fileName} → $to${side.isEmpty ? '' : ' (자막 ${side.length}개 함께)'}');
+        _log(trf('이동: {0} → {1}{2}', [v.fileName, to, side.isEmpty ? '' : trf(' (자막 {0}개 함께)', [side.length])]));
         videos.remove(v);
         checked.remove(v);
         moved++;
@@ -601,8 +601,7 @@ class AppController extends ChangeNotifier {
       v.subtitles[i] = edited;
     }
     if (v.status == JobStatus.done) v.status = JobStatus.ready;
-    _log('자막 저장: ${p.basename(target)} ($charset, ${cues.length}개 줄)'
-        '${enc.lostChars > 0 ? ' ⚠ 표현할 수 없는 글자 ${enc.lostChars}개' : ''}');
+    _log(trf('자막 저장: {0} ({1}, {2}개 줄)' '{3}', [p.basename(target), charset, cues.length, enc.lostChars > 0 ? trf(' ⚠ 표현할 수 없는 글자 {0}개', [enc.lostChars]) : '']));
     notifyListeners();
     return (target, enc.lostChars);
   }
@@ -613,7 +612,7 @@ class AppController extends ChangeNotifier {
     final enc = encodeText(formatSrt(cues), charset);
     final path = await services.storage.saveAs(
         fileName: fileName, bytes: enc.bytes, initialDirectory: v.directory);
-    if (path != null) _log('다른 이름으로 저장: $path ($charset)');
+    if (path != null) _log(trf('다른 이름으로 저장: {0} ({1})', [path, charset]));
     return (path, enc.lostChars);
   }
 
@@ -664,7 +663,7 @@ class AppController extends ChangeNotifier {
       final done = Completer<void>();
       pendingJobs.add(label);
       _pendingRuns.add((job, done));
-      _log('대기열에 추가: $label (대기 ${pendingJobs.length}개)');
+      _log(trf('대기열에 추가: {0} (대기 {1}개)', [label, pendingJobs.length]));
       notifyListeners();
       return done.future;
     }
@@ -700,10 +699,10 @@ class AppController extends ChangeNotifier {
     _saveSettings();
     if (busy) {
       for (final v in targets) {
-        v.phase = 'AI 자막 대기 중';
+        v.phase = tr('AI 자막 대기 중');
       }
     }
-    final label = targets.length == 1 ? 'AI 자막: ${targets.first.fileName}' : 'AI 자막 ${targets.length}개';
+    final label = targets.length == 1 ? trf('AI 자막: {0}', [targets.first.fileName]) : trf('AI 자막 {0}개', [targets.length]);
     return _enqueue(label, () => _runAi(targets, opts));
   }
 
@@ -714,13 +713,13 @@ class AppController extends ChangeNotifier {
       for (final m in [opts.whisper, nllbModel]) {
         if (m == nllbModel && !opts.needsTranslation) continue;
         if (await services.models.isInstalled(m)) continue;
-        _log('모델 내려받는 중: ${m.label} (${m.sizeLabel})');
+        _log(trf('모델 내려받는 중: {0} ({1})', [m.label, m.sizeLabel]));
         await services.models.download(m,
             isCancelled: () => _aiCancelled,
             onProgress: (x) {
               for (final v in targets) {
                 v
-                  ..phase = '모델 내려받는 중 ${(x * 100).round()}%'
+                  ..phase = trf('모델 내려받는 중 {0}%', [(x * 100).round()])
                   ..progress = x
                   ..status = JobStatus.running;
               }
@@ -732,7 +731,7 @@ class AppController extends ChangeNotifier {
         await _generateOne(v, opts);
       }
     } catch (e) {
-      _log('AI 자막 중단: $e');
+      _log(trf('AI 자막 중단: {0}', [e]));
       for (final v in targets.where((v) => v.status == JobStatus.running)) {
         v
           ..status = JobStatus.failed
@@ -760,35 +759,35 @@ class AppController extends ChangeNotifier {
         'ai_${DateTime.now().microsecondsSinceEpoch}');
     await storage.ensureDirectory(tmp);
     final wav = p.join(tmp, 'audio.wav');
-    _log('AI 자막 시작: ${v.fileName}');
+    _log(trf('AI 자막 시작: {0}', [v.fileName]));
     try {
       if (!await storage.exists(v.path)) throw MediaToolException(missingFileMessage);
       // 2. 음성 추출 (전체의 5%)
       if (v.info?.ofType('audio').isEmpty ?? false) {
-        throw const MediaToolException('음성 트랙이 없습니다.');
+        throw MediaToolException(tr('음성 트랙이 없습니다.'));
       }
-      phase('음성 추출 중', 0);
+      phase(tr('음성 추출 중'), 0);
       await _tool.runFfmpeg(buildExtractAudioArgs(v.path, wav),
-          duration: v.info?.duration, onProgress: (x) => phase('음성 추출 중', x * 0.05));
+          duration: v.info?.duration, onProgress: (x) => phase(tr('음성 추출 중'), x * 0.05));
       if (_aiCancelled) throw const AiCancelled();
 
       // 3. 음성인식 (5% ~ 50%)
-      phase('음성인식 중', 0.05);
+      phase(tr('음성인식 중'), 0.05);
       final raw = await services.createRecognizer!().transcribe(
         wav,
         modelPath: await services.models.pathOf(opts.whisper),
         language: opts.source == undetermined ? 'auto' : whisperCode(opts.source),
-        onProgress: (x) => phase('음성인식 중 ${(x * 100).round()}%', 0.05 + x * 0.45),
+        onProgress: (x) => phase(trf('음성인식 중 {0}%', [(x * 100).round()]), 0.05 + x * 0.45),
       );
       final cues = cleanRecognized(raw);
-      if (cues.isEmpty) throw const MediaToolException('인식된 말이 없습니다.');
+      if (cues.isEmpty) throw MediaToolException(tr('인식된 말이 없습니다.'));
       if (_aiCancelled) throw const AiCancelled();
 
       // 4. 원어
       final src = opts.source != undetermined
           ? opts.source
           : detectLanguage(cues.map((c) => c.text).join(' '));
-      _log('음성인식 완료: ${cues.length}줄, 원어 ${src.name}(${src.code})');
+      _log(trf('음성인식 완료: {0}줄, 원어 {1}({2})', [cues.length, src.name, src.code]));
 
       // 5. 파일명_AI.srt (원본)
       await storage.ensureDirectory(outputDirFor(v.path));
@@ -806,16 +805,16 @@ class AppController extends ChangeNotifier {
           out = [for (final c in cues) c.copy()];
         } else {
           if (_translator == null) {
-            phase('번역 모델 불러오는 중', base);
+            phase(tr('번역 모델 불러오는 중'), base);
             _translator = services.createTranslator!();
             await _translator!.load(await services.models.folderOf(nllbModel));
           }
-          phase('${tgt.name} 번역 중', base);
+          phase(trf('{0} 번역 중', [tgt.name]), base);
           final texts = await _translator!.translate(
             [for (final c in cues) c.text.replaceAll('\n', ' ')],
             source: src.nllb,
             target: tgt.nllb,
-            onProgress: (x) => phase('${tgt.name} 번역 중 ${(x * 100).round()}%', base + span * x),
+            onProgress: (x) => phase(trf('{0} 번역 중 {1}%', [tgt.name, (x * 100).round()]), base + span * x),
           );
           out = [
             for (var k = 0; k < cues.length; k++)
@@ -824,27 +823,27 @@ class AppController extends ChangeNotifier {
         }
         final path = languageSubtitlePath(v.path, tgt);
         await storage.writeBytes(path, encodeText(formatSrt(out), 'UTF-8').bytes);
-        _addOrReplaceExternal(v, path, tgt, tgt.code == src.code ? 'AI 인식' : 'AI 번역');
-        _log('저장: ${p.basename(path)}');
+        _addOrReplaceExternal(v, path, tgt, tgt.code == src.code ? tr('AI 인식') : tr('AI 번역'));
+        _log(trf('저장: {0}', [p.basename(path)]));
       }
       v
         ..status = JobStatus.ready
         ..phase = null
         ..progress = 0;
-      _log('AI 자막 완료: ${v.fileName} → $outputFolderName\\${v.baseName}_AI.srt 외 ${langs.length}개');
+      _log(trf('AI 자막 완료: {0} → {1}\\{2}_AI.srt 외 {3}개', [v.fileName, outputFolderName, v.baseName, langs.length]));
     } on AiCancelled {
       v
         ..status = JobStatus.ready
         ..phase = null
         ..progress = 0;
       _aiCancelled = true;
-      _log('AI 자막 취소: ${v.fileName}');
+      _log(trf('AI 자막 취소: {0}', [v.fileName]));
     } catch (e) {
       v
         ..status = JobStatus.failed
         ..phase = null
         ..message = e is MediaToolException ? e.message : '$e';
-      _log('AI 자막 실패: ${v.fileName}\n${v.message}');
+      _log(trf('AI 자막 실패: {0}\n{1}', [v.fileName, v.message]));
     } finally {
       await storage.delete(wav);
       notifyListeners();
@@ -892,7 +891,7 @@ class AppController extends ChangeNotifier {
     final p0 = subtitleProvider;
     if (p0 == null) return const [];
     final r = await p0.search(q);
-    _log('자막 검색 (${p0.name}): "${q.title}"${q.season != null ? ' S${q.season}E${q.episode}' : ''} → ${r.length}개');
+    _log(trf('자막 검색 ({0}): "{1}"{2} → {3}개', [p0.name, q.title, q.season != null ? ' S${q.season}E${q.episode}' : '', r.length]));
     return r;
   }
 
@@ -917,7 +916,7 @@ class AppController extends ChangeNotifier {
         final bytes = await provider.download(r);
         final text = decodeText(bytes, detectCharset(bytes));
         final cues = parseSrt(text);
-        if (cues.isEmpty) throw const SubtitleProviderException('SRT 형식이 아니거나 비어 있습니다.');
+        if (cues.isEmpty) throw SubtitleProviderException(tr('SRT 형식이 아니거나 비어 있습니다.'));
         final name = nextFreeName('${v.baseName}_${r.language.code}.srt', used);
         used.add(name.toLowerCase());
         final path = p.join(dir, name);
@@ -934,10 +933,10 @@ class AppController extends ChangeNotifier {
           queuedTranslate = true; // 한 번만 (여러 언어를 받아도 첫 자막에서 번역)
           unawaited(translateSubtitle(v, entry, {translateTo}));
         }
-        _log('자막 받음: $name  ← ${r.release}');
+        _log(trf('자막 받음: {0}  ← {1}', [name, r.release]));
       } catch (e) {
-        _log('자막 받기 실패: ${r.release}\n$e');
-        if (e is SubtitleProviderException && e.message.contains('모두 사용')) break;
+        _log(trf('자막 받기 실패: {0}\n{1}', [r.release, e]));
+        if (e is SubtitleProviderException && e.quotaExceeded) break;
       }
       notifyListeners();
     }
@@ -952,9 +951,9 @@ class AppController extends ChangeNotifier {
   /// 원어는 자막의 언어 태그, 없으면 글자로 추정. 이 PC 안에서 NLLB 로 번역 (다른 작업 중이면 대기열로).
   Future<void> translateSubtitle(VideoItem v, SubtitleEntry s, Set<Language> targets) async {
     if (services.createTranslator == null || targets.isEmpty) return;
-    if (busy) v.phase = '자막 번역 대기 중';
+    if (busy) v.phase = tr('자막 번역 대기 중');
     notifyListeners();
-    return _enqueue('자막 번역: ${v.fileName} → ${targets.map((t) => t.code).join('/')}',
+    return _enqueue(trf('자막 번역: {0} → {1}', [v.fileName, targets.map((t) => t.code).join('/')]),
         () => _runTranslate(v, s, targets));
   }
 
@@ -968,26 +967,26 @@ class AppController extends ChangeNotifier {
       notifyListeners();
     }
 
-    Translator? tr;
+    Translator? translator;
     try {
-      phase('자막 불러오는 중', 0);
+      phase(tr('자막 불러오는 중'), 0);
       final cues = await loadCues(v, s);
-      if (cues.isEmpty) throw const MediaToolException('자막이 비어 있습니다.');
+      if (cues.isEmpty) throw MediaToolException(tr('자막이 비어 있습니다.'));
       final src = s.language != undetermined
           ? s.language
           : detectLanguage(cues.take(200).map((c) => c.text).join(' '));
-      if (src == undetermined) throw const MediaToolException('자막 언어를 알 수 없습니다. 자막 줄에서 언어를 먼저 고르세요.');
+      if (src == undetermined) throw MediaToolException(tr('자막 언어를 알 수 없습니다. 자막 줄에서 언어를 먼저 고르세요.'));
       final langs = targets.where((t) => t.code != src.code).toList();
-      if (langs.isEmpty) throw MediaToolException('원어(${src.name})와 같은 언어로는 번역하지 않습니다.');
+      if (langs.isEmpty) throw MediaToolException(trf('원어({0})와 같은 언어로는 번역하지 않습니다.', [src.name]));
 
       if (!await services.models.isInstalled(nllbModel)) {
-        _log('번역 모델 내려받는 중: ${nllbModel.sizeLabel}');
+        _log(trf('번역 모델 내려받는 중: {0}', [nllbModel.sizeLabel]));
         await services.models.download(nllbModel,
-            isCancelled: () => _aiCancelled, onProgress: (x) => phase('번역 모델 내려받는 중 ${(x * 100).round()}%', x * 0.2));
+            isCancelled: () => _aiCancelled, onProgress: (x) => phase(trf('번역 모델 내려받는 중 {0}%', [(x * 100).round()]), x * 0.2));
       }
-      phase('번역 모델 불러오는 중', 0.2);
-      tr = _translator = services.createTranslator!();
-      await tr.load(await services.models.folderOf(nllbModel));
+      phase(tr('번역 모델 불러오는 중'), 0.2);
+      translator = _translator = services.createTranslator!();
+      await translator.load(await services.models.folderOf(nllbModel));
 
       final dir = outputDirFor(v.path);
       await services.storage.ensureDirectory(dir);
@@ -1001,11 +1000,11 @@ class AppController extends ChangeNotifier {
         final tgt = langs[i];
         final base = 0.25 + 0.75 * i / langs.length;
         final span = 0.75 / langs.length;
-        final texts = await tr.translate(
+        final texts = await translator.translate(
           [for (final c in cues) c.text.replaceAll('\n', ' ')],
           source: src.nllb,
           target: tgt.nllb,
-          onProgress: (x) => phase('${src.name} → ${tgt.name} 번역 ${(x * 100).round()}%', base + span * x),
+          onProgress: (x) => phase(trf('{0} → {1} 번역 {2}%', [src.name, tgt.name, (x * 100).round()]), base + span * x),
         );
         final out = [
           for (var k = 0; k < cues.length; k++)
@@ -1017,8 +1016,8 @@ class AppController extends ChangeNotifier {
         final path = p.join(dir, name);
         await services.storage.writeBytes(path, encodeText(formatSrt(out), 'UTF-8').bytes);
         v.subtitles.add(SubtitleEntry.external(
-            path: path, language: tgt, charset: 'UTF-8', title: '${tgt.name} (AI 번역 ← ${src.code})'));
-        _log('자막 번역 저장: $name (${src.name} → ${tgt.name}, ${cues.length}줄)');
+            path: path, language: tgt, charset: 'UTF-8', title: trf('{0} (AI 번역 ← {1})', [tgt.name, src.code])));
+        _log(trf('자막 번역 저장: {0} ({1} → {2}, {3}줄)', [name, src.name, tgt.name, cues.length]));
       }
       v
         ..status = JobStatus.ready
@@ -1028,15 +1027,15 @@ class AppController extends ChangeNotifier {
       v
         ..status = JobStatus.ready
         ..phase = null;
-      _log('자막 번역 취소: ${v.fileName}');
+      _log(trf('자막 번역 취소: {0}', [v.fileName]));
     } catch (e) {
       v
         ..status = JobStatus.failed
         ..phase = null
         ..message = e is MediaToolException ? e.message : '$e';
-      _log('자막 번역 실패: ${v.fileName}\n${v.message}');
+      _log(trf('자막 번역 실패: {0}\n{1}', [v.fileName, v.message]));
     } finally {
-      await tr?.dispose();
+      await translator?.dispose();
       _translator = null;
       notifyListeners();
     }
@@ -1054,7 +1053,7 @@ class AppController extends ChangeNotifier {
     final program = settings.externalPlayers[ext];
     if (program != null && program.isNotEmpty) {
       await services.shell.openExternal(program, videos);
-      _log('외부 프로그램으로 재생: ${program == 'system' ? '기본 연결 프로그램' : p.basename(program)} ← ${videos.length}개');
+      _log(trf('외부 프로그램으로 재생: {0} ← {1}개', [program == 'system' ? tr('기본 연결 프로그램') : p.basename(program), videos.length]));
       return null;
     }
     if (videos.length > 1) {
@@ -1111,13 +1110,13 @@ class AppController extends ChangeNotifier {
   /// 목록의 MKV 만들기 (다른 작업 중이면 대기열로)
   Future<void> buildAll() async {
     if (ffmpegVersion == null) return;
-    return _enqueue('MKV 만들기', _runBuildAll);
+    return _enqueue(tr('MKV 만들기'), _runBuildAll);
   }
 
   /// 고른 동영상만 MKV 로 (이미 만든 것도 다시 만든다 - 자막이 바뀌었을 수 있으므로)
   Future<void> buildVideos(List<VideoItem> targets) async {
     if (ffmpegVersion == null || targets.isEmpty) return;
-    final label = targets.length == 1 ? 'MKV 만들기: ${targets.first.fileName}' : 'MKV 만들기 ${targets.length}개';
+    final label = targets.length == 1 ? trf('MKV 만들기: {0}', [targets.first.fileName]) : trf('MKV 만들기 {0}개', [targets.length]);
     return _enqueue(label, () => _runBuildAll(targets));
   }
 
@@ -1129,7 +1128,7 @@ class AppController extends ChangeNotifier {
           videos.where((v) => v.status != JobStatus.done).toList();
       if (queue.isEmpty) return;
       final limit = settings.maxParallelJobs <= 0 ? queue.length : settings.maxParallelJobs;
-      if (queue.length > 1) _log('MKV 만들기: ${queue.length}개, 동시에 ${limit.clamp(1, queue.length)}개씩');
+      if (queue.length > 1) _log(trf('MKV 만들기: {0}개, 동시에 {1}개씩', [queue.length, limit.clamp(1, queue.length)]));
       var next = 0;
       Future<void> worker() async {
         while (!_buildCancelled && next < queue.length) {
@@ -1139,7 +1138,7 @@ class AppController extends ChangeNotifier {
 
       await Future.wait([for (var i = 0; i < limit.clamp(1, queue.length); i++) worker()]);
       final ok = videos.where((v) => v.status == JobStatus.done).length;
-      _log('완료: 성공 $ok / 전체 ${videos.length}');
+      _log(trf('완료: 성공 {0} / 전체 {1}', [ok, videos.length]));
     } finally {
       notifyListeners();
     }
@@ -1152,8 +1151,7 @@ class AppController extends ChangeNotifier {
       ..progress = 0
       ..message = null;
     notifyListeners();
-    _log('시작: ${v.fileName} → $outputFolderName\\${p.basename(out)}'
-        '${encode.reencode ? ' [${encode.codec.label} · ${encode.resolution.label} · ${encode.quality.label}]' : ''}');
+    _log(trf('시작: {0} → {1}\\{2}' '{3}', [v.fileName, outputFolderName, p.basename(out), encode.reencode ? ' [${encode.codec.label} · ${encode.resolution.label} · ${encode.quality.label}]' : '']));
     final copies = <SubtitleEntry, String>{};
     var started = false; // FFmpeg 가 출력 파일을 쓰기 시작했는지
     try {
@@ -1161,8 +1159,7 @@ class AppController extends ChangeNotifier {
       // Android 의 FFmpeg (ffmpeg-kit) 에는 AV1 디코더가 없어 다시 인코딩할 수 없다 (원본 유지는 된다)
       final vcodec = v.info?.ofType('video').firstOrNull?.codec;
       if (Platform.isAndroid && encode.reencode && vcodec == 'av1') {
-        throw const MediaToolException('AV1 영상은 이 기기에서 다시 인코딩할 수 없습니다. '
-            '코덱을 "원본 유지" 로 바꿔 MKV 를 만드세요. (PC 판은 됩니다)');
+        throw MediaToolException(tr('AV1 영상은 이 기기에서 다시 인코딩할 수 없습니다. ' '코덱을 "원본 유지" 로 바꿔 MKV 를 만드세요. (PC 판은 됩니다)'));
       }
       await services.storage.ensureDirectory(outputDirFor(v.path));
       for (final s in v.subtitles.where((s) => s.enabled)) {
@@ -1181,7 +1178,7 @@ class AppController extends ChangeNotifier {
       v
         ..status = JobStatus.done
         ..outputPath = out;
-      _log('성공: ${p.basename(out)}');
+      _log(trf('성공: {0}', [p.basename(out)]));
     } catch (e) {
       final msg = e is MediaToolException
           ? e.message
@@ -1191,7 +1188,7 @@ class AppController extends ChangeNotifier {
       v
         ..status = JobStatus.failed
         ..message = msg;
-      _log('실패: ${v.fileName}\n$msg');
+      _log(trf('실패: {0}\n{1}', [v.fileName, msg]));
       // 만들다 만 파일은 지운다 (0 바이트 MKV 가 남지 않도록). 시작 전에 실패했으면 전에 만든 MKV 는 그대로 둔다.
       if (started) {
         try {
@@ -1211,11 +1208,11 @@ class AppController extends ChangeNotifier {
   bool _buildCancelled = false;
 
   /// 목록에 넣은 뒤 파일이 옮겨지거나 지워졌을 때
-  static const missingFileMessage = '동영상 파일이 없습니다 (옮겨졌거나 지워졌습니다). 목록에서 빼고 다시 추가하세요.';
+  static String get missingFileMessage => tr('동영상 파일이 없습니다 (옮겨졌거나 지워졌습니다). 목록에서 빼고 다시 추가하세요.');
 
   /// 지금 작업 중단 + 대기 중인 작업 모두 비우기
   void cancel() {
-    if (pendingJobs.isNotEmpty) _log('대기 중인 작업 ${pendingJobs.length}개 취소');
+    if (pendingJobs.isNotEmpty) _log(trf('대기 중인 작업 {0}개 취소', [pendingJobs.length]));
     pendingJobs.clear();
     for (final (_, done) in _pendingRuns) {
       done.complete();

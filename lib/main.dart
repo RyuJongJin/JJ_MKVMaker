@@ -38,6 +38,8 @@ import 'ui/player_page.dart';
 import 'ui/setup_dialog.dart';
 import 'ui/update_dialog.dart';
 import 'ui/theme.dart';
+import 'l10n/tr.dart';
+import 'app/i18n_controller.dart';
 
 /// 제목 표시줄 글: "JJ_MKVMaker v1.2.3"
 String appTitle = 'JJ_MKVMaker';
@@ -77,16 +79,18 @@ Future<void> main(List<String> args) async {
   // 지난 실행이 정상으로 끝났는지 (아니면 알려 주고 기록에 남긴다)
   final session = SessionMarker(p.join(dataDir, 'session.json'));
   final crashed = session.start();
-  controller.note('── 시작 $appTitle (${AppPaths.exeDir}) ──');
+  controller.note(trf('── 시작 {0} ({1}) ──', [appTitle, AppPaths.exeDir]));
   // 예전 구조 (한 폴더) 에서 Lib 구조로 바뀐 뒤 맨 위에 남은 예전 프로그램 파일 정리
   final cleaned = AppPaths.cleanupOldLayout();
-  if (cleaned.isNotEmpty) controller.note('예전 구조의 프로그램 파일 정리 (${cleaned.length}개): ${cleaned.join(', ')}');
+  if (cleaned.isNotEmpty) controller.note(trf('예전 구조의 프로그램 파일 정리 ({0}개): {1}', [cleaned.length, cleaned.join(', ')]));
   if (crashed != null) {
     String hm(DateTime t) => '${t.month}/${t.day} ${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
-    controller.note('⚠ 지난 실행이 정상적으로 끝나지 않았습니다 (시작 ${hm(crashed.$1)}, 마지막 확인 ${hm(crashed.$2)}). '
-        '그 전의 기록은 Logs 폴더의 app.log 에 있습니다.');
+    controller.note(trf('⚠ 지난 실행이 정상적으로 끝나지 않았습니다 (시작 {0}, 마지막 확인 {1}). ' '그 전의 기록은 Logs 폴더의 app.log 에 있습니다.', [hm(crashed.$1), hm(crashed.$2)]));
   }
   await controller.init();
+  // 화면 언어 (환경 설정 > 화면 언어)
+  i18n.init(controller, dataDir);
+  await i18n.apply(controller.settings.uiLanguage, save: false);
 
   final bookmarks = BookmarksController();
   await bookmarks.load();
@@ -116,8 +120,8 @@ Future<void> main(List<String> args) async {
       final pick = await showCloseChoice(ctx,
           running: [
             if (controller.currentJob != null) controller.currentJob!,
-            if (n > 0) '다운로드 $n개',
-          ].join(' · ').ifEmptyText('진행 중인 작업 없음'),
+            if (n > 0) trf('다운로드 {0}개', [n]),
+          ].join(' · ').ifEmptyText(tr('진행 중인 작업 없음')),
           hotkey: controller.settings.showHotkey);
       if (pick == null) return false;
       if (pick.$2) controller.updateSettings((x) => x.closeAction = pick.$1);
@@ -135,21 +139,21 @@ Future<void> main(List<String> args) async {
     final job = controller.currentJob;
     final wait = controller.pendingJobs.length;
     final steps = [
-      ExitStep(job == null ? '작업 확인 (진행 중인 작업 없음)' : '작업 중지: $job${wait > 0 ? ' · 대기 $wait개' : ''}',
+      ExitStep(job == null ? tr('작업 확인 (진행 중인 작업 없음)') : trf('작업 중지: {0}{1}', [job, wait > 0 ? trf(' · 대기 {0}개', [wait]) : '']),
           () async => controller.cancel()),
-      ExitStep('다운로드 정리 (yt-dlp · aria2 종료)', downloads.shutdown),
-      ExitStep('쓰레드 확인 (AI · 변환 작업이 멈출 때까지)', () async {
+      ExitStep(tr('다운로드 정리 (yt-dlp · aria2 종료)'), downloads.shutdown),
+      ExitStep(tr('쓰레드 확인 (AI · 변환 작업이 멈출 때까지)'), () async {
         while (controller.busy) {
           await Future<void>.delayed(const Duration(milliseconds: 100));
         }
       }),
-      ExitStep('동영상 목록 · 창 위치 저장', () async {
+      ExitStep(tr('동영상 목록 · 창 위치 저장'), () async {
         controller.stopVideoListShare();
         await memory.save();
-        controller.note('── 정상 종료 ──');
+        controller.note(tr('── 정상 종료 ──'));
         session.markClean();
       }),
-      ExitStep('창 종료', () async {}),
+      ExitStep(tr('창 종료'), () async {}),
     ];
     final ctx2 = navigatorKey.currentContext;
     if (ctx2 != null && ctx2.mounted) {
@@ -159,11 +163,11 @@ Future<void> main(List<String> args) async {
             try {
               await s.run();
             } finally {
-              ExitTrace.mark('끝: ${s.label}');
+              ExitTrace.mark(trf('끝: {0}', [s.label]));
             }
           }),
       ]);
-      ExitTrace.mark('종료 창 닫힘');
+      ExitTrace.mark(tr('종료 창 닫힘'));
     } else {
       for (final s in steps) {
         try {
@@ -192,10 +196,10 @@ Future<void> main(List<String> args) async {
 
   // 클립보드로 추가된 다운로드 알림 · 트레이 글
   downloads.onAdded.listen((t) => messengerKey.currentState
-      ?.showSnackBar(SnackBar(content: Text('다운로드 추가: ${t.source}'))));
+      ?.showSnackBar(SnackBar(content: Text(trf('다운로드 추가: {0}', [t.source])))));
   downloads.addListener(() {
     final n = downloads.downloadingCount;
-    services.shell.setTooltip(n > 0 ? 'JJ_MKVMaker - 다운로드 $n개' : 'JJ_MKVMaker');
+    services.shell.setTooltip(n > 0 ? trf('JJ_MKVMaker - 다운로드 {0}개', [n]) : 'JJ_MKVMaker');
   });
   // 다 받은 동영상 → 편집 목록 (설정에서 끌 수 있음)
   downloads.onFinished.listen((t) async {
@@ -206,7 +210,7 @@ Future<void> main(List<String> args) async {
     // MKV 만들기 목록으로 넘어갔으므로 다운로드 목록에서는 뺀다 (받은 파일은 그대로)
     downloads.dropFromList(t);
     if (n > 0) {
-      messengerKey.currentState?.showSnackBar(SnackBar(content: Text('동영상 목록에 추가: ${t.title}')));
+      messengerKey.currentState?.showSnackBar(SnackBar(content: Text(trf('동영상 목록에 추가: {0}', [t.title]))));
     }
   });
   downloads.setAutoAdd = (on) async {
@@ -217,7 +221,7 @@ Future<void> main(List<String> args) async {
   // 다시 준비하고 작업 기록에 남긴다. 바로 앞의 기록을 보면 무엇을 한 뒤에 풀렸는지 알 수 있다.
   Timer.periodic(const Duration(seconds: 3), (_) {
     if (ComGuard.repairIfNeeded()) {
-      controller.note('⚠ Windows COM 준비 상태가 풀려 있어 다시 준비했습니다 (브라우저 · 끌어다 놓기에 필요)');
+      controller.note(tr('⚠ Windows COM 준비 상태가 풀려 있어 다시 준비했습니다 (브라우저 · 끌어다 놓기에 필요)'));
     }
   });
   downloads.addToEditList = controller.addDownloaded;
@@ -274,9 +278,7 @@ Future<void> main(List<String> args) async {
     if (crashed != null) {
       messengerKey.currentState?.showSnackBar(SnackBar(
         duration: const Duration(seconds: 10),
-        content: Text('지난 실행이 정상적으로 끝나지 않았습니다 (마지막 확인 '
-            '${crashed.$2.hour.toString().padLeft(2, '0')}:${crashed.$2.minute.toString().padLeft(2, '0')}). '
-            '작업 기록에 남겨 두었습니다.'),
+        content: Text(trf('지난 실행이 정상적으로 끝나지 않았습니다 (마지막 확인 ' '{0}:{1}). ' '작업 기록에 남겨 두었습니다.', [crashed.$2.hour.toString().padLeft(2, '0'), crashed.$2.minute.toString().padLeft(2, '0')])),
       ));
     }
     // 시작 화면을 "웹 브라우저" 로 정했으면 브라우저를 연다 (MKV 화면은 그 아래에 있음)
@@ -310,7 +312,7 @@ Future<void> openFromOtherApp(
     for (final f in files)
       if (f['path'] == null) f['uri'] as String,
   ];
-  c.note('다른 앱에서 열기: ${files.map((f) => f['name'] ?? f['uri']).join(', ')}');
+  c.note(trf('다른 앱에서 열기: {0}', [files.map((f) => f['name'] ?? f['uri']).join(', ')]));
   // MKV 화면으로 돌아온 뒤 (재생 중이었다면 그 화면은 닫는다)
   navigatorKey.currentState?.popUntil((r) => r.isFirst);
   final ctx = navigatorKey.currentContext;
@@ -327,8 +329,8 @@ Future<void> openFromOtherApp(
     }
   } else if (uris.isNotEmpty) {
     // 파일 위치를 알려 주지 않는 앱: 재생만 (MKV 만들기 · 자막은 파일 고르기로 추가해야 함)
-    ScaffoldMessenger.maybeOf(ctx)?.showSnackBar(const SnackBar(
-        content: Text('파일 위치를 알 수 없어 재생만 합니다. MKV 를 만들려면 "동영상 추가" 로 고르세요.')));
+    ScaffoldMessenger.maybeOf(ctx)?.showSnackBar(SnackBar(
+        content: Text(tr('파일 위치를 알 수 없어 재생만 합니다. MKV 를 만들려면 "동영상 추가" 로 고르세요.'))));
     final create = c.services.createMediaPlayer;
     if (create != null) {
       await Navigator.of(ctx).push(MaterialPageRoute<void>(
@@ -350,7 +352,7 @@ extension on String {
 /// 종료 창에 보일 "바로 전 작업": 하던 작업, 없으면 마지막 작업 기록 (시각 표시는 뺀다)
 String lastWorkText(AppController c) {
   if (c.currentJob != null) return c.currentJob!;
-  if (c.logs.isEmpty) return '없음';
+  if (c.logs.isEmpty) return tr('없음');
   return c.logs.last.replaceFirst(RegExp(r'^\[[\d:]+\]\s*'), '').split('\n').first;
 }
 
@@ -361,8 +363,11 @@ Future<void> runAndroid(String dataDir) async {
   final services = PlatformServices.create();
   final logs = Directory(p.join(dataDir, 'Logs'))..createSync(recursive: true);
   final controller = AppController(services, settingsStore: SettingsStore())..logFile = p.join(logs.path, 'app.log');
-  controller.note('── 시작 $appTitle (Android) ──');
+  controller.note(trf('── 시작 {0} (Android) ──', [appTitle]));
   await controller.init();
+  // 화면 언어 (환경 설정 > 화면 언어)
+  i18n.init(controller, dataDir);
+  await i18n.apply(controller.settings.uiLanguage, save: false);
   await applyScreenOrientation(controller.settings.screenOrientation);
   final bookmarks = BookmarksController();
   await bookmarks.load();
@@ -377,7 +382,7 @@ Future<void> runAndroid(String dataDir) async {
     settings: () => controller.settings,
   );
   downloads.onAdded.listen((t) => messengerKey.currentState
-      ?.showSnackBar(SnackBar(content: Text('다운로드 추가: ${t.source}'))));
+      ?.showSnackBar(SnackBar(content: Text(trf('다운로드 추가: {0}', [t.source])))));
   // 다 받은 동영상 → 편집 목록 (설정에서 끌 수 있음)
   downloads.onFinished.listen((t) async {
     if (!controller.settings.addFinishedDownloads) return;
@@ -386,7 +391,7 @@ Future<void> runAndroid(String dataDir) async {
     final n = await controller.addDownloaded(files);
     downloads.dropFromList(t);
     if (n > 0) {
-      messengerKey.currentState?.showSnackBar(SnackBar(content: Text('동영상 목록에 추가: ${t.title}')));
+      messengerKey.currentState?.showSnackBar(SnackBar(content: Text(trf('동영상 목록에 추가: {0}', [t.title]))));
     }
   });
   downloads.setAutoAdd = (on) async {
@@ -429,8 +434,8 @@ Future<void> runAndroid(String dataDir) async {
     if (!await AndroidAccess.hasAllFiles()) {
       messengerKey.currentState?.showSnackBar(SnackBar(
         duration: const Duration(seconds: 20),
-        content: const Text('동영상을 고르고 MKV 를 만들려면 "모든 파일에 대한 접근" 권한이 필요합니다.'),
-        action: SnackBarAction(label: '허용', onPressed: AndroidAccess.request),
+        content: Text(tr('동영상을 고르고 MKV 를 만들려면 "모든 파일에 대한 접근" 권한이 필요합니다.')),
+        action: SnackBarAction(label: tr('허용'), onPressed: AndroidAccess.request),
       ));
     }
   });
@@ -448,11 +453,11 @@ Future<void> runAndroid(String dataDir) async {
         final ok = await showDialog<bool>(
           context: ctx,
           builder: (c) => AlertDialog(
-            title: const Text('종료'),
-            content: Text('진행 중인 작업이 있습니다: ${controller.currentJob ?? ''}\n중지하고 끝낼까요?'),
+            title: Text(tr('종료')),
+            content: Text(trf('진행 중인 작업이 있습니다: {0}\n중지하고 끝낼까요?', [controller.currentJob ?? ''])),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('취소')),
-              FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('종료')),
+              TextButton(onPressed: () => Navigator.pop(c, false), child: Text(tr('취소'))),
+              FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(tr('종료'))),
             ],
           ),
         );
@@ -460,7 +465,7 @@ Future<void> runAndroid(String dataDir) async {
       }
       controller.cancel();
       await downloads.shutdown();
-      controller.note('── 정상 종료 ──');
+      controller.note(tr('── 정상 종료 ──'));
       await services.shell.quit();
     },
   ));
@@ -476,6 +481,9 @@ Future<void> runSecondWindow(List<String> files, String dataDir) async {
   await WindowMemory(p.join(dataDir, 'window.json'), 'second').restoreAndWatch();
   final controller = AppController(PlatformServices.create());
   await controller.init();
+  // 화면 언어 (환경 설정 > 화면 언어)
+  i18n.init(controller, dataDir);
+  await i18n.apply(controller.settings.uiLanguage, save: false);
   controller.settings = await SettingsStore().load();
   final navigatorKey = GlobalKey<NavigatorState>();
   runApp(JjCapCutApp(controller: controller, navigatorKey: navigatorKey, onExit: () => exit(0)));

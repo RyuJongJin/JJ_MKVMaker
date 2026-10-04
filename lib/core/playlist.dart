@@ -2,6 +2,7 @@ import 'package:path/path.dart' as p;
 
 import 'output_paths.dart';
 import 'subtitle_detector.dart';
+import '../l10n/tr.dart';
 
 /// 동영상 하나를 재생할 때 재생 목록 만드는 방법
 enum PlaylistMode {
@@ -9,8 +10,12 @@ enum PlaylistMode {
   series('같은 시리즈 (번호만 다른 파일)'),
   folder('같은 폴더의 모든 동영상');
 
-  final String label;
-  const PlaylistMode(this.label);
+  /// 한국어 원문 (번역 사전의 열쇠)
+  final String koLabel;
+
+  /// 화면에 보일 이름 (화면 언어로)
+  String get label => tr(koLabel);
+  const PlaylistMode(this.koLabel);
 }
 
 bool isVideoFile(String path) =>

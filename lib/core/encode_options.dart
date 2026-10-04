@@ -1,4 +1,5 @@
 import 'models.dart';
+import '../l10n/tr.dart';
 
 /// 영상 코덱 (기본 목록: 별도 설치·설정 없이 동봉 FFmpeg 로 인코딩)
 enum VideoCodecChoice {
@@ -9,12 +10,16 @@ enum VideoCodecChoice {
   av1('AV1', ['libsvtav1', 'libaom-av1']), // SVT-AV1 이 있으면 우선 (더 빠름)
   mpeg4('MPEG-4 (Xvid)', ['libxvid', 'mpeg4']);
 
-  final String label;
+  /// 한국어 원문 (번역 사전의 열쇠)
+  final String koLabel;
+
+  /// 화면에 보일 이름 (화면 언어로)
+  String get label => tr(koLabel);
 
   /// 사용할 FFmpeg 인코더 후보 (앞쪽 우선)
   final List<String> encoders;
 
-  const VideoCodecChoice(this.label, this.encoders);
+  const VideoCodecChoice(this.koLabel, this.encoders);
 
   /// 사용 가능한 인코더 중 첫 번째 (없으면 null)
   String? pickEncoder(Set<String> available) {
@@ -34,10 +39,14 @@ enum ResolutionChoice {
   k4('4K (2160p)', 2160),
   k8('8K (4320p)', 4320);
 
-  final String label;
+  /// 한국어 원문 (번역 사전의 열쇠)
+  final String koLabel;
+
+  /// 화면에 보일 이름 (화면 언어로)
+  String get label => tr(koLabel);
   final int? shortSide;
 
-  const ResolutionChoice(this.label, this.shortSide);
+  const ResolutionChoice(this.koLabel, this.shortSide);
 }
 
 enum QualityChoice {
@@ -45,9 +54,13 @@ enum QualityChoice {
   normal('표준'),
   small('작은 용량');
 
-  final String label;
+  /// 한국어 원문 (번역 사전의 열쇠)
+  final String koLabel;
 
-  const QualityChoice(this.label);
+  /// 화면에 보일 이름 (화면 언어로)
+  String get label => tr(koLabel);
+
+  const QualityChoice(this.koLabel);
 }
 
 class EncodeSettings {
@@ -83,7 +96,7 @@ List<String> buildVideoEncodeArgs(
   if (!s.reencode) return const [];
   final enc = s.codec.pickEncoder(available);
   if (enc == null) {
-    throw ArgumentError('${s.codec.label} 인코더가 FFmpeg 에 없습니다.');
+    throw ArgumentError(trf('{0} 인코더가 FFmpeg 에 없습니다.', [s.codec.label]));
   }
   final q = s.quality.index; // 0 고화질, 1 표준, 2 작은 용량
   final args = <String>['-c:v', enc];

@@ -186,11 +186,10 @@ void main() {
     expect(find.text('한국어 (ko)'), findsOneWidget);
     expect(find.text('영어 (en)'), findsOneWidget);
 
-    // 체크한 것이 없으면 "전체 만들기 / 취소" 를 묻는다
+    // 체크한 것이 없으면 세부 정보에 보이는 동영상을 바로 만든다 (묻지 않음)
     await tester.tap(find.text('MKV 만들기'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('전체 만들기'));
-    await tester.pumpAndSettle();
+    expect(find.text('전체 만들기'), findsNothing);
     expect(c.videos.single.status, JobStatus.done);
   });
 

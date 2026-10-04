@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 /// YouTube 광고 건너뛰기 · 광고 영역 숨기기 스크립트 (앱 안 웹 브라우저가 YouTube 페이지에 넣는다).
 ///
 /// - 건너뛰기: [건너뛰기] 버튼이 나오면 누르고, 건너뛸 수 없는 광고는 소리를 끄고 끝으로 빨리 감는다.
@@ -5,7 +7,7 @@
 /// - 숨기기: 목록 · 영상 옆 · 영상 위의 광고 배너를 감춘다.
 ///
 /// 여러 번 넣어도 한 번만 동작하고, 다시 넣으면 켜기 · 끄기 설정만 바뀐다 (페이지를 다시 읽지 않아도 됨).
-String youtubeAdScript({required bool skip, required bool hide}) => '''
+String youtubeAdScript({required bool skip, required bool hide, String badge = '광고 건너뛰는 중…'}) => '''
 (function(cfg){
   var h = location.hostname;
   if (h !== 'youtube.com' && h.slice(-12) !== '.youtube.com') return;
@@ -23,7 +25,7 @@ String youtubeAdScript({required bool skip, required bool hide}) => '''
   function showBadge(on) {
     if (on && !badge) {
       badge = document.createElement('div');
-      badge.textContent = '광고 건너뛰는 중…';
+      badge.textContent = ${jsonEncode(badge)};
       badge.style.cssText = 'position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:2147483647;'
         + 'background:rgba(0,0,0,.75);color:#fff;font:600 13px sans-serif;padding:6px 14px;border-radius:14px;pointer-events:none';
       (document.body || document.documentElement).appendChild(badge);

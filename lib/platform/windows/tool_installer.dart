@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import '../../l10n/tr.dart';
 
 import 'package:path/path.dart' as p;
 
@@ -17,11 +18,11 @@ class RequiredTool {
   const RequiredTool(this.name, this.purpose, this.relPath, this.sizeMb);
 }
 
-const requiredTools = [
-  RequiredTool('FFmpeg', 'MKV 만들기 · 인코딩 · 음성 추출', r'ffmpeg\ffmpeg.exe', 100),
-  RequiredTool('yt-dlp', 'YouTube 다운로드', r'tools\yt-dlp.exe', 17),
-  RequiredTool('aria2', '토렌트 · 마그넷 다운로드', r'tools\aria2c.exe', 3),
-  RequiredTool('Deno', 'yt-dlp 의 YouTube 화질 목록 추출', r'tools\deno.exe', 41),
+final requiredTools = [
+  RequiredTool('FFmpeg', tr('MKV 만들기 · 인코딩 · 음성 추출'), r'ffmpeg\ffmpeg.exe', 100),
+  RequiredTool('yt-dlp', tr('YouTube 다운로드'), r'tools\yt-dlp.exe', 17),
+  RequiredTool('aria2', tr('토렌트 · 마그넷 다운로드'), r'tools\aria2c.exe', 3),
+  RequiredTool('Deno', tr('yt-dlp 의 YouTube 화질 목록 추출'), r'tools\deno.exe', 41),
 ];
 
 /// 처음 실행 시 없는 필수 프로그램을 찾아 내려받는다 (공식 배포처에서 다운로드만).
@@ -52,13 +53,13 @@ class ToolInstaller {
     for (final a in (json['assets'] as List)) {
       if (pattern.hasMatch(a['name'] as String)) return a['browser_download_url'] as String;
     }
-    throw HttpException('$repo 에서 받을 파일을 찾지 못했습니다');
+    throw HttpException(trf('{0} 에서 받을 파일을 찾지 못했습니다', [repo]));
   }
 
   Future<void> _download(String url, String target, void Function(int got, int total) onBytes) async {
     final req = await _http.getUrl(Uri.parse(url));
     final res = await req.close();
-    if (res.statusCode != 200) throw HttpException('내려받기 실패 (${res.statusCode}): $url');
+    if (res.statusCode != 200) throw HttpException(trf('내려받기 실패 ({0}): {1}', [res.statusCode, url]));
     await Directory(p.dirname(target)).create(recursive: true);
     final part = File('$target.part');
     final sink = part.openWrite();
@@ -83,7 +84,7 @@ class ToolInstaller {
       final all = await tmp.list(recursive: true).where((e) => e is File).toList();
       for (final e in names.entries) {
         final f = all.firstWhere((x) => p.basename(x.path).toLowerCase() == e.key.toLowerCase(),
-            orElse: () => throw FileSystemException('압축 파일 안에 없습니다', e.key));
+            orElse: () => throw FileSystemException(tr('압축 파일 안에 없습니다'), e.key));
         await File(f.path).copy(p.join(destDir, e.value));
       }
     } finally {

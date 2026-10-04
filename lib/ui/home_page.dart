@@ -21,6 +21,7 @@ import 'subtitle_search_dialog.dart';
 import 'theme.dart';
 import 'translate_dialog.dart';
 import 'work_panel.dart';
+import '../l10n/tr.dart';
 
 class HomePage extends StatelessWidget {
   final AppController c;
@@ -104,7 +105,7 @@ class _TopBar extends StatelessWidget {
     if (!await Directory(dir).exists()) {
       if (context.mounted) {
         ScaffoldMessenger.maybeOf(context)
-            ?.showSnackBar(SnackBar(content: Text('아직 만든 MKV · 자막이 없습니다: $dir')));
+            ?.showSnackBar(SnackBar(content: Text(trf('아직 만든 MKV · 자막이 없습니다: {0}', [dir]))));
       }
       return;
     }
@@ -116,13 +117,11 @@ class _TopBar extends StatelessWidget {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('MKV 만들기'),
-        content: Text('선택한 동영상이 없습니다.\n목록 전체 ${c.videos.length}개 '
-            '(이미 만든 것을 빼면 $todo개) 를 MKV 로 만들까요?\n\n'
-            '일부만 만들려면 취소하고 동영상 목록에서 체크하세요.'),
+        title: Text(tr('MKV 만들기')),
+        content: Text(trf('선택한 동영상이 없습니다.\n목록 전체 {0}개 ' '(이미 만든 것을 빼면 {1}개) 를 MKV 로 만들까요?\n\n' '일부만 만들려면 취소하고 동영상 목록에서 체크하세요.', [c.videos.length, todo])),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('취소')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('전체 만들기')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('취소'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('전체 만들기'))),
         ],
       ),
     );
@@ -130,8 +129,8 @@ class _TopBar extends StatelessWidget {
   }
 
   static String _batchHint(AppController c, String what) => c.checked.isEmpty
-      ? '지금 보고 있는 동영상의 $what (여러 개는 목록에서 체크)'
-      : '체크한 동영상 ${c.checked.length}개의 $what';
+      ? trf('지금 보고 있는 동영상의 {0} (여러 개는 목록에서 체크)', [what])
+      : trf('체크한 동영상 {0}개의 {1}', [c.checked.length, what]);
 
   @override
   Widget build(BuildContext context) {
@@ -202,22 +201,22 @@ class _TopBar extends StatelessWidget {
               child: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: Row(children: [
-                  action(Icons.add, '동영상 추가', c.pickVideos,
-                      text: leftText, tip: '동영상 추가 (탐색기에서 끌어다 놓아도 됩니다)'),
+                  action(Icons.add, tr('동영상 추가'), c.pickVideos,
+                      text: leftText, tip: tr('동영상 추가 (탐색기에서 끌어다 놓아도 됩니다)')),
                   if (hasAi) ...[
                     const SizedBox(width: 8),
-                    action(Icons.auto_awesome, '자막 만들기$count',
+                    action(Icons.auto_awesome, trf('자막 만들기{0}', [count]),
                         canBatch ? () => showAiDialog(context, c, batch.first, targets: batch) : null,
-                        text: leftText, tip: '자막 만들기: ${_batchHint(c, 'AI 자막을 만듭니다')}'),
+                        text: leftText, tip: trf('자막 만들기: {0}', [_batchHint(c, tr('AI 자막을 만듭니다'))])),
                     const SizedBox(width: 8),
                     action(
                         Icons.auto_mode,
-                        '자막 만들기 & MKV 만들기$count',
+                        trf('자막 만들기 & MKV 만들기{0}', [count]),
                         canBatch
                             ? () => showAiDialog(context, c, batch.first, targets: batch, thenBuild: true)
                             : null,
                         text: leftText,
-                        tip: '자막 만들기 & MKV 만들기: ${_batchHint(c, 'AI 자막을 만들고 이어서 MKV 로 만듭니다')}'),
+                        tip: trf('자막 만들기 & MKV 만들기: {0}', [_batchHint(c, tr('AI 자막을 만들고 이어서 MKV 로 만듭니다'))])),
                   ],
                 ]),
               ),
@@ -226,31 +225,31 @@ class _TopBar extends StatelessWidget {
             if (c.busy) ...[
               JobIndicator(c: c, compact: !jobText, iconOnly: !jobText),
               const SizedBox(width: 8),
-              action(Icons.stop, '취소', c.cancel, text: jobText, tip: '작업 취소', color: JjColors.danger),
+              action(Icons.stop, tr('취소'), c.cancel, text: jobText, tip: tr('작업 취소'), color: JjColors.danger),
               const SizedBox(width: 8),
             ],
             // 체크한 동영상을 목록에 보이는 순서대로 이어서 재생 (체크가 없으면 보고 있는 한 개)
             if (hasPlayer) ...[
               action(
                   Icons.playlist_play,
-                  '선택한 파일 재생$count',
+                  trf('선택한 파일 재생{0}', [count]),
                   batch.isEmpty
                       ? null
                       : () => playFiles(context, c, [for (final v in batch) v.path], keepOrder: true),
                   text: rightText,
                   tip: c.checked.isEmpty
-                      ? '선택한 파일 재생: 지금 보고 있는 동영상 (여러 개는 목록에서 체크)'
-                      : '선택한 파일 재생: 체크한 동영상 ${c.checked.length}개를 목록 순서대로 이어서'),
+                      ? tr('선택한 파일 재생: 지금 보고 있는 동영상 (여러 개는 목록에서 체크)')
+                      : trf('선택한 파일 재생: 체크한 동영상 {0}개를 목록 순서대로 이어서', [c.checked.length])),
               const SizedBox(width: 8),
             ],
             // 체크한 동영상이 있으면 그것만, 없으면 "전체 만들기 / 취소" 를 묻는다
             Tooltip(
-              message: 'MKV 만들기$count',
+              message: trf('MKV 만들기{0}', [count]),
               child: mkvText
                   ? FilledButton.icon(
                       onPressed: !canBuild ? null : (batch.isEmpty ? () => _confirmBuildAll(context) : () => c.buildVideos(batch)),
                       icon: Icon(c.busy ? Icons.playlist_add : Icons.play_arrow, size: 20),
-                      label: Text('MKV 만들기$count${c.busy && jobText ? ' (대기열)' : ''}'),
+                      label: Text(trf('MKV 만들기{0}{1}', [count, c.busy && jobText ? tr(' (대기열)') : ''])),
                     )
                   : IconButton.filled(
                       onPressed: !canBuild ? null : (batch.isEmpty ? () => _confirmBuildAll(context) : () => c.buildVideos(batch)),
@@ -259,11 +258,11 @@ class _TopBar extends StatelessWidget {
             ),
             // 만든 MKV 가 있는 폴더 (jj_mkv). 웹 브라우저 버튼은 왼쪽 공통 버튼으로 옮김
             const SizedBox(width: 8),
-            action(Icons.folder_special_outlined, '결과 폴더', c.selected == null ? null : () => _openOutput(context),
+            action(Icons.folder_special_outlined, tr('결과 폴더'), c.selected == null ? null : () => _openOutput(context),
                 text: rightText,
                 tip: c.selected == null
-                    ? '결과 폴더 열기 (동영상을 고르세요)'
-                    : '결과 폴더 열기: ${outputDirFor(c.selected!.path)}'),
+                    ? tr('결과 폴더 열기 (동영상을 고르세요)')
+                    : trf('결과 폴더 열기: {0}', [outputDirFor(c.selected!.path)])),
             if (dlBox) ...[
               const SizedBox(width: 12),
               _DownloadBox(d: downloads!),
@@ -308,8 +307,8 @@ class _DownloadBox extends StatelessWidget {
                     const SizedBox(width: 6),
                     Text(
                         n > 0
-                            ? '다운로딩 $n${p == null ? '' : ' · ${(p * 100).toStringAsFixed(0)}%'}'
-                            : '다운로드 ${d.tasks.length}',
+                            ? trf('다운로딩 {0}{1}', [n, p == null ? '' : ' · ${(p * 100).toStringAsFixed(0)}%'])
+                            : trf('다운로드 {0}', [d.tasks.length]),
                         style: const TextStyle(fontSize: 12)),
                   ]),
                   if (n > 0) ...[
@@ -357,7 +356,7 @@ class _EncodeBar extends StatelessWidget {
                 value: i,
                 enabled: enabled?.call(i) ?? true,
                 child: Text(
-                  text(i) + ((enabled?.call(i) ?? true) ? '' : ' (사용 불가)'),
+                  text(i) + ((enabled?.call(i) ?? true) ? '' : tr(' (사용 불가)')),
                   style: TextStyle(
                       color: (enabled?.call(i) ?? true) ? null : JjColors.textDim),
                 ),
@@ -371,24 +370,23 @@ class _EncodeBar extends StatelessWidget {
       color: JjColors.panel,
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(children: [
-        label('화면 크기'),
+        label(tr('화면 크기')),
         drop(s.resolution, ResolutionChoice.values, (r) => r.label, c.setResolution),
         const SizedBox(width: 20),
-        label('코덱'),
+        label(tr('코덱')),
         drop(s.codec, VideoCodecChoice.values, (v) => v.label, c.setCodec,
             enabled: c.isCodecAvailable),
         const SizedBox(width: 20),
         if (s.reencode) ...[
-          label('화질'),
+          label(tr('화질')),
           drop(s.quality, QualityChoice.values, (q) => q.label, c.setQuality),
           const SizedBox(width: 20),
         ],
         Expanded(
           child: Text(
             !s.reencode
-                ? '영상·음성을 그대로 복사합니다 (빠름, 화질 손실 없음)'
-                : '영상을 다시 인코딩합니다 (시간이 오래 걸림, 음성은 그대로)'
-                    '${up > 0 ? ' · ⚠ $up개는 원본보다 커서 화질 향상 없이 용량만 늘어납니다' : ''}',
+                ? tr('영상·음성을 그대로 복사합니다 (빠름, 화질 손실 없음)')
+                : trf('영상을 다시 인코딩합니다 (시간이 오래 걸림, 음성은 그대로)' '{0}', [up > 0 ? trf(' · ⚠ {0}개는 원본보다 커서 화질 향상 없이 용량만 늘어납니다', [up]) : '']),
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
                 fontSize: 12, color: up > 0 && s.reencode ? JjColors.danger : JjColors.textDim),
@@ -409,8 +407,7 @@ class _VideoList extends StatelessWidget {
   Widget _sortButton(String by, IconData icon, String name) {
     final on = c.sortedBy == by;
     return IconButton(
-      tooltip: '$name 순으로 정렬'
-          '${on ? (c.sortAscending ? ' (지금: 오름차순 · 다시 누르면 내림차순)' : ' (지금: 내림차순 · 다시 누르면 오름차순)') : ''}',
+      tooltip: trf('{0} 순으로 정렬' '{1}', [name, on ? (c.sortAscending ? tr(' (지금: 오름차순 · 다시 누르면 내림차순)') : tr(' (지금: 내림차순 · 다시 누르면 오름차순)')) : '']),
       iconSize: 18,
       visualDensity: VisualDensity.compact,
       onPressed: c.videos.length < 2 ? null : () => c.sortVideos(by),
@@ -446,24 +443,24 @@ class _VideoList extends StatelessWidget {
                   onTap: c.videos.isEmpty ? null : c.toggleAllChecked,
                   child: Text(
                       c.checked.isEmpty
-                          ? '동영상 ${c.videos.length}개 · 전체 선택'
-                          : '선택 ${c.checked.length} / ${c.videos.length}개',
+                          ? trf('동영상 {0}개 · 전체 선택', [c.videos.length])
+                          : trf('선택 {0} / {1}개', [c.checked.length, c.videos.length]),
                       style: const TextStyle(color: JjColors.textDim, fontSize: 12)),
                 ),
               ),
               // 정렬: 같은 것을 다시 누르면 반대 순서
-              _sortButton('name', Icons.sort_by_alpha, '파일 이름'),
-              _sortButton('date', Icons.calendar_month, '날짜'),
+              _sortButton('name', Icons.sort_by_alpha, tr('파일 이름')),
+              _sortButton('date', Icons.calendar_month, tr('날짜')),
               if (c.checked.isNotEmpty)
                 IconButton(
-                  tooltip: '선택한 동영상을 목록에서 제거',
+                  tooltip: tr('선택한 동영상을 목록에서 제거'),
                   iconSize: 18,
                   visualDensity: VisualDensity.compact,
                   icon: const Icon(Icons.playlist_remove, color: JjColors.textDim),
                   onPressed: c.removeChecked,
                 ),
               IconButton(
-                tooltip: '모두 지우기',
+                tooltip: tr('모두 지우기'),
                 iconSize: 18,
                 visualDensity: VisualDensity.compact,
                 icon: const Icon(Icons.clear_all, color: JjColors.textDim),
@@ -508,16 +505,16 @@ class _VideoTile extends StatelessWidget {
       context: context,
       position: RelativeRect.fromLTRB(at.dx, at.dy, overlay.size.width - at.dx, overlay.size.height - at.dy),
       items: [
-        item('folder', Icons.folder_open, '대상 폴더 열기'),
-        if (c.services.createMediaPlayer != null) item('play', Icons.play_arrow, '재생'),
+        item('folder', Icons.folder_open, tr('대상 폴더 열기')),
+        if (c.services.createMediaPlayer != null) item('play', Icons.play_arrow, tr('재생')),
         const PopupMenuDivider(),
         if (c.aiAvailable)
-          item('ai', Icons.auto_awesome, 'AI 자막 만들기', enabled: !busy && c.ffmpegVersion != null),
+          item('ai', Icons.auto_awesome, tr('AI 자막 만들기'), enabled: !busy && c.ffmpegVersion != null),
         if (c.subtitleProvider != null)
-          item('search', Icons.travel_explore, '인터넷 자막 찾기', enabled: !busy),
-        item('subtitle', Icons.subtitles_outlined, '자막 파일 추가', enabled: !busy),
+          item('search', Icons.travel_explore, tr('인터넷 자막 찾기'), enabled: !busy),
+        item('subtitle', Icons.subtitles_outlined, tr('자막 파일 추가'), enabled: !busy),
         const PopupMenuDivider(),
-        item('remove', Icons.close, '삭제 (목록에서 제거)', enabled: !busy),
+        item('remove', Icons.close, tr('삭제 (목록에서 제거)'), enabled: !busy),
       ],
     );
     if (pick == null || !context.mounted) return;
@@ -609,7 +606,7 @@ class _VideoTile extends StatelessWidget {
                     Text(v.phase!, style: const TextStyle(fontSize: 11, color: JjColors.textDim))
                   else
                     Text(
-                      v.status == JobStatus.failed ? '실패' : '자막 $subs개',
+                      v.status == JobStatus.failed ? tr('실패') : trf('자막 {0}개', [subs]),
                       style: TextStyle(
                           fontSize: 11,
                           color: v.status == JobStatus.failed
@@ -621,13 +618,13 @@ class _VideoTile extends StatelessWidget {
             ),
             if (v.status == JobStatus.done || v.status == JobStatus.failed)
               IconButton(
-                tooltip: '다시 만들기 대기로',
+                tooltip: tr('다시 만들기 대기로'),
                 iconSize: 16,
                 onPressed: () => c.resetStatus(v),
                 icon: const Icon(Icons.refresh, color: JjColors.textDim),
               ),
             IconButton(
-              tooltip: '목록에서 제거',
+              tooltip: tr('목록에서 제거'),
               iconSize: 16,
               onPressed: v.status == JobStatus.running ? null : () => c.removeVideo(v),
               icon: const Icon(Icons.close, color: JjColors.textDim),
@@ -662,16 +659,16 @@ class _EmptyHint extends StatelessWidget {
   const _EmptyHint();
 
   @override
-  Widget build(BuildContext context) => const Center(
+  Widget build(BuildContext context) => Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(Icons.video_library_outlined, size: 56, color: JjColors.textDim),
             SizedBox(height: 12),
-            Text('"동영상 추가" 로 파일을 선택하세요',
+            Text(tr('"동영상 추가" 로 파일을 선택하세요'),
                 style: TextStyle(color: JjColors.textDim)),
             SizedBox(height: 4),
-            Text('같은 폴더의 자막은 자동으로 추가됩니다',
+            Text(tr('같은 폴더의 자막은 자동으로 추가됩니다'),
                 style: TextStyle(color: JjColors.textDim, fontSize: 12)),
           ],
         ),
@@ -700,15 +697,15 @@ class _VideoDetail extends StatelessWidget {
         bottom: 16,
         child: Tooltip(
           message: c.checked.isEmpty
-              ? '이동: 이 동영상을 이동 폴더로 옮깁니다${c.settings.moveTargetDir == null ? '' : ' (${c.settings.moveTargetDir})'}'
-              : '이동: 체크한 동영상 ${c.checked.length}개를 이동 폴더로 옮깁니다',
+              ? trf('이동: 이 동영상을 이동 폴더로 옮깁니다{0}', [c.settings.moveTargetDir == null ? '' : ' (${c.settings.moveTargetDir})'])
+              : trf('이동: 체크한 동영상 {0}개를 이동 폴더로 옮깁니다', [c.checked.length]),
           child: FloatingActionButton.extended(
             heroTag: null,
             onPressed: moveTargets.any((x) => x.status != JobStatus.running)
                 ? () => moveToTarget(context, c, moveTargets)
                 : null,
             icon: const Icon(Icons.drive_file_move_outline),
-            label: Text(c.checked.isEmpty ? '이동' : '이동 (${c.checked.length})'),
+            label: Text(c.checked.isEmpty ? tr('이동') : trf('이동 ({0})', [c.checked.length])),
           ),
         ),
       ),
@@ -729,14 +726,14 @@ class _VideoDetail extends StatelessWidget {
             FilledButton.icon(
               onPressed: () => playFiles(context, c, [v.path]),
               icon: const Icon(Icons.play_arrow, size: 18),
-              label: const Text('재생'),
+              label: Text(tr('재생')),
             ),
           ],
           const SizedBox(width: 8),
           OutlinedButton.icon(
             onPressed: () => c.services.shell.revealFile(v.path),
             icon: const Icon(Icons.folder_open, size: 18),
-            label: const Text('폴더 열기'),
+            label: Text(tr('폴더 열기')),
           ),
         ]),
         const SizedBox(height: 4),
@@ -744,12 +741,12 @@ class _VideoDetail extends StatelessWidget {
             style: const TextStyle(color: JjColors.textDim, fontSize: 12)),
         const SizedBox(height: 12),
         Wrap(spacing: 8, runSpacing: 8, children: [
-          if (info?.duration != null) _Chip('길이 ${_fmt(info!.duration!)}'),
+          if (info?.duration != null) _Chip(trf('길이 {0}', [_fmt(info!.duration!)])),
           if (video != null) ...[
             if (video.width != null) _Chip('${video.width}×${video.height}'),
-            _Chip('영상 ${video.codec}'),
+            _Chip(trf('영상 {0}', [video.codec])),
           ],
-          _Chip('음성 $audioCount개'),
+          _Chip(trf('음성 {0}개', [audioCount])),
         ]),
         if (v.message != null) ...[
           const SizedBox(height: 12),
@@ -765,14 +762,14 @@ class _VideoDetail extends StatelessWidget {
         ],
         const SizedBox(height: 24),
         Row(children: [
-          const Text('자막',
+          Text(tr('자막'),
               style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
           const Spacer(),
           if (c.aiAvailable) ...[
             FilledButton.icon(
               onPressed: locked || c.ffmpegVersion == null ? null : () => showAiDialog(context, c, v),
               icon: const Icon(Icons.auto_awesome, size: 18),
-              label: const Text('AI 자막 만들기'),
+              label: Text(tr('AI 자막 만들기')),
             ),
             const SizedBox(width: 8),
           ],
@@ -780,26 +777,26 @@ class _VideoDetail extends StatelessWidget {
             OutlinedButton.icon(
               onPressed: locked ? null : () => showSubtitleSearch(context, c, v),
               icon: const Icon(Icons.travel_explore, size: 18),
-              label: const Text('인터넷 자막 찾기'),
+              label: Text(tr('인터넷 자막 찾기')),
             ),
             const SizedBox(width: 8),
           ],
           OutlinedButton.icon(
             onPressed: locked ? null : () => c.pickSubtitlesFor(v),
             icon: const Icon(Icons.subtitles_outlined, size: 18),
-            label: const Text('자막 파일 추가'),
+            label: Text(tr('자막 파일 추가')),
           ),
         ]),
         const SizedBox(height: 8),
         if (v.subtitles.isEmpty)
-          const Padding(
+          Padding(
             padding: EdgeInsets.symmetric(vertical: 16),
-            child: Text('자막이 없습니다.', style: TextStyle(color: JjColors.textDim)),
+            child: Text(tr('자막이 없습니다.'), style: TextStyle(color: JjColors.textDim)),
           ),
         for (final s in v.subtitles)
           _SubtitleRow(c: c, v: v, s: s, locked: locked),
         const SizedBox(height: 24),
-        Text('출력: ${outputMkvPath(v.path)}',
+        Text(trf('출력: {0}', [outputMkvPath(v.path)]),
             style: const TextStyle(color: JjColors.textDim, fontSize: 12)),
       ],
     );
@@ -855,7 +852,7 @@ class _SubtitleRow extends StatelessWidget {
                   .withValues(alpha: 0.18),
               borderRadius: BorderRadius.circular(4),
             ),
-            child: Text(embedded ? '내장' : '외부',
+            child: Text(embedded ? tr('내장') : tr('외부'),
                 style: TextStyle(
                     fontSize: 11,
                     color: embedded ? JjColors.textDim : JjColors.accent)),
@@ -886,7 +883,7 @@ class _SubtitleRow extends StatelessWidget {
           ],
           const SizedBox(width: 4),
           IconButton(
-            tooltip: c.canEdit(s) ? '내용 편집 · 문자셋 변환' : '이미지 자막은 편집할 수 없습니다',
+            tooltip: c.canEdit(s) ? tr('내용 편집 · 문자셋 변환') : tr('이미지 자막은 편집할 수 없습니다'),
             iconSize: 18,
             onPressed: locked || off || !c.canEdit(s)
                 ? null
@@ -895,13 +892,13 @@ class _SubtitleRow extends StatelessWidget {
           ),
           if (c.services.createTranslator != null)
             IconButton(
-              tooltip: c.canEdit(s) ? '다른 언어로 번역 (AI · 이 ${Platform.isAndroid ? '기기' : 'PC'} 에서)' : '이미지 자막은 번역할 수 없습니다',
+              tooltip: c.canEdit(s) ? trf('다른 언어로 번역 (AI · 이 {0} 에서)', [Platform.isAndroid ? tr('기기') : 'PC']) : tr('이미지 자막은 번역할 수 없습니다'),
               iconSize: 18,
               onPressed: locked || off || !c.canEdit(s) ? null : () => showTranslateDialog(context, c, v, s),
               icon: const Icon(Icons.translate, color: JjColors.accent),
             ),
           IconButton(
-            tooltip: embedded ? (off ? '되살리기' : '삭제 (출력에서 제외)') : '목록에서 제거',
+            tooltip: embedded ? (off ? tr('되살리기') : tr('삭제 (출력에서 제외)')) : tr('목록에서 제거'),
             iconSize: 18,
             onPressed: locked ? null : () => c.removeSubtitle(v, s),
             icon: Icon(
@@ -932,7 +929,7 @@ class _LanguageDropdown extends StatelessWidget {
         for (final l in items)
           DropdownMenuItem(
             value: l,
-            child: Text(l == undetermined ? '언어: 미지정' : '${l.name} (${l.code})'),
+            child: Text(l == undetermined ? tr('언어: 미지정') : '${l.name} (${l.code})'),
           ),
       ],
       onChanged: onChanged == null ? null : (l) => onChanged!(l!),
@@ -987,7 +984,7 @@ class _LogPanel extends StatelessWidget {
             top: 2,
             right: 4,
             child: IconButton(
-              tooltip: '작업 기록 숨기기',
+              tooltip: tr('작업 기록 숨기기'),
               iconSize: 16,
               visualDensity: VisualDensity.compact,
               icon: const Icon(Icons.close, color: JjColors.textDim),
@@ -1019,7 +1016,7 @@ class _LogStrip extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontSize: 11, fontFamily: 'Consolas', color: JjColors.textDim)),
               ),
-              const Text('작업 기록 보기', style: TextStyle(fontSize: 11, color: JjColors.accent)),
+              Text(tr('작업 기록 보기'), style: TextStyle(fontSize: 11, color: JjColors.accent)),
               const Icon(Icons.expand_less, size: 16, color: JjColors.accent),
               const SizedBox(width: 12),
             ]),
@@ -1033,14 +1030,14 @@ Future<void> moveToTarget(BuildContext context, AppController c, List<VideoItem>
   if (targets.isEmpty) return;
   final messenger = ScaffoldMessenger.maybeOf(context);
   if (c.settings.moveTargetDir == null) {
-    final d = await pickFolder(context, '이동 폴더 (환경 설정에서 바꿀 수 있음)');
+    final d = await pickFolder(context, tr('이동 폴더 (환경 설정에서 바꿀 수 있음)'));
     if (d == null) return;
     await c.updateSettings((x) => x.moveTargetDir = d);
   }
   final (moved, errors) = await c.moveVideos(targets);
   messenger?.showSnackBar(SnackBar(
     content: Text([
-      if (moved > 0) '$moved개를 옮겼습니다 → ${c.settings.moveTargetDir}',
+      if (moved > 0) trf('{0}개를 옮겼습니다 → {1}', [moved, c.settings.moveTargetDir]),
       ...errors,
     ].join('\n')),
   ));

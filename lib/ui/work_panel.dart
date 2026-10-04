@@ -6,6 +6,7 @@ import '../core/models.dart';
 import '../services/downloader.dart';
 import 'downloads_page.dart';
 import 'theme.dart';
+import '../l10n/tr.dart';
 
 /// 브라우저 오른쪽 "작업 현황" (화면 분할): 자막 · MKV 작업과 다운로드 진행을 보면서 인터넷을 볼 수 있게.
 class WorkPanel extends StatelessWidget {
@@ -39,24 +40,24 @@ class WorkPanel extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
               children: [
                 ..._jobs(),
-                _title('편집 목록 ${c.videos.length}개'),
+                _title(trf('편집 목록 {0}개', [c.videos.length])),
                 if (c.videos.isEmpty)
-                  const _Dim('아직 없습니다. 영상을 다 받으면 자동으로 들어옵니다 (설정에서 변경).'),
+                  _Dim(tr('아직 없습니다. 영상을 다 받으면 자동으로 들어옵니다 (설정에서 변경).')),
                 for (final v in c.videos) _VideoRow(v: v),
                 if (downloads != null) ...[
                   const SizedBox(height: 12),
                   _title(
-                    '다운로드 ${downloads!.tasks.length}개',
+                    trf('다운로드 {0}개', [downloads!.tasks.length]),
                     action: TextButton(
                       onPressed: () => DownloadsPage.open(Navigator.of(context), downloads!),
-                      child: const Text(
-                        '전체 목록',
+                      child: Text(
+                        tr('전체 목록'),
                         style: TextStyle(fontSize: 12),
                       ),
                     ),
                   ),
                   if (downloads!.tasks.isEmpty)
-                    const _Dim('동영상 페이지에서 [다운로드] 를 누르세요.'),
+                    _Dim(tr('동영상 페이지에서 [다운로드] 를 누르세요.')),
                   for (final t in downloads!.tasks.reversed.take(30))
                     _DownloadRow(c: c, t: t),
                 ],
@@ -74,17 +75,17 @@ class WorkPanel extends StatelessWidget {
       children: [
         const Icon(Icons.dashboard_outlined, size: 18, color: JjColors.accent),
         const SizedBox(width: 6),
-        const Expanded(
-          child: Text('작업 현황', style: TextStyle(fontWeight: FontWeight.w600)),
+        Expanded(
+          child: Text(tr('작업 현황'), style: TextStyle(fontWeight: FontWeight.w600)),
         ),
         IconButton(
-          tooltip: '동영상 추가',
+          tooltip: tr('동영상 추가'),
           iconSize: 18,
           icon: const Icon(Icons.add),
           onPressed: c.pickVideos,
         ),
         IconButton(
-          tooltip: c.busy ? 'MKV 만들기 (대기열에 추가)' : 'MKV 만들기',
+          tooltip: c.busy ? tr('MKV 만들기 (대기열에 추가)') : tr('MKV 만들기'),
           iconSize: 18,
           icon: const Icon(Icons.play_arrow, color: JjColors.accent),
           onPressed: c.videos.isEmpty || c.ffmpegVersion == null
@@ -93,19 +94,19 @@ class WorkPanel extends StatelessWidget {
         ),
         if (c.busy)
           IconButton(
-            tooltip: '모든 작업 취소',
+            tooltip: tr('모든 작업 취소'),
             iconSize: 18,
             icon: const Icon(Icons.stop, color: JjColors.danger),
             onPressed: c.cancel,
           ),
         IconButton(
-          tooltip: 'MKV 화면으로 (전체 화면)',
+          tooltip: tr('MKV 화면으로 (전체 화면)'),
           iconSize: 18,
           icon: const Icon(Icons.open_in_full),
           onPressed: onOpenHome,
         ),
         IconButton(
-          tooltip: '작업 현황 닫기',
+          tooltip: tr('작업 현황 닫기'),
           iconSize: 18,
           icon: const Icon(Icons.close),
           onPressed: onClose,
@@ -115,17 +116,17 @@ class WorkPanel extends StatelessWidget {
   );
 
   List<Widget> _jobs() => [
-    _title('작업'),
+    _title(tr('작업')),
     if (!c.busy)
-      const _Dim('쉬는 중')
+      _Dim(tr('쉬는 중'))
     else ...[
       Text(
-        '▶ ${c.currentJob ?? '작업 중'}',
+        '▶ ${c.currentJob ?? tr('작업 중')}',
         style: const TextStyle(fontSize: 12, color: JjColors.accent),
       ),
       for (final (i, j) in c.pendingJobs.indexed)
         Text(
-          '${i + 1}. $j  (대기)',
+          trf('{0}. {1}  (대기)', [i + 1, j]),
           style: const TextStyle(fontSize: 12, color: JjColors.textDim),
         ),
     ],
@@ -181,9 +182,9 @@ class _VideoRow extends StatelessWidget {
         ? '${v.phase ?? ''} ${(v.progress * 100).round()}%'
         : v.phase ??
               switch (v.status) {
-                JobStatus.done => 'MKV 완성',
-                JobStatus.failed => '실패: ${v.message ?? ''}',
-                _ => '자막 ${v.subtitles.where((s) => s.enabled).length}개',
+                JobStatus.done => tr('MKV 완성'),
+                JobStatus.failed => trf('실패: {0}', [v.message ?? '']),
+                _ => trf('자막 {0}개', [v.subtitles.where((s) => s.enabled).length]),
               };
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -267,7 +268,7 @@ class _DownloadRow extends StatelessWidget {
           ),
           if (files.isNotEmpty)
             IconButton(
-              tooltip: inList ? '편집 목록에 있음' : '편집 목록에 추가',
+              tooltip: inList ? tr('편집 목록에 있음') : tr('편집 목록에 추가'),
               iconSize: 16,
               visualDensity: VisualDensity.compact,
               icon: Icon(
@@ -309,10 +310,10 @@ class JobIndicator extends StatelessWidget {
     final wait = c.pendingJobs.length;
     return Tooltip(
       message: [
-        '지금: ${c.currentJob ?? ''}',
+        trf('지금: {0}', [c.currentJob ?? '']),
         for (final v in running)
           '  · ${v.fileName} — ${v.phase ?? ''} ${(v.progress * 100).round()}%',
-        if (wait > 0) '대기 $wait개:',
+        if (wait > 0) trf('대기 {0}개:', [wait]),
         for (final j in c.pendingJobs) '  · $j',
       ].join('\n'),
       child: Row(
@@ -331,7 +332,7 @@ class JobIndicator extends StatelessWidget {
             ConstrainedBox(
               constraints: BoxConstraints(maxWidth: compact ? 160 : 240),
               child: Text(
-                '${c.currentJob ?? '작업 중'}${p == null ? '' : ' ${(p * 100).round()}%'}${wait > 0 ? ' · 대기 $wait' : ''}',
+                '${c.currentJob ?? tr('작업 중')}${p == null ? '' : ' ${(p * 100).round()}%'}${wait > 0 ? trf(' · 대기 {0}', [wait]) : ''}',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(fontSize: 12, color: JjColors.accent),

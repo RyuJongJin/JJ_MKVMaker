@@ -10,6 +10,7 @@ import '../../services/app_shell.dart';
 import 'exit_trace.dart';
 import 'shell_integration.dart';
 import 'tool_installer.dart';
+import '../../l10n/tr.dart';
 
 /// Windows 데스크톱: 트레이 아이콘 · 전역 단축키 · 창 닫기 가로채기
 class DesktopShell with WindowListener implements AppShell {
@@ -57,13 +58,13 @@ class DesktopShell with WindowListener implements AppShell {
       return i;
     }
 
-    item('열기', show);
-    item('다운로드 목록', () async {
+    item(tr('열기'), show);
+    item(tr('다운로드 목록'), () async {
       await show();
       _onDownloads?.call();
     });
     menu.addSeparator();
-    item('종료', () => _requestClose(fromTray: true));
+    item(tr('종료'), () => _requestClose(fromTray: true));
     t.setContextMenu(menu);
     t.setContextMenuTrigger(tray.ContextMenuTrigger.rightClicked);
     t.addListener((e) {
@@ -294,7 +295,7 @@ class DesktopShell with WindowListener implements AppShell {
 
   @override
   Future<List<String>> missingTools() async => [
-        for (final t in await _installer.missing()) '${t.name} - ${t.purpose} (약 ${t.sizeMb}MB)',
+        for (final t in await _installer.missing()) trf('{0} - {1} (약 {2}MB)', [t.name, t.purpose, t.sizeMb]),
       ];
 
   @override
@@ -310,22 +311,22 @@ class DesktopShell with WindowListener implements AppShell {
 
   @override
   Future<void> quit() async {
-    ExitTrace.mark('quit 시작');
+    ExitTrace.mark(tr('quit 시작'));
     // 단축키 해제가 늦어도 종료를 붙잡지 않게 (프로세스가 끝나면 어차피 풀린다)
     try {
       await hotKeyManager.unregisterAll().timeout(const Duration(milliseconds: 500));
     } catch (_) {}
-    ExitTrace.mark('단축키 해제');
+    ExitTrace.mark(tr('단축키 해제'));
     _tray?.setVisible(false);
     _tray?.dispose();
-    ExitTrace.mark('트레이 정리');
+    ExitTrace.mark(tr('트레이 정리'));
     windowManager.removeListener(this);
     // 창을 숨기고 바로 끝낸다. 엔진 · 웹뷰 · 플레이어를 차례로 닫는 정상 종료는 몇 초씩 걸리는데,
     // 저장할 것은 이미 모두 저장했고 다운로드 · 변환 프로세스도 앞 단계에서 끝냈다.
     try {
       await windowManager.hide().timeout(const Duration(milliseconds: 500));
     } catch (_) {}
-    ExitTrace.mark('창 숨김 → 프로세스 종료');
+    ExitTrace.mark(tr('창 숨김 → 프로세스 종료'));
     // exit() 는 Dart VM · 엔진 · 플러그인 DLL 을 차례로 정리하느라 1~2초 걸린다 → 프로세스를 바로 끝낸다
     Process.killPid(pid);
     exit(0);

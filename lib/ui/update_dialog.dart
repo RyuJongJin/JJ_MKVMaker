@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../app/app_controller.dart';
 import '../core/app_update.dart';
 import 'theme.dart';
+import '../l10n/tr.dart';
 
 /// 새 버전 확인 → 알림 → 받기 · 검증 → 종료 후 설치 · 다시 시작
 ///
@@ -23,12 +24,12 @@ Future<void> checkForUpdate(BuildContext context, AppController c, {bool manual 
     current = await up.currentVersion();
     r = await up.latest();
   } catch (e) {
-    if (manual) snack('새 버전을 확인할 수 없습니다: $e');
+    if (manual) snack(trf('새 버전을 확인할 수 없습니다: {0}', [e]));
     return;
   }
   await c.updateSettings((x) => x.lastUpdateCheck = DateTime.now().toIso8601String());
   if (r == null || !r.isNewerThan(current)) {
-    if (manual) snack('최신 버전입니다 (v$current)');
+    if (manual) snack(trf('최신 버전입니다 (v{0})', [current]));
     return;
   }
   if (!manual && s.skippedVersion == r.version) return;
@@ -37,17 +38,17 @@ Future<void> checkForUpdate(BuildContext context, AppController c, {bool manual 
   final choice = await showDialog<String>(
     context: context,
     builder: (ctx) => AlertDialog(
-      title: Text('새 버전 v${r!.version}'),
+      title: Text(trf('새 버전 v{0}', [r!.version])),
       content: SizedBox(
         width: 560,
         height: 380,
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('지금 쓰는 버전: v$current  →  새 버전: v${r.version}'),
+          Text(trf('지금 쓰는 버전: v{0}  →  새 버전: v{1}', [current, r.version])),
           if (r.zipSize > 0)
-            Text('받는 크기: 약 ${(r.zipSize / 1e6).round()}MB · 받은 파일 · AI 모델 · 설정은 그대로 둡니다',
+            Text(trf('받는 크기: 약 {0}MB · 받은 파일 · AI 모델 · 설정은 그대로 둡니다', [(r.zipSize / 1e6).round()]),
                 style: const TextStyle(fontSize: 12, color: JjColors.textDim)),
           const SizedBox(height: 12),
-          const Text('바뀐 내용', style: TextStyle(fontWeight: FontWeight.w600)),
+          Text(tr('바뀐 내용'), style: TextStyle(fontWeight: FontWeight.w600)),
           const SizedBox(height: 4),
           Expanded(
             child: Container(
@@ -55,7 +56,7 @@ Future<void> checkForUpdate(BuildContext context, AppController c, {bool manual 
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(color: JjColors.bg, borderRadius: BorderRadius.circular(6)),
               child: SingleChildScrollView(
-                child: SelectableText(r.notes.isEmpty ? '(설명 없음)' : r.notes,
+                child: SelectableText(r.notes.isEmpty ? tr('(설명 없음)') : r.notes,
                     style: const TextStyle(fontSize: 12, height: 1.5)),
               ),
             ),
@@ -63,13 +64,13 @@ Future<void> checkForUpdate(BuildContext context, AppController c, {bool manual 
         ]),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx, 'skip'), child: const Text('이 버전 건너뛰기')),
-        TextButton(onPressed: () => Navigator.pop(ctx, 'page'), child: const Text('페이지 열기')),
-        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('나중에')),
+        TextButton(onPressed: () => Navigator.pop(ctx, 'skip'), child: Text(tr('이 버전 건너뛰기'))),
+        TextButton(onPressed: () => Navigator.pop(ctx, 'page'), child: Text(tr('페이지 열기'))),
+        TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('나중에'))),
         FilledButton.icon(
           onPressed: () => Navigator.pop(ctx, 'update'),
           icon: const Icon(Icons.system_update_alt, size: 18),
-          label: const Text('업데이트'),
+          label: Text(tr('업데이트')),
         ),
       ],
     ),
@@ -88,12 +89,12 @@ Future<void> checkForUpdate(BuildContext context, AppController c, {bool manual 
   }
 
   if (c.busy) {
-    snack('MKV 만들기 · AI 자막 작업이 끝난 뒤 업데이트하세요.');
+    snack(tr('MKV 만들기 · AI 자막 작업이 끝난 뒤 업데이트하세요.'));
     return;
   }
   // 프로그램 폴더에 쓸 수 없으면 (예: Program Files) 페이지에서 직접 받도록
   if (r.zipUrl == null || !await up.canInstall()) {
-    snack('자동 설치를 할 수 없는 위치입니다. 페이지에서 직접 받아 주세요.');
+    snack(tr('자동 설치를 할 수 없는 위치입니다. 페이지에서 직접 받아 주세요.'));
     await up.openPage(r);
     return;
   }
@@ -104,11 +105,11 @@ Future<void> checkForUpdate(BuildContext context, AppController c, {bool manual 
     context: context,
     barrierDismissible: false,
     builder: (_) => AlertDialog(
-      title: Text('v${r!.version} 받는 중'),
+      title: Text(trf('v{0} 받는 중', [r!.version])),
       content: ValueListenableBuilder<double>(
         valueListenable: progress,
         builder: (_, v, _) => Column(mainAxisSize: MainAxisSize.min, children: [
-          Text(v >= 1 ? (up.installsInPlace ? '파일 확인 중…' : '확인 · 압축 푸는 중…') : '${(v * 100).round()}%'),
+          Text(v >= 1 ? (up.installsInPlace ? tr('파일 확인 중…') : tr('확인 · 압축 푸는 중…')) : '${(v * 100).round()}%'),
           const SizedBox(height: 12),
           LinearProgressIndicator(value: v >= 1 ? null : v),
         ]),
@@ -120,7 +121,7 @@ Future<void> checkForUpdate(BuildContext context, AppController c, {bool manual 
     dir = await up.download(r, (x) => progress.value = x);
   } catch (e) {
     if (context.mounted) Navigator.of(context).pop();
-    snack('업데이트 실패: $e');
+    snack(trf('업데이트 실패: {0}', [e]));
     return;
   }
   if (!context.mounted) return;
@@ -129,13 +130,11 @@ Future<void> checkForUpdate(BuildContext context, AppController c, {bool manual 
   final go = await showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
-      title: const Text('설치 준비 완료'),
-      content: Text('v${r!.version} 을 받았고 파일 검증(SHA256)을 마쳤습니다.\n'
-          '${up.installsInPlace ? 'Android 설치 화면에서 [설치] 를 누르세요. 설정 · 받은 파일 · AI 모델은 그대로 남습니다.\n'
-              '(처음이면 "이 출처의 앱 설치 허용" 을 켜야 할 수 있습니다)' : '프로그램을 종료하고 설치한 뒤 자동으로 다시 시작합니다.'}'),
+      title: Text(tr('설치 준비 완료')),
+      content: Text(trf('v{0} 을 받았고 파일 검증(SHA256)을 마쳤습니다.\n' '{1}', [r!.version, up.installsInPlace ? tr('Android 설치 화면에서 [설치] 를 누르세요. 설정 · 받은 파일 · AI 모델은 그대로 남습니다.\n' '(처음이면 "이 출처의 앱 설치 허용" 을 켜야 할 수 있습니다)') : tr('프로그램을 종료하고 설치한 뒤 자동으로 다시 시작합니다.')])),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('나중에')),
-        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('지금 설치')),
+        TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('나중에'))),
+        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('지금 설치'))),
       ],
     ),
   );
@@ -145,7 +144,7 @@ Future<void> checkForUpdate(BuildContext context, AppController c, {bool manual 
     try {
       await up.scheduleInstall(dir);
     } catch (e) {
-      snack('설치 화면을 열 수 없습니다: $e');
+      snack(trf('설치 화면을 열 수 없습니다: {0}', [e]));
     }
     return;
   }

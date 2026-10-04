@@ -6,12 +6,13 @@ import 'package:path/path.dart' as p;
 
 import '../../core/subtitle_detector.dart';
 import '../../services/storage_service.dart';
+import '../../l10n/tr.dart';
 
 class DesktopStorageService implements StorageService {
   @override
   Future<List<String>> pickVideos() async {
     final files = await FilePicker.pickFiles(
-      dialogTitle: '동영상 선택',
+      dialogTitle: tr('동영상 선택'),
       type: FileType.custom,
       allowedExtensions: videoExtensions,
     );
@@ -21,7 +22,7 @@ class DesktopStorageService implements StorageService {
   @override
   Future<List<String>> pickSubtitles({String? initialDirectory}) async {
     final files = await FilePicker.pickFiles(
-      dialogTitle: '자막 파일 선택',
+      dialogTitle: tr('자막 파일 선택'),
       initialDirectory: initialDirectory,
       type: FileType.custom,
       allowedExtensions: subtitleExtensions,
@@ -100,7 +101,7 @@ class DesktopStorageService implements StorageService {
     String? initialDirectory,
   }) async {
     final uri = await FilePicker.saveFile(
-      dialogTitle: '다른 이름으로 저장',
+      dialogTitle: tr('다른 이름으로 저장'),
       fileName: fileName,
       bytes: bytes,
       initialDirectory: initialDirectory,

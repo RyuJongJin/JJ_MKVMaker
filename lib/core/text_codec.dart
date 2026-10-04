@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:typed_data';
+import '../l10n/tr.dart';
 
 import 'package:charset/charset.dart' show ShiftJISCodec, gbk, shiftJis;
 import 'package:cp949_codec/cp949_codec.dart' show cp949;
@@ -63,7 +64,7 @@ EncodeResult encodeText(String text, String charset) {
     'CP949' => cp949,
     'SHIFT_JIS' => shiftJis,
     'GBK' => gbk,
-    _ => throw ArgumentError('지원하지 않는 문자셋: $charset'),
+    _ => throw ArgumentError(trf('지원하지 않는 문자셋: {0}', [charset])),
   };
   // 글자 단위로 인코딩해 표현 불가 글자를 찾는다 (자막은 크지 않으므로 충분히 빠름)
   final out = BytesBuilder();

@@ -1,4 +1,5 @@
 import 'dart:io';
+import '../../l10n/tr.dart';
 
 /// 종료가 어디서 오래 걸리는지 남기는 기록 (설정 폴더의 exit.log, 매번 새로 씀).
 /// 종료가 느리다는 신고가 있을 때 이 파일로 어느 단계인지 바로 알 수 있다.
@@ -10,7 +11,7 @@ class ExitTrace {
     _watch
       ..reset()
       ..start();
-    _write('종료 시작 ${DateTime.now().toIso8601String()}', FileMode.write);
+    _write(trf('종료 시작 {0}', [DateTime.now().toIso8601String()]), FileMode.write);
   }
 
   static void mark(String what) {

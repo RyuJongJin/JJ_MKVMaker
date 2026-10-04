@@ -1,3 +1,4 @@
+import '../l10n/tr.dart';
 /// 다운로드 종류
 enum DownloadKind {
   /// YouTube 등 동영상 사이트 → yt-dlp
@@ -135,8 +136,12 @@ enum YtContainer {
   mp3('음성만 MP3'),
   m4a('음성만 M4A');
 
-  final String label;
-  const YtContainer(this.label);
+  /// 한국어 원문 (번역 사전의 열쇠)
+  final String koLabel;
+
+  /// 화면에 보일 이름 (화면 언어로)
+  String get label => tr(koLabel);
+  const YtContainer(this.koLabel);
 
   bool get audioOnly => this == mp3 || this == m4a;
 }
@@ -151,9 +156,13 @@ enum YtQuality {
   p480('480p', 480),
   p360('360p', 360);
 
-  final String label;
+  /// 한국어 원문 (번역 사전의 열쇠)
+  final String koLabel;
+
+  /// 화면에 보일 이름 (화면 언어로)
+  String get label => tr(koLabel);
   final int? height;
-  const YtQuality(this.label, this.height);
+  const YtQuality(this.koLabel, this.height);
 }
 
 /// yt-dlp 형식 인수
@@ -249,14 +258,12 @@ bool isCookieReadError(String err) {
 
 String friendlyYtDlpError(String err) {
   if (err.contains('Sign in to confirm') || err.contains('not a bot')) {
-    return 'YouTube 가 로봇 확인을 요구합니다. 환경 설정 > 다운로드 > YouTube 쿠키 에서 '
-        '브라우저(Firefox 권장) 또는 cookies.txt 를 지정한 뒤 다시 받으세요.';
+    return tr('YouTube 가 로봇 확인을 요구합니다. 환경 설정 > 다운로드 > YouTube 쿠키 에서 ' '브라우저(Firefox 권장) 또는 cookies.txt 를 지정한 뒤 다시 받으세요.');
   }
-  if (err.contains('Private video') || err.contains('members-only')) return '비공개 · 회원 전용 영상입니다.';
-  if (err.contains('Video unavailable')) return '볼 수 없는 영상입니다 (삭제 · 지역 제한).';
+  if (err.contains('Private video') || err.contains('members-only')) return tr('비공개 · 회원 전용 영상입니다.');
+  if (err.contains('Video unavailable')) return tr('볼 수 없는 영상입니다 (삭제 · 지역 제한).');
   if (isCookieReadError(err)) {
-    return '브라우저 쿠키를 읽지 못했습니다. 환경 설정 > 다운로드 > YouTube 쿠키 에서 "앱 안 브라우저" 를 고르거나, '
-        '고른 브라우저가 설치되어 있는지 확인하세요 (Chrome · Edge 는 브라우저를 닫아야 읽힙니다).';
+    return tr('브라우저 쿠키를 읽지 못했습니다. 환경 설정 > 다운로드 > YouTube 쿠키 에서 "앱 안 브라우저" 를 고르거나, ' '고른 브라우저가 설치되어 있는지 확인하세요 (Chrome · Edge 는 브라우저를 닫아야 읽힙니다).');
   }
   return err;
 }

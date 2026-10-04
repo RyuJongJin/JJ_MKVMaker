@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import '../../core/subtitle_detector.dart';
 import '../../ui/android_file_browser.dart';
 import '../windows/desktop_storage_service.dart';
+import '../../l10n/tr.dart';
 
 /// Android 저장소 전체 접근 (MainActivity.kt 의 "jj_mkvmaker/android")
 class AndroidAccess {
@@ -40,7 +41,7 @@ class AndroidAccess {
       out.sort((a, b) => (a.$3 ? 1 : 0) - (b.$3 ? 1 : 0));
       if (out.isNotEmpty) return out;
     } catch (_) {}
-    return [(await storageRoot(), '내장 저장소', false)];
+    return [(await storageRoot(), tr('내장 저장소'), false)];
   }
 
   /// 내장 저장소 맨 위 (예: /storage/emulated/0)
@@ -67,11 +68,11 @@ class AndroidStorageService extends DesktopStorageService {
   }
 
   @override
-  Future<List<String>> pickVideos() => _pick('동영상 선택', videoExtensions);
+  Future<List<String>> pickVideos() => _pick(tr('동영상 선택'), videoExtensions);
 
   @override
   Future<List<String>> pickSubtitles({String? initialDirectory}) =>
-      _pick('자막 파일 선택', subtitleExtensions, initialDirectory: initialDirectory);
+      _pick(tr('자막 파일 선택'), subtitleExtensions, initialDirectory: initialDirectory);
 
   /// 임시 폴더: 캐시 폴더가 아니라 앱 데이터 폴더 아래 tmp.
   /// 저장 공간이 모자라면 Android 가 캐시 폴더를 마음대로 비워, 쓰는 중인 임시 파일 (AI 음성 · 자막 사본) 이

@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import '../app/subtitle_editor_controller.dart';
 import '../core/srt.dart';
 import 'theme.dart';
+import '../l10n/tr.dart';
 
 /// CapCut 스타일 자막 타임라인.
 ///
@@ -160,7 +161,7 @@ class _SubtitleTimelineState extends State<SubtitleTimeline> {
                   right: 8,
                   top: 3,
                   child: IgnorePointer(
-                    child: Text('보기 ${_window.toStringAsFixed(_window < 10 ? 1 : 0)}초 · Ctrl+휠 확대/축소',
+                    child: Text(trf('보기 {0}초 · Ctrl+휠 확대/축소', [_window.toStringAsFixed(_window < 10 ? 1 : 0)]),
                         style: const TextStyle(fontSize: 10, color: JjColors.textDim)),
                   ),
                 ),

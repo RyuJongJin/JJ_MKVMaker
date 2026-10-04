@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'theme.dart';
+import '../l10n/tr.dart';
 
 /// 종료할 때 하는 일 한 가지
 class ExitStep {
@@ -27,35 +28,33 @@ class _CloseChoiceState extends State<_CloseChoice> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-        title: const Text('종료할까요?'),
+        title: Text(tr('종료할까요?')),
         content: SizedBox(
           width: 440,
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('지금: ${widget.running}', style: const TextStyle(fontSize: 13)),
+            Text(trf('지금: {0}', [widget.running]), style: const TextStyle(fontSize: 13)),
             const SizedBox(height: 10),
-            Text('· 백그라운드로: 창만 숨기고 다운로드 · 변환을 계속합니다 (${widget.hotkey} 또는 트레이 아이콘으로 다시 열기)\n'
-
-                '· 모두 종료: 다운로드 · 변환을 멈추고 프로그램을 끝냅니다',
+            Text(trf('· 백그라운드로: 창만 숨기고 다운로드 · 변환을 계속합니다 ({0} 또는 트레이 아이콘으로 다시 열기)\n' '· 모두 종료: 다운로드 · 변환을 멈추고 프로그램을 끝냅니다', [widget.hotkey]),
                 style: const TextStyle(fontSize: 12, color: JjColors.textDim)),
             const SizedBox(height: 8),
             InkWell(
               onTap: () => setState(() => _remember = !_remember),
               child: Row(children: [
                 Checkbox(value: _remember, onChanged: (v) => setState(() => _remember = v ?? false)),
-                const Flexible(
-                    child: Text('다음부터 묻지 않기 (환경 설정 > 실행 에서 바꿀 수 있음)', style: TextStyle(fontSize: 12))),
+                Flexible(
+                    child: Text(tr('다음부터 묻지 않기 (환경 설정 > 실행 에서 바꿀 수 있음)'), style: TextStyle(fontSize: 12))),
               ]),
             ),
           ]),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('취소')),
+          TextButton(onPressed: () => Navigator.pop(context), child: Text(tr('취소'))),
           OutlinedButton(
-              onPressed: () => Navigator.pop(context, ('quit', _remember)), child: const Text('모두 종료')),
+              onPressed: () => Navigator.pop(context, ('quit', _remember)), child: Text(tr('모두 종료'))),
           FilledButton(
               autofocus: true,
               onPressed: () => Navigator.pop(context, ('background', _remember)),
-              child: const Text('백그라운드로')),
+              child: Text(tr('백그라운드로'))),
         ],
       );
 }
@@ -119,11 +118,11 @@ class _ExitProgressState extends State<_ExitProgress> {
   Widget build(BuildContext context) => PopScope(
         canPop: false,
         child: AlertDialog(
-          title: Text(_bye ? 'Have You Good Time' : '종료 중입니다.'),
+          title: Text(_bye ? 'Have You Good Time' : tr('종료 중입니다.')),
           content: SizedBox(
             width: 420,
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('바로 전 작업: ${widget.lastWork}',
+              Text(trf('바로 전 작업: {0}', [widget.lastWork]),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontSize: 12, color: JjColors.textDim)),

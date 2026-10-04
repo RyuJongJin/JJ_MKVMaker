@@ -1,3 +1,4 @@
+import '../l10n/tr.dart';
 import 'dart:math' as math;
 
 /// 즐겨찾기 항목 (주소) 또는 폴더 (children 이 있음)
@@ -42,12 +43,12 @@ class BookmarkTree {
 
   /// 처음 쓰는 경우 기본 즐겨찾기
   factory BookmarkTree.defaults() => BookmarkTree(
-        BookmarkNode.folder(barId, '즐겨찾기 표시줄', [
+        BookmarkNode.folder(barId, tr('즐겨찾기 표시줄'), [
           BookmarkNode.link('b1', 'YouTube', 'https://www.youtube.com/'),
-          BookmarkNode.link('b2', 'YouTube 구독', 'https://www.youtube.com/feed/subscriptions'),
+          BookmarkNode.link('b2', tr('YouTube 구독'), 'https://www.youtube.com/feed/subscriptions'),
           BookmarkNode.link('b3', 'OpenSubtitles', 'https://www.opensubtitles.com/'),
         ]),
-        BookmarkNode.folder(otherId, '기타 즐겨찾기'),
+        BookmarkNode.folder(otherId, tr('기타 즐겨찾기')),
       );
 
   String newId() => 'n${++_seq}${math.Random().nextInt(1 << 20)}';
@@ -119,7 +120,7 @@ class BookmarkTree {
   /// 폴더 [parentId] 의 [index] 위치에 추가 (없으면 맨 뒤)
   BookmarkNode add(String parentId, BookmarkNode node, {int? index}) {
     final parent = find(parentId);
-    if (parent == null || !parent.isFolder) throw ArgumentError('폴더가 아닙니다: $parentId');
+    if (parent == null || !parent.isFolder) throw ArgumentError(trf('폴더가 아닙니다: {0}', [parentId]));
     final list = parent.children!;
     list.insert((index ?? list.length).clamp(0, list.length), node);
     return node;
@@ -297,7 +298,7 @@ class BookmarkTree {
         return BookmarkNode.link(newId(), n['name'] as String? ?? u, u);
       }
       if (n['type'] == 'folder') {
-        final f = BookmarkNode.folder(newId(), n['name'] as String? ?? '폴더');
+        final f = BookmarkNode.folder(newId(), n['name'] as String? ?? tr('폴더'));
         for (final c in (n['children'] as List? ?? const [])) {
           final x = conv(c as Map<String, dynamic>);
           if (x != null) f.children!.add(x);

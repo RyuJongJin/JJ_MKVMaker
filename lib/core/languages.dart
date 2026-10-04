@@ -1,3 +1,5 @@
+import '../l10n/tr.dart';
+
 /// 언어 코드 표.
 ///
 /// - 파일명에는 ISO 639-1 (ko, en, ja) 사용  → 파일명_ko.srt
@@ -7,11 +9,14 @@ class Language {
   final String code; // ISO 639-1 (파일명)
   final String mkv; // ISO 639-2/B (MKV 태그)
   final String nllb; // NLLB-200 코드
-  final String name; // 한국어 표시명
-  final List<String> aliases; // 파일명에서 인식할 추가 표기
+  final String koName; // 한국어 표시명 (번역 사전의 열쇠)
+  final List<String> aliases; // 파일명에서 인식할 추가 표기 (번역하지 않음)
 
-  const Language(this.code, this.mkv, this.nllb, this.name,
+  const Language(this.code, this.mkv, this.nllb, this.koName,
       [this.aliases = const []]);
+
+  /// 화면에 보일 이름 (화면 언어로)
+  String get name => tr(koName);
 }
 
 const undetermined = Language('und', 'und', '', '미지정');

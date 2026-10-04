@@ -5,6 +5,7 @@ import '../core/languages.dart';
 import '../core/models.dart';
 import '../core/subtitle_search.dart';
 import 'theme.dart';
+import '../l10n/tr.dart';
 
 /// 인터넷 자막 찾기 → 목록에서 골라 받기
 Future<void> showSubtitleSearch(BuildContext context, AppController c, VideoItem v) =>
@@ -92,15 +93,15 @@ class _SearchDialogState extends State<_SearchDialog> {
   Future<void> _download() async {
     setState(() => _busy = true);
     final ko = languageOf('ko');
-    final tr = _translateKo && c.services.createTranslator != null && _picked.any((r) => r.language.code != ko.code);
-    final n = await c.downloadSubtitles(widget.v, _picked.toList(), translateTo: tr ? ko : null);
+    final toKo = _translateKo && c.services.createTranslator != null && _picked.any((r) => r.language.code != ko.code);
+    final n = await c.downloadSubtitles(widget.v, _picked.toList(), translateTo: toKo ? ko : null);
     if (!mounted) return;
     setState(() => _busy = false);
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text((n == _picked.length
-                ? '자막 $n개를 받아 MKV 자막 목록에 추가했습니다.'
-                : '자막 ${_picked.length}개 중 $n개를 받았습니다. 아래 작업 기록을 확인하세요.') +
-            (tr && n > 0 ? '\n한국어 번역은 대기열에서 이어서 진행합니다.' : ''))));
+                ? trf('자막 {0}개를 받아 MKV 자막 목록에 추가했습니다.', [n])
+                : trf('자막 {0}개 중 {1}개를 받았습니다. 아래 작업 기록을 확인하세요.', [_picked.length, n])) +
+            (toKo && n > 0 ? tr('\n한국어 번역은 대기열에서 이어서 진행합니다.') : ''))));
     if (n > 0) Navigator.pop(context);
   }
 
@@ -109,12 +110,12 @@ class _SearchDialogState extends State<_SearchDialog> {
     final provider = c.subtitleProvider;
     final ready = provider?.configured ?? false;
     return AlertDialog(
-      title: Text('인터넷 자막 찾기${provider == null ? '' : ' · ${provider.name}'}'),
+      title: Text(trf('인터넷 자막 찾기{0}', [provider == null ? '' : ' · ${provider.name}'])),
       content: SizedBox(
         width: 820,
         height: 560,
         child: provider == null
-            ? const Center(child: Text('사용할 수 있는 자막 사이트가 없습니다.'))
+            ? Center(child: Text(tr('사용할 수 있는 자막 사이트가 없습니다.')))
             : !ready
                 ? _setup()
                 : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -135,16 +136,16 @@ class _SearchDialogState extends State<_SearchDialog> {
             Checkbox(value: _translateKo, onChanged: (x) => setState(() => _translateKo = x ?? false)),
             GestureDetector(
               onTap: () => setState(() => _translateKo = !_translateKo),
-              child: const Text('받은 자막을 한국어로 번역해 함께 추가 (한국어 자막이 없을 때)', style: TextStyle(fontSize: 12)),
+              child: Text(tr('받은 자막을 한국어로 번역해 함께 추가 (한국어 자막이 없을 때)'), style: TextStyle(fontSize: 12)),
             ),
             const SizedBox(width: 12),
           ]),
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('닫기')),
+        TextButton(onPressed: () => Navigator.pop(context), child: Text(tr('닫기'))),
         if (ready)
           FilledButton.icon(
             onPressed: _busy || _picked.isEmpty ? null : _download,
             icon: const Icon(Icons.download, size: 18),
-            label: Text('선택한 ${_picked.length}개 받기'),
+            label: Text(trf('선택한 {0}개 받기', [_picked.length])),
           ),
       ],
     );
@@ -157,7 +158,7 @@ class _SearchDialogState extends State<_SearchDialog> {
           Expanded(
             child: TextField(
               controller: _key,
-              decoration: const InputDecoration(labelText: 'API 키', border: OutlineInputBorder()),
+              decoration: InputDecoration(labelText: tr('API 키'), border: OutlineInputBorder()),
             ),
           ),
           const SizedBox(width: 8),
@@ -168,11 +169,11 @@ class _SearchDialogState extends State<_SearchDialog> {
               setState(() {});
               _search();
             },
-            child: const Text('저장하고 검색'),
+            child: Text(tr('저장하고 검색')),
           ),
         ]),
         const SizedBox(height: 8),
-        const Text('아이디·비밀번호는 환경 설정에서 넣을 수 있습니다 (선택, 하루 받기 횟수가 늘어남).',
+        Text(tr('아이디·비밀번호는 환경 설정에서 넣을 수 있습니다 (선택, 하루 받기 횟수가 늘어남).'),
             style: TextStyle(fontSize: 12, color: JjColors.textDim)),
       ]);
 
@@ -189,18 +190,18 @@ class _SearchDialogState extends State<_SearchDialog> {
     final extra = languages.where((l) => !_langs.contains(l)).toList();
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
-        Expanded(child: field(_title, '제목', double.infinity)),
+        Expanded(child: field(_title, tr('제목'), double.infinity)),
         const SizedBox(width: 8),
-        field(_year, '연도', 70),
+        field(_year, tr('연도'), 70),
         const SizedBox(width: 8),
-        field(_season, '시즌', 60),
+        field(_season, tr('시즌'), 60),
         const SizedBox(width: 8),
-        field(_episode, '회차', 60),
+        field(_episode, tr('회차'), 60),
         const SizedBox(width: 8),
         FilledButton.icon(
           onPressed: _busy ? null : _search,
           icon: const Icon(Icons.search, size: 18),
-          label: const Text('검색'),
+          label: Text(tr('검색')),
         ),
       ]),
       const SizedBox(height: 8),
@@ -211,17 +212,17 @@ class _SearchDialogState extends State<_SearchDialog> {
             onDeleted: _langs.length > 1 ? () => setState(() => _langs.remove(l)) : null,
           ),
         PopupMenuButton<Language>(
-          tooltip: '언어 추가',
+          tooltip: tr('언어 추가'),
           itemBuilder: (_) => [for (final l in extra) PopupMenuItem(value: l, child: Text('${l.name} (${l.code})'))],
           onSelected: (l) => setState(() => _langs.add(l)),
-          child: const Chip(avatar: Icon(Icons.add, size: 16), label: Text('언어')),
+          child: Chip(avatar: Icon(Icons.add, size: 16), label: Text(tr('언어'))),
         ),
         const SizedBox(width: 12),
         if (_hash != null)
           FilterChip(
             selected: _useHash,
             onSelected: (v) => setState(() => _useHash = v),
-            label: const Text('이 파일에 맞는 자막 우선 (영상 해시)', style: TextStyle(fontSize: 12)),
+            label: Text(tr('이 파일에 맞는 자막 우선 (영상 해시)'), style: TextStyle(fontSize: 12)),
           ),
       ]),
     ]);
@@ -231,8 +232,8 @@ class _SearchDialogState extends State<_SearchDialog> {
     final r = _results;
     if (r == null) return const SizedBox();
     if (r.isEmpty) {
-      return const Center(
-          child: Text('찾은 자막이 없습니다. 제목을 영어 원제로 바꾸거나 언어를 추가해 보세요.',
+      return Center(
+          child: Text(tr('찾은 자막이 없습니다. 제목을 영어 원제로 바꾸거나 언어를 추가해 보세요.'),
               style: TextStyle(color: JjColors.textDim)));
     }
     return ListView.builder(
@@ -249,15 +250,15 @@ class _SearchDialogState extends State<_SearchDialog> {
             [
               '${s.language.name} (${s.language.code})',
               if (s.featureTitle != null && s.featureTitle!.isNotEmpty) s.featureTitle!,
-              '받음 ${s.downloads}',
-              if (s.uploader != null) '올린 이 ${s.uploader}',
-              if (s.hearingImpaired) '청각장애인용',
+              trf('받음 {0}', [s.downloads]),
+              if (s.uploader != null) trf('올린 이 {0}', [s.uploader]),
+              if (s.hearingImpaired) tr('청각장애인용'),
             ].join('  ·  '),
             style: const TextStyle(fontSize: 11),
           ),
           secondary: Row(mainAxisSize: MainAxisSize.min, children: [
-            if (s.hashMatch) _badge('이 파일용', JjColors.success),
-            if (s.machineTranslated) _badge('기계 번역', Colors.amber),
+            if (s.hashMatch) _badge(tr('이 파일용'), JjColors.success),
+            if (s.machineTranslated) _badge(tr('기계 번역'), Colors.amber),
           ]),
         );
       },

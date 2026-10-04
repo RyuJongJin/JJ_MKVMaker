@@ -13,6 +13,7 @@ import '../services/preview_player.dart';
 import 'app_actions.dart';
 import 'theme.dart';
 import 'timeline.dart';
+import '../l10n/tr.dart';
 
 /// 자막을 불러와 편집 화면을 연다.
 Future<void> openSubtitleEditor(
@@ -29,7 +30,7 @@ Future<void> openSubtitleEditor(
     cues = await c.loadCues(v, s);
   } catch (e) {
     nav.pop();
-    messenger.showSnackBar(SnackBar(content: Text('자막을 불러올 수 없습니다: $e')));
+    messenger.showSnackBar(SnackBar(content: Text(trf('자막을 불러올 수 없습니다: {0}', [e]))));
     return;
   }
   nav.pop();
@@ -185,12 +186,11 @@ class _SubtitleEditorPageState extends State<SubtitleEditorPage> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('문자셋 경고'),
-        content: Text('${saveCharsets[e.saveCharset]} 로 표현할 수 없는 글자 $lost개가 '
-            '"?" 로 바뀝니다.\n계속 저장할까요? (UTF-8 을 권장합니다)'),
+        title: Text(tr('문자셋 경고')),
+        content: Text(trf('{0} 로 표현할 수 없는 글자 {1}개가 ' '"?" 로 바뀝니다.\n계속 저장할까요? (UTF-8 을 권장합니다)', [saveCharsets[e.saveCharset], lost])),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('취소')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('저장')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('취소'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('저장'))),
         ],
       ),
     );
@@ -208,9 +208,9 @@ class _SubtitleEditorPageState extends State<SubtitleEditorPage> {
           .firstWhere((s) => s.path != null && p.equals(s.path!, path));
       e.markSaved();
       messenger.showSnackBar(
-          SnackBar(content: Text('저장했습니다: ${p.basename(path)} (MKV 에 반영됨)')));
+          SnackBar(content: Text(trf('저장했습니다: {0} (MKV 에 반영됨)', [p.basename(path)]))));
     } catch (err) {
-      messenger.showSnackBar(SnackBar(content: Text('저장 실패: $err')));
+      messenger.showSnackBar(SnackBar(content: Text(trf('저장 실패: {0}', [err]))));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -224,10 +224,10 @@ class _SubtitleEditorPageState extends State<SubtitleEditorPage> {
       final (path, _) = await widget.app
           .saveCuesAs(widget.video, e.cues, e.saveCharset, name);
       if (path != null) {
-        messenger.showSnackBar(SnackBar(content: Text('저장했습니다: $path')));
+        messenger.showSnackBar(SnackBar(content: Text(trf('저장했습니다: {0}', [path]))));
       }
     } catch (err) {
-      messenger.showSnackBar(SnackBar(content: Text('저장 실패: $err')));
+      messenger.showSnackBar(SnackBar(content: Text(trf('저장 실패: {0}', [err]))));
     }
   }
 
@@ -236,11 +236,11 @@ class _SubtitleEditorPageState extends State<SubtitleEditorPage> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('저장하지 않은 변경'),
-        content: const Text('변경 내용을 저장하지 않고 나갈까요?'),
+        title: Text(tr('저장하지 않은 변경')),
+        content: Text(tr('변경 내용을 저장하지 않고 나갈까요?')),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('계속 편집')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('나가기')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('계속 편집'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('나가기'))),
         ],
       ),
     );
@@ -303,7 +303,7 @@ class _SubtitleEditorPageState extends State<SubtitleEditorPage> {
               ? FloatingActionButton.extended(
                   onPressed: () => e.insertAfter(-1),
                   icon: const Icon(Icons.add),
-                  label: const Text('첫 줄 추가'),
+                  label: Text(tr('첫 줄 추가')),
                 )
               : null,
             ),
@@ -359,7 +359,7 @@ class _SubtitleEditorPageState extends State<SubtitleEditorPage> {
                 child: Container(
                   padding: const EdgeInsets.all(8),
                   color: JjColors.danger.withValues(alpha: 0.85),
-                  child: Text('영상 재생 오류: $_playerError',
+                  child: Text(trf('영상 재생 오류: {0}', [_playerError]),
                       style: const TextStyle(fontSize: 12, color: Colors.white)),
                 ),
               ),
@@ -421,19 +421,19 @@ class _SubtitleEditorPageState extends State<SubtitleEditorPage> {
       child: Row(
         children: [
           IconButton(
-            tooltip: '5초 뒤로',
+            tooltip: tr('5초 뒤로'),
             icon: const Icon(Icons.replay_5),
             onPressed: () => _seekBy(-5000),
           ),
           IconButton(
-            tooltip: '재생/정지 (Ctrl+Space)',
+            tooltip: tr('재생/정지 (Ctrl+Space)'),
             iconSize: 30,
             icon: Icon(_playing ? Icons.pause_circle : Icons.play_circle,
                 color: JjColors.accent),
             onPressed: () => _pl?.playOrPause(),
           ),
           IconButton(
-            tooltip: '5초 앞으로',
+            tooltip: tr('5초 앞으로'),
             icon: const Icon(Icons.forward_5),
             onPressed: () => _seekBy(5000),
           ),
@@ -466,11 +466,11 @@ class _SubtitleEditorPageState extends State<SubtitleEditorPage> {
               scrollDirection: Axis.horizontal,
               reverse: true,
               child: Row(mainAxisSize: MainAxisSize.min, children: [
-                btn('+ 여기에 새 줄', 'F7', _insertHere),
-                btn('선택 줄 재생', 'F8', hasSel ? _playSelected : null),
-                btn('시작 = 현재', 'F9', hasSel ? _setStartHere : null),
-                btn('끝 = 현재', 'F10', hasSel ? _setEndHere : null),
-                btn('선택 줄부터 여기로 맞추기', '선택한 줄과 그 뒤 모든 줄을 함께 이동', hasSel ? _alignHere : null),
+                btn(tr('+ 여기에 새 줄'), 'F7', _insertHere),
+                btn(tr('선택 줄 재생'), 'F8', hasSel ? _playSelected : null),
+                btn(tr('시작 = 현재'), 'F9', hasSel ? _setStartHere : null),
+                btn(tr('끝 = 현재'), 'F10', hasSel ? _setEndHere : null),
+                btn(tr('선택 줄부터 여기로 맞추기'), tr('선택한 줄과 그 뒤 모든 줄을 함께 이동'), hasSel ? _alignHere : null),
               ]),
             ),
           ),
@@ -489,7 +489,7 @@ class _SubtitleEditorPageState extends State<SubtitleEditorPage> {
             const SizedBox(width: 4),
             Expanded(
               child: Text(
-                '자막 편집 · ${_entry.displayName}',
+                trf('자막 편집 · {0}', [_entry.displayName]),
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
               ),
@@ -501,7 +501,7 @@ class _SubtitleEditorPageState extends State<SubtitleEditorPage> {
                 scrollDirection: Axis.horizontal,
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
                   // 전체 싱크 이동
-                  const Text('싱크', style: TextStyle(fontSize: 12, color: JjColors.textDim)),
+                  Text(tr('싱크'), style: TextStyle(fontSize: 12, color: JjColors.textDim)),
                   const SizedBox(width: 6),
                   SizedBox(
                     width: 80,
@@ -520,10 +520,10 @@ class _SubtitleEditorPageState extends State<SubtitleEditorPage> {
                       if (ms == null) return;
                       e.shiftAll(ms);
                     },
-                    child: const Text('전체 이동'),
+                    child: Text(tr('전체 이동')),
                   ),
                   const SizedBox(width: 8),
-                  OutlinedButton(onPressed: e.sortByTime, child: const Text('시간순 정렬')),
+                  OutlinedButton(onPressed: e.sortByTime, child: Text(tr('시간순 정렬'))),
                   const SizedBox(width: 12),
                   DropdownButton<String>(
                     value: e.saveCharset,
@@ -539,13 +539,13 @@ class _SubtitleEditorPageState extends State<SubtitleEditorPage> {
                   const SizedBox(width: 8),
                   OutlinedButton(
                     onPressed: e.canSave ? _saveAs : null,
-                    child: const Text('다른 이름으로 저장'),
+                    child: Text(tr('다른 이름으로 저장')),
                   ),
                   const SizedBox(width: 8),
                   FilledButton.icon(
                     onPressed: e.canSave && !_saving ? _save : null,
                     icon: const Icon(Icons.save, size: 18),
-                    label: Text(e.dirty ? '저장 (MKV 반영) *' : '저장 (MKV 반영)'),
+                    label: Text(e.dirty ? tr('저장 (MKV 반영) *') : tr('저장 (MKV 반영)')),
                   ),
                 ]),
               ),
@@ -558,11 +558,10 @@ class _SubtitleEditorPageState extends State<SubtitleEditorPage> {
   Widget _statusBar() {
     final order = e.invalidOrder;
     final msgs = <String>[
-      '${e.cues.length}줄',
-      if (e.badInput.isNotEmpty) '시간 형식 오류 ${e.badInput.length}곳',
+      trf('{0}줄', [e.cues.length]),
+      if (e.badInput.isNotEmpty) trf('시간 형식 오류 {0}곳', [e.badInput.length]),
       if (order.isNotEmpty)
-        '끝 시간이 시작보다 빠른 줄: ${order.take(10).map((i) => i + 1).join(', ')}'
-            '${order.length > 10 ? ' …' : ''}',
+        trf('끝 시간이 시작보다 빠른 줄: {0}' '{1}', [order.take(10).map((i) => i + 1).join(', '), order.length > 10 ? ' …' : '']),
     ];
     final hasError = e.badInput.isNotEmpty || order.isNotEmpty;
     return Container(
@@ -583,11 +582,11 @@ class _HeaderRow extends StatelessWidget {
   Widget build(BuildContext context) => Container(
         color: JjColors.panel,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        child: const Row(children: [
+        child: Row(children: [
           SizedBox(width: 48, child: Text('#', style: _hdr)),
-          SizedBox(width: 130, child: Text('시작', style: _hdr)),
-          SizedBox(width: 130, child: Text('끝', style: _hdr)),
-          Expanded(child: Text('내용', style: _hdr)),
+          SizedBox(width: 130, child: Text(tr('시작'), style: _hdr)),
+          SizedBox(width: 130, child: Text(tr('끝'), style: _hdr)),
+          Expanded(child: Text(tr('내용'), style: _hdr)),
           SizedBox(width: 96),
         ]),
       );
@@ -701,13 +700,13 @@ class _CueRowState extends State<_CueRow> {
             width: 96,
             child: Row(children: [
               IconButton(
-                tooltip: '아래에 줄 추가',
+                tooltip: tr('아래에 줄 추가'),
                 iconSize: 18,
                 icon: const Icon(Icons.add, color: JjColors.textDim),
                 onPressed: () => e.insertAfter(widget.index),
               ),
               IconButton(
-                tooltip: '줄 삭제',
+                tooltip: tr('줄 삭제'),
                 iconSize: 18,
                 icon: const Icon(Icons.delete_outline, color: JjColors.textDim),
                 onPressed: () => e.removeAt(widget.index),
@@ -730,7 +729,7 @@ class _CueRowState extends State<_CueRow> {
         decoration: InputDecoration(
           isDense: true,
           border: InputBorder.none,
-          errorText: bad ? '형식 오류' : null,
+          errorText: bad ? tr('형식 오류') : null,
           errorStyle: const TextStyle(fontSize: 10),
         ),
         onTap: () => widget.editor.select(widget.cue),

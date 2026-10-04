@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import '../../core/languages.dart';
 import '../../core/subtitle_search.dart';
 import '../../services/subtitle_provider.dart';
+import '../../l10n/tr.dart';
 
 /// OpenSubtitles.com REST API (v1). Windows·Android 공용.
 ///
@@ -38,10 +39,7 @@ class OpenSubtitlesProvider implements SubtitleProvider {
   bool get configured => apiKey().trim().isNotEmpty;
 
   @override
-  String get setupHint => 'OpenSubtitles 무료 API 키가 필요합니다.\n'
-      '1. opensubtitles.com 가입 (무료)\n'
-      '2. 프로필 → API consumers → New consumer 에서 키 만들기\n'
-      '3. 아래 칸 또는 환경 설정에 키 붙여넣기';
+  String get setupHint => tr('OpenSubtitles 무료 API 키가 필요합니다.\n' '1. opensubtitles.com 가입 (무료)\n' '2. 프로필 → API consumers → New consumer 에서 키 만들기\n' '3. 아래 칸 또는 환경 설정에 키 붙여넣기');
 
   String get _api => _base ?? baseUrl;
 
@@ -70,12 +68,14 @@ class OpenSubtitlesProvider implements SubtitleProvider {
     }
     if (res.statusCode >= 400) {
       final msg = json['message'] ?? json['errors']?.toString() ?? text;
-      throw SubtitleProviderException(switch (res.statusCode) {
-        401 || 403 => 'OpenSubtitles API 키 또는 로그인 정보가 올바르지 않습니다. ($msg)',
-        406 => '오늘 받을 수 있는 자막 수를 모두 사용했습니다. ($msg)',
-        429 => '요청이 너무 많습니다. 잠시 후 다시 시도하세요.',
-        _ => 'OpenSubtitles 오류 ${res.statusCode}: $msg',
-      });
+      throw SubtitleProviderException(
+          switch (res.statusCode) {
+            401 || 403 => trf('OpenSubtitles API 키 또는 로그인 정보가 올바르지 않습니다. ({0})', [msg]),
+            406 => trf('오늘 받을 수 있는 자막 수를 모두 사용했습니다. ({0})', [msg]),
+            429 => tr('요청이 너무 많습니다. 잠시 후 다시 시도하세요.'),
+            _ => trf('OpenSubtitles 오류 {0}: {1}', [res.statusCode, msg]),
+          },
+          quotaExceeded: res.statusCode == 406);
     }
     return json;
   }
@@ -163,12 +163,12 @@ class OpenSubtitlesProvider implements SubtitleProvider {
     final res = await _request('POST', '/download',
         body: {'file_id': int.tryParse(r.fileId) ?? r.fileId, 'sub_format': 'srt'}, auth: true);
     final link = res['link'] as String?;
-    if (link == null) throw SubtitleProviderException('다운로드 주소를 받지 못했습니다: ${res['message']}');
+    if (link == null) throw SubtitleProviderException(trf('다운로드 주소를 받지 못했습니다: {0}', [res['message']]));
     final req = await _http.getUrl(Uri.parse(link));
     req.headers.set('User-Agent', userAgent);
     final file = await req.close();
     if (file.statusCode != 200) {
-      throw SubtitleProviderException('자막 파일을 받을 수 없습니다 (${file.statusCode})');
+      throw SubtitleProviderException(trf('자막 파일을 받을 수 없습니다 ({0})', [file.statusCode]));
     }
     final b = BytesBuilder(copy: false);
     await for (final chunk in file) {

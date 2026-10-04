@@ -350,13 +350,13 @@ void main() {
     d.dispose();
   });
 
-  testWidgets('MKV 만들기: 고른 동영상이 없으면 "전체 만들기 / 취소" 를 묻는다', (tester) async {
+  testWidgets('MKV 만들기: 체크가 없으면 보고 있는 동영상만, 보고 있는 것도 없으면 "전체 만들기 / 취소" 를 묻는다', (tester) async {
     tester.view.physicalSize = const Size(1500, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     final c = _plain()..ffmpegVersion = 'test';
     c.videos.addAll([VideoItem(r'D:\v\a.mp4'), VideoItem(r'D:\v\b.mp4')]);
-    c.selected = c.videos.first;
+    c.selected = null;
     await tester.pumpWidget(MaterialApp(home: HomePage(c: c)));
 
     await tester.tap(find.text('MKV 만들기'));

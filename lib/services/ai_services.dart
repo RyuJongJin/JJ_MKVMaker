@@ -1,4 +1,5 @@
 import '../core/srt.dart';
+import '../l10n/tr.dart';
 
 /// 진행률 (0.0 ~ 1.0)
 typedef AiProgress = void Function(double progress);
@@ -6,7 +7,7 @@ typedef AiProgress = void Function(double progress);
 class AiCancelled implements Exception {
   const AiCancelled();
   @override
-  String toString() => '사용자가 취소했습니다.';
+  String toString() => tr('사용자가 취소했습니다.');
 }
 
 /// 음성인식 경계. 구현: platform/common/whisper_recognizer.dart (Windows·Android 공용)

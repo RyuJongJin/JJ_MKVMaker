@@ -6,6 +6,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'package:path/path.dart' as p;
 
 import '../../services/media_player.dart';
+import '../../l10n/tr.dart';
 
 /// mpv 가 오류 수준으로 남기지만 재생에는 지장이 없는 메시지.
 ///
@@ -60,7 +61,7 @@ class MediaKitFullPlayer implements MediaPlayer {
       if (title != null && title.isNotEmpty) title,
       if (lang != null && lang.isNotEmpty) lang,
     ];
-    return parts.isEmpty ? '트랙 $id' : parts.join(' · ');
+    return parts.isEmpty ? trf('트랙 {0}', [id]) : parts.join(' · ');
   }
 
   void _emit() {

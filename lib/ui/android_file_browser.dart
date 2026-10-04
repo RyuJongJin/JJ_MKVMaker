@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 
 import '../platform/android/android_storage.dart';
 import 'theme.dart';
+import '../l10n/tr.dart';
 
 /// 마지막으로 본 폴더 (다음에 열 때 여기서)
 String? _lastDir;
@@ -46,7 +47,7 @@ class _FileBrowser extends StatefulWidget {
 
 class _FileBrowserState extends State<_FileBrowser> {
   /// (경로, 이름, 빼낼 수 있는지)
-  List<(String, String, bool)> _volumes = const [('/storage/emulated/0', '내장 저장소', false)];
+  List<(String, String, bool)> _volumes = [('/storage/emulated/0', tr('내장 저장소'), false)];
   String? _dir;
   bool? _allowed;
   List<Directory> _dirs = [];
@@ -77,7 +78,7 @@ class _FileBrowserState extends State<_FileBrowser> {
     return null;
   }
 
-  static String _volumeName((String, String, bool) v) => v.$3 ? (v.$2.isEmpty ? 'SD 카드' : v.$2) : '내장 저장소';
+  static String _volumeName((String, String, bool) v) => v.$3 ? (v.$2.isEmpty ? tr('SD 카드') : v.$2) : tr('내장 저장소');
 
   bool _match(String path) => widget.extensions.contains(p.extension(path).replaceFirst('.', '').toLowerCase());
 
@@ -131,7 +132,7 @@ class _FileBrowserState extends State<_FileBrowser> {
                 child: FilledButton.icon(
                   onPressed: dir == null ? null : () => Navigator.pop(context, [dir]),
                   icon: const Icon(Icons.check, size: 18),
-                  label: const Text('이 폴더 선택'),
+                  label: Text(tr('이 폴더 선택')),
                 ),
               )
             else ...[
@@ -143,13 +144,13 @@ class _FileBrowserState extends State<_FileBrowser> {
                       all ? _picked.remove(f.path) : _picked.add(f.path);
                     }
                   }),
-                  child: const Text('이 폴더 전체'),
+                  child: Text(tr('이 폴더 전체')),
                 ),
               Padding(
                 padding: const EdgeInsets.only(right: 8),
                 child: FilledButton(
                   onPressed: _picked.isEmpty ? null : () => Navigator.pop(context, _picked.toList()),
-                  child: Text('추가 (${_picked.length})'),
+                  child: Text(trf('추가 ({0})', [_picked.length])),
                 ),
               ),
             ],
@@ -188,7 +189,7 @@ class _FileBrowserState extends State<_FileBrowser> {
               ListTile(
                 dense: true,
                 leading: IconButton(
-                  tooltip: '위 폴더',
+                  tooltip: tr('위 폴더'),
                   icon: const Icon(Icons.arrow_upward),
                   onPressed: atRoot ? null : () => _open(p.dirname(dir)),
                 ),
@@ -203,7 +204,7 @@ class _FileBrowserState extends State<_FileBrowser> {
               Expanded(
                 child: _dirs.isEmpty && _files.isEmpty
                     ? Center(
-                        child: Text(widget.folder ? '하위 폴더가 없습니다' : '이 폴더에는 고를 파일이 없습니다',
+                        child: Text(widget.folder ? tr('하위 폴더가 없습니다') : tr('이 폴더에는 고를 파일이 없습니다'),
                             style: const TextStyle(color: JjColors.textDim)))
                     : ListView(children: [
                         for (final d in _dirs)
@@ -242,14 +243,14 @@ class _FileBrowserState extends State<_FileBrowser> {
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             const Icon(Icons.folder_off_outlined, size: 48),
             const SizedBox(height: 12),
-            const Text(
-              '동영상을 고르고, 동영상 옆 jj_mkv 폴더에 MKV 를 만들려면\n"모든 파일에 대한 접근" 권한이 필요합니다.',
+            Text(
+              tr('동영상을 고르고, 동영상 옆 jj_mkv 폴더에 MKV 를 만들려면\n"모든 파일에 대한 접근" 권한이 필요합니다.'),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 16),
-            FilledButton(onPressed: AndroidAccess.request, child: const Text('권한 허용 화면 열기')),
+            FilledButton(onPressed: AndroidAccess.request, child: Text(tr('권한 허용 화면 열기'))),
             const SizedBox(height: 8),
-            TextButton(onPressed: _start, child: const Text('허용했으면 다시 확인')),
+            TextButton(onPressed: _start, child: Text(tr('허용했으면 다시 확인'))),
           ]),
         ),
       );

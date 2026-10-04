@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../app/app_controller.dart';
 import '../core/playlist.dart';
 import 'theme.dart';
+import '../l10n/tr.dart';
 
 /// 끌어다 놓은 파일 · 폴더에서 동영상을 골라 MKV 만들기의 동영상 목록에 넣는다.
 /// 직접 놓은 동영상 파일은 jj_mkv 폴더 안에 있어도 넣고, 폴더째 놓으면 그 안의 jj_ 출력 폴더는 건너뛴다.
@@ -48,11 +49,10 @@ class _AppDropAreaState extends State<AppDropArea> {
     m?.clearSnackBars();
     m?.showSnackBar(SnackBar(
         content: Text(found == 0
-            ? '끌어다 놓은 항목에 동영상이 없습니다.'
+            ? tr('끌어다 놓은 항목에 동영상이 없습니다.')
             : added == 0
-                ? '이미 동영상 목록에 있습니다 ($found개).'
-                : 'MKV 만들기의 동영상 목록에 $added개를 추가했습니다.'
-                    '${added < found ? ' (${found - added}개는 이미 있음)' : ''}')));
+                ? trf('이미 동영상 목록에 있습니다 ({0}개).', [found])
+                : trf('MKV 만들기의 동영상 목록에 {0}개를 추가했습니다.' '{1}', [added, added < found ? trf(' ({0}개는 이미 있음)', [found - added]) : '']))));
   }
 
   @override
@@ -74,10 +74,10 @@ class _AppDropAreaState extends State<AppDropArea> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
                     decoration: BoxDecoration(color: JjColors.panel, borderRadius: BorderRadius.circular(10)),
-                    child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
                       Icon(Icons.playlist_add, color: JjColors.accent),
                       SizedBox(width: 10),
-                      Text('여기에 놓으면 MKV 만들기의 동영상 목록에 추가합니다',
+                      Text(tr('여기에 놓으면 MKV 만들기의 동영상 목록에 추가합니다'),
                           style: TextStyle(fontSize: 15, color: JjColors.text, decoration: TextDecoration.none)),
                     ]),
                   ),

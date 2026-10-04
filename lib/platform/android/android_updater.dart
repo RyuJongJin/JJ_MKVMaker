@@ -9,6 +9,7 @@ import 'package:path/path.dart' as p;
 import '../../core/app_update.dart';
 import '../../services/storage_service.dart';
 import '../../services/updater.dart';
+import '../../l10n/tr.dart';
 
 /// GitHub Release 로 업데이트 (Android)
 ///
@@ -48,7 +49,7 @@ class AndroidUpdater implements Updater {
     final body = await res.transform(utf8.decoder).join();
     if (res.statusCode == 404) return null;
     if (res.statusCode != 200) {
-      throw UpdateException('최신 버전을 확인할 수 없습니다 (${res.statusCode})');
+      throw UpdateException(trf('최신 버전을 확인할 수 없습니다 ({0})', [res.statusCode]));
     }
     return parseLatestRelease(jsonDecode(body) as Map<String, dynamic>, assetPattern: androidAssetPattern);
   }
@@ -59,11 +60,11 @@ class AndroidUpdater implements Updater {
   @override
   Future<String> download(ReleaseInfo r, void Function(double progress) onProgress) async {
     final url = r.zipUrl;
-    if (url == null) throw const UpdateException('이 버전에는 Android 용 APK 가 없습니다.');
+    if (url == null) throw UpdateException(tr('이 버전에는 Android 용 APK 가 없습니다.'));
     final apk = File(p.join(await storage.tempDirectory(), r.zipName ?? 'update.apk'));
     final req = await _http.getUrl(Uri.parse(url));
     final res = await req.close();
-    if (res.statusCode != 200) throw UpdateException('내려받기 실패 (${res.statusCode})');
+    if (res.statusCode != 200) throw UpdateException(trf('내려받기 실패 ({0})', [res.statusCode]));
     final total = res.contentLength > 0 ? res.contentLength : r.zipSize;
     final sink = apk.openWrite();
     var got = 0;
@@ -81,7 +82,7 @@ class AndroidUpdater implements Updater {
       final hash = (await sha256.bind(apk.openRead()).first).toString();
       if (hash != r.sha256) {
         await apk.delete();
-        throw const UpdateException('받은 파일이 손상되었거나 다른 파일입니다 (SHA256 불일치). 설치를 중단했습니다.');
+        throw UpdateException(tr('받은 파일이 손상되었거나 다른 파일입니다 (SHA256 불일치). 설치를 중단했습니다.'));
       }
     }
     onProgress(1);

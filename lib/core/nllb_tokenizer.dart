@@ -1,4 +1,5 @@
 import 'dart:convert';
+import '../l10n/tr.dart';
 
 /// NLLB-200 토크나이저 (Hugging Face tokenizer.json 의 BPE + Metaspace 를 Dart 로 구현)
 ///
@@ -20,7 +21,7 @@ class NllbTokenizer {
   factory NllbTokenizer.fromJson(String jsonText) {
     final t = jsonDecode(jsonText) as Map<String, dynamic>;
     final model = t['model'] as Map<String, dynamic>;
-    if (model['type'] != 'BPE') throw FormatException('BPE 토크나이저가 아닙니다: ${model['type']}');
+    if (model['type'] != 'BPE') throw FormatException(trf('BPE 토크나이저가 아닙니다: {0}', [model['type']]));
 
     final vocab = <String, int>{};
     final rawVocab = model['vocab'];
@@ -60,7 +61,7 @@ class NllbTokenizer {
   /// 언어 코드 토큰 번호 (예: kor_Hang)
   int langId(String nllbCode) {
     final id = _special[nllbCode];
-    if (id == null) throw ArgumentError('NLLB 언어 코드가 아닙니다: $nllbCode');
+    if (id == null) throw ArgumentError(trf('NLLB 언어 코드가 아닙니다: {0}', [nllbCode]));
     return id;
   }
 

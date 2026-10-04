@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../core/bookmarks.dart';
+import '../l10n/tr.dart';
 
 /// 즐겨찾기 (bookmarks.json 에 저장). 바뀔 때마다 저장한다.
 class BookmarksController extends ChangeNotifier {
@@ -51,7 +52,7 @@ class BookmarksController extends ChangeNotifier {
   }
 
   BookmarkNode addFolder(String title, {String parentId = BookmarkTree.barId, int? index}) {
-    final n = tree.add(parentId, BookmarkNode.folder(tree.newId(), title.trim().isEmpty ? '새 폴더' : title.trim()),
+    final n = tree.add(parentId, BookmarkNode.folder(tree.newId(), title.trim().isEmpty ? tr('새 폴더') : title.trim()),
         index: index);
     _changed();
     return n;
@@ -81,7 +82,7 @@ class BookmarksController extends ChangeNotifier {
 
   /// 즐겨찾기 HTML 가져오기 → 기타 즐겨찾기 안 "가져온 즐겨찾기" 폴더. 가져온 주소 수.
   Future<int> importHtml(String file) async {
-    final n = tree.importNetscapeHtml(await File(file).readAsString(), '가져온 즐겨찾기 (${p.basename(file)})');
+    final n = tree.importNetscapeHtml(await File(file).readAsString(), trf('가져온 즐겨찾기 ({0})', [p.basename(file)]));
     if (n > 0) _changed();
     return n;
   }
@@ -142,10 +143,10 @@ class BookmarksController extends ChangeNotifier {
     final f = File(file);
     if (!await f.exists()) return -1;
     final name = switch (browser) {
-      'chrome' => 'Chrome 에서 가져옴',
-      'edge' => 'Edge 에서 가져옴',
-      'whale' => 'Whale 에서 가져옴',
-      _ => '가져온 즐겨찾기',
+      'chrome' => tr('Chrome 에서 가져옴'),
+      'edge' => tr('Edge 에서 가져옴'),
+      'whale' => tr('Whale 에서 가져옴'),
+      _ => tr('가져온 즐겨찾기'),
     };
     final n = tree.importChromium(jsonDecode(await f.readAsString()) as Map<String, dynamic>, name);
     if (n > 0) _changed();

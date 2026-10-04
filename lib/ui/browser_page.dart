@@ -22,6 +22,7 @@ import 'bookmark_ui.dart';
 import 'downloads_page.dart';
 import 'theme.dart';
 import 'work_panel.dart';
+import '../l10n/tr.dart';
 
 /// 브라우저 조작 (앱 안 웹뷰)
 abstract class WebNav {
@@ -183,7 +184,7 @@ class _BrowserPageState extends State<BrowserPage> with RouteAware {
   void _applyAdSettings() {
     if (!(Uri.tryParse(_url)?.host ?? '').endsWith('youtube.com')) return;
     final s = widget.c.settings;
-    _nav?.runScript(youtubeAdScript(skip: s.youtubeAdSkip, hide: s.youtubeAdHide));
+    _nav?.runScript(youtubeAdScript(skip: s.youtubeAdSkip, hide: s.youtubeAdHide, badge: tr('광고 건너뛰는 중…')));
   }
 
   /// MKV 화면 등으로 가며 브라우저 화면이 닫힌다: 살려 둔 웹뷰에서 소리만 나지 않게 멈춘다
@@ -221,17 +222,17 @@ class _BrowserPageState extends State<BrowserPage> with RouteAware {
     final t = d.addPage(_url);
     final m = ScaffoldMessenger.of(context);
     if (t == null) {
-      m.showSnackBar(const SnackBar(content: Text('이미 받는 중이거나 받을 수 없는 주소입니다.')));
+      m.showSnackBar(SnackBar(content: Text(tr('이미 받는 중이거나 받을 수 없는 주소입니다.'))));
       return;
     }
     // 알림은 앱 전체에 떠 있으므로 이 브라우저 화면이 아니라 앱의 Navigator 로 연다
     // (화면을 오가 이 브라우저 화면이 닫혀도 "목록 보기" 가 된다)
     final nav = Navigator.of(context);
     final bar = m.showSnackBar(SnackBar(
-      content: Text('다운로드 추가: ${_title.isEmpty ? _url : _title}'),
+      content: Text(trf('다운로드 추가: {0}', [_title.isEmpty ? _url : _title])),
       duration: const Duration(minutes: 10),
       showCloseIcon: true, // [✕] 로 바로 닫기
-      action: SnackBarAction(label: '목록 보기', onPressed: () => DownloadsPage.open(nav, d)),
+      action: SnackBarAction(label: tr('목록 보기'), onPressed: () => DownloadsPage.open(nav, d)),
     ));
     // 받기 준비가 끝나면 (진행률이 나오거나 · 끝 · 실패 · 취소 · 목록에서 지움) 알림을 닫는다
     void check() {
@@ -382,12 +383,12 @@ class _BrowserPageState extends State<BrowserPage> with RouteAware {
         Container(width: 1, height: 24, color: JjColors.border),
         const SizedBox(width: 4),
         // 웹 페이지 이동 (앱 화면 이동인 왼쪽 버튼과 구분되는 모양)
-        btn(Icons.arrow_back_ios_new, '이전 페이지 (Alt+←)', _canBack ? () => _nav?.back() : null),
-        btn(Icons.arrow_forward_ios, '다음 페이지 (Alt+→)', _canFwd ? () => _nav?.forward() : null),
+        btn(Icons.arrow_back_ios_new, tr('이전 페이지 (Alt+←)'), _canBack ? () => _nav?.back() : null),
+        btn(Icons.arrow_forward_ios, tr('다음 페이지 (Alt+→)'), _canFwd ? () => _nav?.forward() : null),
         _progress < 1
-            ? btn(Icons.close, '중지', () => _nav?.stop())
-            : btn(Icons.refresh, '새로고침 (F5)', () => _nav?.reload()),
-        btn(Icons.home_outlined, '홈', () => _go(widget.c.settings.homeUrl)),
+            ? btn(Icons.close, tr('중지'), () => _nav?.stop())
+            : btn(Icons.refresh, tr('새로고침 (F5)'), () => _nav?.reload()),
+        btn(Icons.home_outlined, tr('홈'), () => _go(widget.c.settings.homeUrl)),
         const SizedBox(width: 6),
         Expanded(
           child: TextField(
@@ -398,12 +399,12 @@ class _BrowserPageState extends State<BrowserPage> with RouteAware {
               isDense: true,
               filled: true,
               fillColor: JjColors.bg,
-              hintText: '주소 입력 또는 검색 (Ctrl+L)',
+              hintText: tr('주소 입력 또는 검색 (Ctrl+L)'),
               prefixIcon: Icon(_url.startsWith('https') ? Icons.lock_outline : Icons.public, size: 16),
               prefixIconConstraints: const BoxConstraints(minWidth: 32),
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: BorderSide.none),
               suffixIcon: IconButton(
-                tooltip: starred ? '즐겨찾기 수정 (Ctrl+D)' : '즐겨찾기 추가 (Ctrl+D)',
+                tooltip: starred ? tr('즐겨찾기 수정 (Ctrl+D)') : tr('즐겨찾기 추가 (Ctrl+D)'),
                 icon: Icon(starred ? Icons.star : Icons.star_border, size: 18,
                     color: starred ? Colors.amber : JjColors.textDim),
                 onPressed: _star,
@@ -416,10 +417,10 @@ class _BrowserPageState extends State<BrowserPage> with RouteAware {
         FilledButton.icon(
           onPressed: _canDownload ? _download : null,
           icon: const Icon(Icons.download, size: 18),
-          label: const Text('다운로드'),
+          label: Text(tr('다운로드')),
         ),
         const SizedBox(width: 4),
-        btn(Icons.open_in_new, '외부 브라우저로 열기', () => _openExternal(_url)),
+        btn(Icons.open_in_new, tr('외부 브라우저로 열기'), () => _openExternal(_url)),
         if (widget.c.busy && !_work)
           InkWell(
             onTap: _toggleWork,
@@ -429,9 +430,9 @@ class _BrowserPageState extends State<BrowserPage> with RouteAware {
               child: JobIndicator(c: widget.c, compact: true),
             ),
           ),
-        btn(_work ? Icons.view_sidebar : Icons.view_sidebar_outlined, '작업 현황 보기 · 화면 분할 (Ctrl+Shift+J)',
+        btn(_work ? Icons.view_sidebar : Icons.view_sidebar_outlined, tr('작업 현황 보기 · 화면 분할 (Ctrl+Shift+J)'),
             _toggleWork, color: widget.c.busy ? JjColors.accent : null),
-        btn(_panel ? Icons.bookmarks : Icons.bookmarks_outlined, '즐겨찾기 관리 (Ctrl+Shift+B)',
+        btn(_panel ? Icons.bookmarks : Icons.bookmarks_outlined, tr('즐겨찾기 관리 (Ctrl+Shift+B)'),
             () => setState(() => _panel = !_panel)),
         AppActions(c: widget.c),
       ]),
@@ -525,7 +526,7 @@ class _EdgeViewState extends State<_EdgeView> {
           }
           if (snap.hasError) {
             return Center(
-              child: Text('웹 브라우저(Edge WebView2)를 시작할 수 없습니다.\n${snap.error}',
+              child: Text(trf('웹 브라우저(Edge WebView2)를 시작할 수 없습니다.\n{0}', [snap.error]),
                   textAlign: TextAlign.center),
             );
           }
@@ -739,7 +740,7 @@ class _CefViewState extends State<_CefView> {
   Widget build(BuildContext context) {
     if (_error != null) {
       return Center(
-        child: Text('Chrome 엔진을 시작할 수 없습니다. 환경 설정에서 Edge 로 바꿔 쓰세요.\n$_error',
+        child: Text(trf('Chrome 엔진을 시작할 수 없습니다. 환경 설정에서 Edge 로 바꿔 쓰세요.\n{0}', [_error]),
             textAlign: TextAlign.center),
       );
     }
@@ -848,9 +849,9 @@ class _BookmarkBar extends StatelessWidget {
           color: JjColors.panel,
           padding: const EdgeInsets.symmetric(horizontal: 6),
           child: items.isEmpty
-              ? const Align(
+              ? Align(
                   alignment: Alignment.centerLeft,
-                  child: Text('  ☆ 를 누르면 여기에 즐겨찾기가 추가됩니다 · 오른쪽 클릭: 폴더 추가',
+                  child: Text(tr('  ☆ 를 누르면 여기에 즐겨찾기가 추가됩니다 · 오른쪽 클릭: 폴더 추가'),
                       style: TextStyle(fontSize: 11, color: JjColors.textDim)),
                 )
               : ListView(
@@ -907,7 +908,7 @@ class _BookmarkBar extends StatelessWidget {
   }
 
   List<Widget> _folderMenu(BuildContext context, BookmarkNode f) => [
-        if (f.children!.isEmpty) const MenuItemButton(child: Text('(비어 있음)')),
+        if (f.children!.isEmpty) MenuItemButton(child: Text(tr('(비어 있음)'))),
         for (final c in f.children!)
           c.isFolder
               ? SubmenuButton(
@@ -926,22 +927,22 @@ class _BookmarkBar extends StatelessWidget {
           onPressed: currentUrl.startsWith('http')
               ? () => bm.addLink(currentTitle.isEmpty ? currentUrl : currentTitle, currentUrl, parentId: f.id)
               : null,
-          child: const Text('이 폴더에 현재 페이지 추가'),
+          child: Text(tr('이 폴더에 현재 페이지 추가')),
         ),
         MenuItemButton(
           leadingIcon: const Icon(Icons.create_new_folder_outlined, size: 16),
           onPressed: () => showNewFolderDialog(context, bm, f.id),
-          child: const Text('이 폴더에 새 폴더'),
+          child: Text(tr('이 폴더에 새 폴더')),
         ),
         MenuItemButton(
           leadingIcon: const Icon(Icons.edit_outlined, size: 16),
           onPressed: () => showBookmarkEditor(context, bm, f),
-          child: const Text('폴더 이름 바꾸기 · 이동'),
+          child: Text(tr('폴더 이름 바꾸기 · 이동')),
         ),
         MenuItemButton(
           leadingIcon: const Icon(Icons.bookmarks_outlined, size: 16),
           onPressed: () => onOpenManager(folderId: f.id),
-          child: const Text('즐겨찾기 관리자에서 보기'),
+          child: Text(tr('즐겨찾기 관리자에서 보기')),
         ),
       ];
 }
@@ -1005,16 +1006,16 @@ class _BookmarkPanelState extends State<BookmarkPanel> {
           child: Row(children: [
             const Icon(Icons.bookmarks_outlined, size: 18, color: JjColors.accent),
             const SizedBox(width: 6),
-            const Text('즐겨찾기', style: TextStyle(fontWeight: FontWeight.w600)),
+            Text(tr('즐겨찾기'), style: TextStyle(fontWeight: FontWeight.w600)),
             const Spacer(),
             if (widget.onOpenManager != null)
               IconButton(
-                tooltip: '즐겨찾기 관리자 (Ctrl+Shift+O)',
+                tooltip: tr('즐겨찾기 관리자 (Ctrl+Shift+O)'),
                 iconSize: 18,
                 icon: const Icon(Icons.open_in_full),
                 onPressed: () => widget.onOpenManager!(folderId: _folderId),
               ),
-            IconButton(tooltip: '닫기', iconSize: 18, icon: const Icon(Icons.close), onPressed: widget.onClose),
+            IconButton(tooltip: tr('닫기'), iconSize: 18, icon: const Icon(Icons.close), onPressed: widget.onClose),
           ]),
         ),
         // 최상위 폴더 선택
@@ -1060,37 +1061,37 @@ class _BookmarkPanelState extends State<BookmarkPanel> {
                       parentId: _folderId)
                   : null,
               icon: const Icon(Icons.add, size: 16),
-              label: const Text('현재 페이지', style: TextStyle(fontSize: 12)),
+              label: Text(tr('현재 페이지'), style: TextStyle(fontSize: 12)),
             ),
             OutlinedButton.icon(
               onPressed: () async {
                 await showNewFolderDialog(context, bm, _folderId);
               },
               icon: const Icon(Icons.create_new_folder_outlined, size: 16),
-              label: const Text('폴더', style: TextStyle(fontSize: 12)),
+              label: Text(tr('폴더'), style: TextStyle(fontSize: 12)),
             ),
             PopupMenuButton<String>(
-              tooltip: '다른 브라우저의 즐겨찾기 가져오기',
-              itemBuilder: (_) => const [
-                PopupMenuItem(value: 'chrome', child: Text('Chrome 에서 가져오기')),
-                PopupMenuItem(value: 'edge', child: Text('Edge 에서 가져오기')),
-                PopupMenuItem(value: 'whale', child: Text('Whale 에서 가져오기')),
+              tooltip: tr('다른 브라우저의 즐겨찾기 가져오기'),
+              itemBuilder: (_) => [
+                PopupMenuItem(value: 'chrome', child: Text(tr('Chrome 에서 가져오기'))),
+                PopupMenuItem(value: 'edge', child: Text(tr('Edge 에서 가져오기'))),
+                PopupMenuItem(value: 'whale', child: Text(tr('Whale 에서 가져오기'))),
               ],
               onSelected: (b) async {
                 final n = await bm.importFrom(b);
                 if (!context.mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                     content: Text(n < 0
-                        ? '이 브라우저의 즐겨찾기 파일을 찾지 못했습니다.'
-                        : '$n개를 "기타 즐겨찾기" 에 가져왔습니다.')));
+                        ? tr('이 브라우저의 즐겨찾기 파일을 찾지 못했습니다.')
+                        : trf('{0}개를 "기타 즐겨찾기" 에 가져왔습니다.', [n]))));
                 if (n > 0) setState(() => _folderId = BookmarkTree.otherId);
               },
-              child: const Padding(
+              child: Padding(
                 padding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
                   Icon(Icons.download_for_offline_outlined, size: 16),
                   SizedBox(width: 4),
-                  Text('가져오기', style: TextStyle(fontSize: 12)),
+                  Text(tr('가져오기'), style: TextStyle(fontSize: 12)),
                 ]),
               ),
             ),
@@ -1099,7 +1100,7 @@ class _BookmarkPanelState extends State<BookmarkPanel> {
         const Divider(height: 12),
         Expanded(
           child: items.isEmpty
-              ? const Center(child: Text('비어 있는 폴더', style: TextStyle(color: JjColors.textDim)))
+              ? Center(child: Text(tr('비어 있는 폴더'), style: TextStyle(color: JjColors.textDim)))
               : ReorderableListView.builder(
                   buildDefaultDragHandles: false,
                   itemCount: items.length,
@@ -1123,21 +1124,21 @@ class _BookmarkPanelState extends State<BookmarkPanel> {
                       ]),
                       title: Text(n.title, maxLines: 1, overflow: TextOverflow.ellipsis),
                       subtitle: n.isFolder
-                          ? Text('${n.children!.length}개', style: const TextStyle(fontSize: 11))
+                          ? Text(trf('{0}개', [n.children!.length]), style: const TextStyle(fontSize: 11))
                           : Text(n.url!, maxLines: 1, overflow: TextOverflow.ellipsis,
                               style: const TextStyle(fontSize: 11)),
                       onTap: () => n.isFolder ? setState(() => _folderId = n.id) : widget.onOpen(n.url!),
                       trailing: PopupMenuButton<String>(
-                        tooltip: '더 보기',
+                        tooltip: tr('더 보기'),
                         iconSize: 18,
                         itemBuilder: (_) => [
-                          if (!n.isFolder) const PopupMenuItem(value: 'ext', child: Text('외부 브라우저로 열기')),
-                          const PopupMenuItem(value: 'edit', child: Text('수정')),
-                          const PopupMenuItem(value: 'move', child: Text('다른 폴더로 이동')),
-                          if (i > 0) const PopupMenuItem(value: 'up', child: Text('위로')),
-                          if (i < items.length - 1) const PopupMenuItem(value: 'down', child: Text('아래로')),
+                          if (!n.isFolder) PopupMenuItem(value: 'ext', child: Text(tr('외부 브라우저로 열기'))),
+                          PopupMenuItem(value: 'edit', child: Text(tr('수정'))),
+                          PopupMenuItem(value: 'move', child: Text(tr('다른 폴더로 이동'))),
+                          if (i > 0) PopupMenuItem(value: 'up', child: Text(tr('위로'))),
+                          if (i < items.length - 1) PopupMenuItem(value: 'down', child: Text(tr('아래로'))),
                           const PopupMenuDivider(),
-                          const PopupMenuItem(value: 'del', child: Text('삭제')),
+                          PopupMenuItem(value: 'del', child: Text(tr('삭제'))),
                         ],
                         onSelected: (v) async {
                           switch (v) {
@@ -1175,9 +1176,9 @@ class _BookmarkPanelState extends State<BookmarkPanel> {
                   },
                 ),
         ),
-        const Padding(
+        Padding(
           padding: EdgeInsets.all(8),
-          child: Text('⋮⋮ 를 끌어 순서 바꾸기 · 아이콘을 끌어 폴더에 넣기 · 오른쪽 클릭 메뉴',
+          child: Text(tr('⋮⋮ 를 끌어 순서 바꾸기 · 아이콘을 끌어 폴더에 넣기 · 오른쪽 클릭 메뉴'),
               textAlign: TextAlign.center, style: TextStyle(fontSize: 11, color: JjColors.textDim)),
         ),
       ]),
@@ -1188,7 +1189,7 @@ class _BookmarkPanelState extends State<BookmarkPanel> {
     final target = await showDialog<String>(
       context: context,
       builder: (ctx) => SimpleDialog(
-        title: Text('"${n.title}" 이동'),
+        title: Text(trf('"{0}" 이동', [n.title])),
         children: [
           for (final (f, depth) in bm.tree.folders())
             if (f.id != n.id && !bm.tree.isInside(f.id, n.id))

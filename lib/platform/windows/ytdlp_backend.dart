@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 
 import '../../core/download_detect.dart';
 import '../../services/downloader.dart';
+import '../../l10n/tr.dart';
 
 /// 실행 파일 찾기: 앱 옆 tools\ → 앱 폴더 → PATH
 String locateTool(String name) {
@@ -106,7 +107,7 @@ class YtDlpBackend implements DownloadBackend {
     }
     if (r.exitCode != 0) {
       throw ProcessException(
-          ytdlp, [url], '재생목록을 읽을 수 없습니다: ${friendlyYtDlpError((r.stderr as String).trim())}', r.exitCode);
+          ytdlp, [url], trf('재생목록을 읽을 수 없습니다: {0}', [friendlyYtDlpError((r.stderr as String).trim())]), r.exitCode);
     }
     final j = jsonDecode(r.stdout as String) as Map<String, dynamic>;
     final entries = <PlaylistEntry>[];
@@ -162,7 +163,7 @@ class YtDlpBackend implements DownloadBackend {
     } on ProcessException catch (e) {
       t
         ..state = DownloadState.failed
-        ..error = 'yt-dlp 를 실행할 수 없습니다: ${e.message}';
+        ..error = trf('yt-dlp 를 실행할 수 없습니다: {0}', [e.message]);
       changed();
       return;
     }
@@ -196,7 +197,7 @@ class YtDlpBackend implements DownloadBackend {
       } else if (line.startsWith('[Merger] Merging formats into "')) {
         t
           ..speed = ''
-          ..eta = '영상 · 음성 합치는 중';
+          ..eta = tr('영상 · 음성 합치는 중');
         changed();
         t.files.add(line.substring('[Merger] Merging formats into "'.length).replaceFirst(RegExp(r'"$'), ''));
       }

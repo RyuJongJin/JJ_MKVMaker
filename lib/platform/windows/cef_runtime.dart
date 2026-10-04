@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import 'app_paths.dart';
+import '../../l10n/tr.dart';
 
 /// 내장 Chrome (CEF) 실행 파일: 환경 설정에서 "내장 Chrome" 을 고른 사람만 내려받는다.
 ///
@@ -48,7 +49,7 @@ class CefRuntime {
       final archive = File(p.join(work.path, 'cef.tar.bz2'));
       final req = await http.getUrl(downloadUri);
       final res = await req.close();
-      if (res.statusCode != 200) throw HttpException('Chrome 엔진을 받을 수 없습니다 (HTTP ${res.statusCode})');
+      if (res.statusCode != 200) throw HttpException(trf('Chrome 엔진을 받을 수 없습니다 (HTTP {0})', [res.statusCode]));
       final total = res.contentLength;
       var got = 0;
       final sink = archive.openWrite();
@@ -57,27 +58,27 @@ class CefRuntime {
           if (isCancelled?.call() ?? false) throw const _Cancelled();
           sink.add(chunk);
           got += chunk.length;
-          if (total > 0) onProgress(0.85 * got / total, '받는 중');
+          if (total > 0) onProgress(0.85 * got / total, tr('받는 중'));
         }
       } finally {
         await sink.close();
       }
 
       // 2. 풀기 (Windows 기본 tar 가 bzip2 를 푼다)
-      onProgress(0.86, '푸는 중');
+      onProgress(0.86, tr('푸는 중'));
       final out = Directory(p.join(work.path, 'x'))..createSync();
       final r = await Process.run('tar', ['-xf', archive.path, '-C', out.path]);
-      if (r.exitCode != 0) throw ProcessException('tar', [], '압축을 풀 수 없습니다: ${r.stderr}', r.exitCode);
+      if (r.exitCode != 0) throw ProcessException('tar', [], trf('압축을 풀 수 없습니다: {0}', [r.stderr]), r.exitCode);
       await archive.delete();
       final root = out.listSync().whereType<Directory>().firstOrNull ?? out;
       final release = Directory(p.join(root.path, 'Release'));
       final resources = Directory(p.join(root.path, 'Resources'));
       if (!File(p.join(release.path, 'libcef.dll')).existsSync()) {
-        throw const FileSystemException('받은 파일에 libcef.dll 이 없습니다.');
+        throw FileSystemException(tr('받은 파일에 libcef.dll 이 없습니다.'));
       }
 
       // 3. 설치: 새 폴더에 모은 뒤 이름 바꾸기 (중간에 실패해도 반쯤 깔린 폴더가 남지 않게)
-      onProgress(0.95, '설치하는 중');
+      onProgress(0.95, tr('설치하는 중'));
       final staging = Directory('$dir.new');
       if (staging.existsSync()) staging.deleteSync(recursive: true);
       staging.createSync(recursive: true);
@@ -99,9 +100,9 @@ class CefRuntime {
       final old = Directory(dir);
       if (old.existsSync()) old.deleteSync(recursive: true);
       staging.renameSync(dir);
-      onProgress(1, '완료');
+      onProgress(1, tr('완료'));
     } on _Cancelled {
-      throw const FileSystemException('취소했습니다.');
+      throw FileSystemException(tr('취소했습니다.'));
     } finally {
       if (client == null) http.close(force: true);
       try {

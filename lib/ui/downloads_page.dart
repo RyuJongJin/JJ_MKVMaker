@@ -7,6 +7,7 @@ import '../core/download_detect.dart';
 import '../services/downloader.dart';
 import 'app_actions.dart';
 import 'theme.dart';
+import '../l10n/tr.dart';
 
 /// 다운로드 목록
 class DownloadsPage extends StatefulWidget {
@@ -60,8 +61,8 @@ class _DownloadsPageState extends State<DownloadsPage> {
     final t = widget.d.add(_url.text);
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(t == null
-            ? 'YouTube 주소 · 마그넷 링크 · .torrent 주소가 아니거나 이미 받는 중입니다.'
-            : '다운로드 추가: ${t.source}')));
+            ? tr('YouTube 주소 · 마그넷 링크 · .torrent 주소가 아니거나 이미 받는 중입니다.')
+            : trf('다운로드 추가: {0}', [t.source]))));
     if (t != null) _url.clear();
   }
 
@@ -82,7 +83,7 @@ class _DownloadsPageState extends State<DownloadsPage> {
               child: Row(children: [
                 const AppNavButtons(onDownloadsPage: true),
                 const SizedBox(width: 8),
-                Text('다운로드 (${d.tasks.length})',
+                Text(trf('다운로드 ({0})', [d.tasks.length]),
                     style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
                 const SizedBox(width: 20),
                 Expanded(
@@ -93,15 +94,15 @@ class _DownloadsPageState extends State<DownloadsPage> {
                       isDense: true,
                       // Android 는 클립보드를 감시하지 않는다
                       hintText: Platform.isAndroid
-                          ? 'YouTube 주소 · 마그넷 링크 · .torrent 주소 붙여넣기'
-                          : 'YouTube 주소 · 마그넷 링크 · .torrent 주소 붙여넣기 (Ctrl+C 만 해도 자동 추가)',
+                          ? tr('YouTube 주소 · 마그넷 링크 · .torrent 주소 붙여넣기')
+                          : tr('YouTube 주소 · 마그넷 링크 · .torrent 주소 붙여넣기 (Ctrl+C 만 해도 자동 추가)'),
                       border: OutlineInputBorder(),
                     ),
                     onSubmitted: (_) => _add(),
                   ),
                 ),
                 const SizedBox(width: 8),
-                FilledButton(onPressed: _add, child: const Text('추가')),
+                FilledButton(onPressed: _add, child: Text(tr('추가'))),
                 const AppActions(),
               ]),
             ),
@@ -120,19 +121,19 @@ class _DownloadsPageState extends State<DownloadsPage> {
                     ),
                     Padding(
                       padding: const EdgeInsets.only(right: 8),
-                      child: Text(hasSel ? '${d.selected.length}개 선택' : '전체 선택',
+                      child: Text(hasSel ? trf('{0}개 선택', [d.selected.length]) : tr('전체 선택'),
                           style: const TextStyle(fontSize: 12, color: JjColors.textDim)),
                     ),
                   ]),
                 ),
                 const Spacer(),
                 if (d.addToEditList != null) ...[
-                  _btn(Icons.playlist_add, '동영상 추가',
+                  _btn(Icons.playlist_add, tr('동영상 추가'),
                       hasSel && d.selectedVideoFiles.isNotEmpty ? () => _addToEditList(context) : null),
                   // 켜면: 다 받는 대로 MKV 만들기 목록에 넣고 이 목록에서는 뺀다
                   if (d.setAutoAdd != null)
                     Tooltip(
-                      message: '다 받으면 MKV 만들기의 동영상 목록에 자동으로 넣고, 이 다운로드 목록에서는 뺍니다 (받은 파일은 그대로)',
+                      message: tr('다 받으면 MKV 만들기의 동영상 목록에 자동으로 넣고, 이 다운로드 목록에서는 뺍니다 (받은 파일은 그대로)'),
                       child: InkWell(
                         borderRadius: BorderRadius.circular(4),
                         onTap: () => d.setAutoAdd!(!d.settings().addFinishedDownloads),
@@ -142,20 +143,20 @@ class _DownloadsPageState extends State<DownloadsPage> {
                             value: d.settings().addFinishedDownloads,
                             onChanged: (v) => d.setAutoAdd!(v ?? false),
                           ),
-                          const Padding(
+                          Padding(
                             padding: EdgeInsets.only(right: 8),
-                            child: Text('완료시 자동 동영상추가', style: TextStyle(fontSize: 12)),
+                            child: Text(tr('완료시 자동 동영상추가'), style: TextStyle(fontSize: 12)),
                           ),
                         ]),
                       ),
                     ),
                 ],
-                _btn(Icons.pause, '일시정지', hasSel ? d.pauseSelected : null),
-                _btn(Icons.play_arrow, '재개', hasSel ? d.resumeSelected : null),
-                _btn(Icons.stop, '취소', hasSel ? d.cancelSelected : null),
-                _btn(Icons.delete_outline, '삭제', hasSel ? () => _confirmRemove(context) : null),
+                _btn(Icons.pause, tr('일시정지'), hasSel ? d.pauseSelected : null),
+                _btn(Icons.play_arrow, tr('재개'), hasSel ? d.resumeSelected : null),
+                _btn(Icons.stop, tr('취소'), hasSel ? d.cancelSelected : null),
+                _btn(Icons.delete_outline, tr('삭제'), hasSel ? () => _confirmRemove(context) : null),
                 const SizedBox(width: 12),
-                _btn(Icons.cleaning_services_outlined, '완료 정리',
+                _btn(Icons.cleaning_services_outlined, tr('완료 정리'),
                     d.tasks.any((t) => !t.unfinished) ? d.cleanupFinished : null),
               ]),
             ),
@@ -165,8 +166,8 @@ class _DownloadsPageState extends State<DownloadsPage> {
                   ? Center(
                       child: Text(
                           Platform.isAndroid
-                              ? '다운로드가 없습니다.\nYouTube 주소 · 마그넷 링크를 위 칸에 붙여 넣거나, 웹 브라우저에서 [다운로드] 를 누르세요.'
-                              : '다운로드가 없습니다.\nYouTube 주소나 마그넷 링크를 복사(Ctrl+C)하면 자동으로 받습니다.',
+                              ? tr('다운로드가 없습니다.\nYouTube 주소 · 마그넷 링크를 위 칸에 붙여 넣거나, 웹 브라우저에서 [다운로드] 를 누르세요.')
+                              : tr('다운로드가 없습니다.\nYouTube 주소나 마그넷 링크를 복사(Ctrl+C)하면 자동으로 받습니다.'),
                           textAlign: TextAlign.center,
                           style: const TextStyle(color: JjColors.textDim)))
                   : ListView.builder(
@@ -196,8 +197,8 @@ class _DownloadsPageState extends State<DownloadsPage> {
     final n = await widget.d.addToEditList!(files);
     m.showSnackBar(SnackBar(
         content: Text(n > 0
-            ? 'MKV 만들기 목록에 동영상 $n개를 추가했습니다.'
-            : '이미 목록에 있는 동영상입니다 (${files.length}개).')));
+            ? trf('MKV 만들기 목록에 동영상 {0}개를 추가했습니다.', [n])
+            : trf('이미 목록에 있는 동영상입니다 ({0}개).', [files.length]))));
   }
 
   Future<void> _confirmRemove(BuildContext context) async {
@@ -205,11 +206,11 @@ class _DownloadsPageState extends State<DownloadsPage> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('삭제'),
-        content: Text('선택한 $n개를 목록에서 삭제합니다.\n받는 중인 항목은 중지하고 받던 파일도 지웁니다. (완료된 파일은 남습니다)'),
+        title: Text(tr('삭제')),
+        content: Text(trf('선택한 {0}개를 목록에서 삭제합니다.\n받는 중인 항목은 중지하고 받던 파일도 지웁니다. (완료된 파일은 남습니다)', [n])),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('취소')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('삭제')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('취소'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('삭제'))),
         ],
       ),
     );
@@ -225,12 +226,12 @@ class _DownloadRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (label, color) = switch (t.state) {
-      DownloadState.queued => ('대기', JjColors.textDim),
-      DownloadState.downloading => ('받는 중', JjColors.accent),
-      DownloadState.paused => ('일시정지', Colors.amber),
-      DownloadState.done => ('완료', JjColors.success),
-      DownloadState.failed => ('실패', JjColors.danger),
-      DownloadState.cancelled => ('취소됨', JjColors.textDim),
+      DownloadState.queued => (tr('대기'), JjColors.textDim),
+      DownloadState.downloading => (tr('받는 중'), JjColors.accent),
+      DownloadState.paused => (tr('일시정지'), Colors.amber),
+      DownloadState.done => (tr('완료'), JjColors.success),
+      DownloadState.failed => (tr('실패'), JjColors.danger),
+      DownloadState.cancelled => (tr('취소됨'), JjColors.textDim),
     };
     return InkWell(
       onTap: () => d.toggle(t),
@@ -256,7 +257,7 @@ class _DownloadRow extends StatelessWidget {
                 [
                   label,
                   if (t.speed.isNotEmpty) t.speed,
-                  if (t.eta.isNotEmpty) t.eta.contains('중') ? t.eta : '남은 시간 ${t.eta}',
+                  if (t.eta.isNotEmpty) t.eta.contains(RegExp(r'\d')) ? trf('남은 시간 {0}', [t.eta]) : t.eta, // 숫자가 없으면 "합치는 중" 같은 단계
                   if (t.error != null) t.error!.split('\n').first,
                 ].join('  ·  '),
                 maxLines: 1,
@@ -266,7 +267,7 @@ class _DownloadRow extends StatelessWidget {
             ]),
           ),
           IconButton(
-            tooltip: '폴더 열기',
+            tooltip: tr('폴더 열기'),
             icon: const Icon(Icons.folder_open, size: 18, color: JjColors.textDim),
             onPressed: () {
               if (Platform.isWindows) {
@@ -314,7 +315,7 @@ class DownloadProgressBar extends StatelessWidget {
     // "45.3% · 166MB / 367MB" (크기를 모르면 퍼센트만)
     final size = downloadSizeText(t);
     final text = value == null
-        ? (t.state == DownloadState.queued ? '대기' : '준비 중…')
+        ? (t.state == DownloadState.queued ? tr('대기') : tr('준비 중…'))
         : '${(value * 100).toStringAsFixed(1)}%${size.isEmpty ? '' : ' · $size'}';
     return ClipRRect(
       borderRadius: BorderRadius.circular(4),
@@ -365,11 +366,11 @@ class _ExitDialog extends StatelessWidget {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('종료'),
-        content: const Text('다운로드를 종료하시겠습니까?'),
+        title: Text(tr('종료')),
+        content: Text(tr('다운로드를 종료하시겠습니까?')),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('취소')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('종료')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('취소'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('종료'))),
         ],
       ),
     );
@@ -384,10 +385,10 @@ class _ExitDialog extends StatelessWidget {
           return AlertDialog(
             titlePadding: const EdgeInsets.fromLTRB(24, 16, 8, 0),
             title: Row(children: [
-              Text('받는 중인 다운로드 ${active.length}개'),
+              Text(trf('받는 중인 다운로드 {0}개', [active.length])),
               const Spacer(),
               IconButton(
-                tooltip: '종료',
+                tooltip: tr('종료'),
                 icon: const Icon(Icons.close),
                 onPressed: () => _quit(context),
               ),
@@ -396,7 +397,7 @@ class _ExitDialog extends StatelessWidget {
               width: 520,
               height: 300,
               child: active.isEmpty
-                  ? const Center(child: Text('받는 중인 다운로드가 없습니다.'))
+                  ? Center(child: Text(tr('받는 중인 다운로드가 없습니다.')))
                   : ListView(children: [
                       for (final t in active)
                         ListTile(
@@ -410,7 +411,7 @@ class _ExitDialog extends StatelessWidget {
                             child: DownloadProgressBar(t: t, height: 14),
                           ),
                           trailing: IconButton(
-                            tooltip: '삭제 (중지하고 받던 파일 삭제)',
+                            tooltip: tr('삭제 (중지하고 받던 파일 삭제)'),
                             icon: const Icon(Icons.delete_outline),
                             onPressed: () => d.remove([t]),
                           ),
@@ -418,10 +419,10 @@ class _ExitDialog extends StatelessWidget {
                     ]),
             ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('돌아가기')),
+              TextButton(onPressed: () => Navigator.pop(context, false), child: Text(tr('돌아가기'))),
               FilledButton(
                 onPressed: () => active.isEmpty ? Navigator.pop(context, true) : _quit(context),
-                child: const Text('종료'),
+                child: Text(tr('종료')),
               ),
             ],
           );

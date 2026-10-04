@@ -9,6 +9,7 @@ import 'browser_page.dart';
 import 'downloads_page.dart';
 import 'settings_page.dart';
 import 'theme.dart';
+import '../l10n/tr.dart';
 
 /// 모든 화면의 위쪽 막대 높이 · 오른쪽 여백 (환경 설정 · 종료 버튼이 어느 화면에서나 같은 자리에 오도록)
 const double appBarHeight = 56;
@@ -84,29 +85,29 @@ class AppNavButtons extends StatelessWidget {
       child: Row(children: [
         btn(
           Image.asset('assets/icon/app_icon_256.png', width: 26, height: 26, filterQuality: FilterQuality.medium),
-          '홈 화면 (${homeIsBrowser ? '웹 브라우저' : 'MKV 화면'}) · 환경 설정에서 바꿈',
+          trf('홈 화면 ({0}) · 환경 설정에서 바꿈', [homeIsBrowser ? tr('웹 브라우저') : tr('MKV 화면')]),
           scope == null ? null : () => toHome(context),
         ),
         btn(
           Icon(Icons.video_library_outlined, color: atRoot ? JjColors.accent : null),
-          atRoot ? 'MKV 화면 (지금 여기)' : 'MKV 화면으로',
+          atRoot ? tr('MKV 화면 (지금 여기)') : tr('MKV 화면으로'),
           atRoot ? null : () => toMkv(context),
           here: atRoot,
         ),
         // 웹 브라우저: MKV 화면 버튼 다음 (모든 화면 같은 자리)
         btn(
           Icon(Icons.public, color: onBrowserPage ? JjColors.accent : null),
-          onBrowserPage ? '웹 브라우저 (지금 여기)' : '웹 브라우저',
+          onBrowserPage ? tr('웹 브라우저 (지금 여기)') : tr('웹 브라우저'),
           scope?.bookmarks == null || onBrowserPage
               ? null
               : () => BrowserPage.open(Navigator.of(context),
                   c: scope!.controller, downloads: scope.downloads, bookmarks: scope.bookmarks!),
           here: onBrowserPage,
         ),
-        btn(const Icon(Icons.arrow_back), '뒤로', atRoot ? null : () => Navigator.maybePop(context)),
+        btn(const Icon(Icons.arrow_back), tr('뒤로'), atRoot ? null : () => Navigator.maybePop(context)),
         btn(
           Icon(Icons.download_for_offline_outlined, color: onDownloadsPage ? JjColors.accent : null),
-          onDownloadsPage ? '다운로드 목록 (지금 여기)' : '다운로드 목록',
+          onDownloadsPage ? tr('다운로드 목록 (지금 여기)') : tr('다운로드 목록'),
           downloads == null || onDownloadsPage
               ? null
               : () => DownloadsPage.open(Navigator.of(context), downloads),
@@ -160,11 +161,8 @@ class UsageView extends StatelessWidget {
 
           return Tooltip(
             message: s == null
-                ? 'PC 전체 CPU · 메모리 사용량'
-                : 'PC 전체 사용량\nCPU ${(s.cpu * 100).round()}%\n'
-                    '메모리 ${_gb(s.memUsed)} / ${_gb(s.memTotal)}GB (${(s.mem * 100).round()}%)'
-                    '${free == null ? '' : '\n다운로드 디스크 ${s.disk} 남은 용량 ${_size(free)}'
-                        '${s.diskTotal == null ? '' : ' / 전체 ${_size(s.diskTotal!)}'}'}',
+                ? tr('PC 전체 CPU · 메모리 사용량')
+                : trf('PC 전체 사용량\nCPU {0}%\n' '메모리 {1} / {2}GB ({3}%)' '{4}', [(s.cpu * 100).round(), _gb(s.memUsed), _gb(s.memTotal), (s.mem * 100).round(), free == null ? '' : trf('\n다운로드 디스크 {0} 남은 용량 {1}' '{2}', [s.disk, _size(free), s.diskTotal == null ? '' : trf(' / 전체 {0}', [_size(s.diskTotal!)])])]),
             child: Padding(
               padding: const EdgeInsets.only(left: 8),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -205,9 +203,9 @@ class ScaleButtons extends StatelessWidget {
           return Padding(
             padding: const EdgeInsets.only(left: 6),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
-              btn(Icons.remove, '화면 작게', s <= AppSettings.uiScaleMin + 0.001 ? null : () => _set(s - 0.1)),
+              btn(Icons.remove, tr('화면 작게'), s <= AppSettings.uiScaleMin + 0.001 ? null : () => _set(s - 0.1)),
               Tooltip(
-                message: '기본 크기 (${(c.settings.uiScaleDefault * 100).round()}%) 로 · 기본 크기는 환경 설정 > 화면 에서',
+                message: trf('기본 크기 ({0}%) 로 · 기본 크기는 환경 설정 > 화면 에서', [(c.settings.uiScaleDefault * 100).round()]),
                 child: InkWell(
                   borderRadius: BorderRadius.circular(4),
                   onTap: () => _set(c.settings.uiScaleDefault),
@@ -221,7 +219,7 @@ class ScaleButtons extends StatelessWidget {
                   ),
                 ),
               ),
-              btn(Icons.add, '화면 크게', s >= AppSettings.uiScaleMax - 0.001 ? null : () => _set(s + 0.1)),
+              btn(Icons.add, tr('화면 크게'), s >= AppSettings.uiScaleMax - 0.001 ? null : () => _set(s + 0.1)),
             ]),
           );
         },
@@ -292,7 +290,7 @@ class AppActions extends StatelessWidget {
       const SizedBox(width: 4),
       if (controller != null)
         IconButton(
-          tooltip: '환경 설정',
+          tooltip: tr('환경 설정'),
           icon: Icon(onSettingsPage ? Icons.settings : Icons.settings_outlined,
               color: onSettingsPage ? JjColors.accent : null),
           onPressed: onSettingsPage
@@ -302,7 +300,7 @@ class AppActions extends StatelessWidget {
         ),
       if (exit != null)
         IconButton(
-          tooltip: '종료',
+          tooltip: tr('종료'),
           icon: const Icon(Icons.power_settings_new, color: JjColors.danger),
           onPressed: exit,
         ),

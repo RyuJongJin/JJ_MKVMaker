@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 
 import '../../core/download_detect.dart';
 import '../../services/downloader.dart';
+import '../../l10n/tr.dart';
 import 'ytdlp_backend.dart' show locateTool;
 
 /// aria2 로 토렌트 · 마그넷 다운로드.
@@ -67,7 +68,7 @@ class Aria2Backend implements DownloadBackend {
         await Future<void>.delayed(const Duration(milliseconds: 100));
       }
     }
-    throw const SocketException('aria2 RPC 에 연결할 수 없습니다.');
+    throw SocketException(tr('aria2 RPC 에 연결할 수 없습니다.'));
   }
 
   Future<dynamic> _call(String method, List<Object?> params) async {
@@ -108,7 +109,7 @@ class Aria2Backend implements DownloadBackend {
     } catch (e) {
       t
         ..state = DownloadState.failed
-        ..error = 'aria2 오류: $e';
+        ..error = trf('aria2 오류: {0}', [e]);
     }
     changed();
   }
@@ -169,9 +170,9 @@ class Aria2Backend implements DownloadBackend {
   }
 
   static String _eta(int sec) {
-    if (sec >= 3600) return '${sec ~/ 3600}시간 ${(sec % 3600) ~/ 60}분';
-    if (sec >= 60) return '${sec ~/ 60}분 ${sec % 60}초';
-    return '$sec초';
+    if (sec >= 3600) return trf('{0}시간 {1}분', [sec ~/ 3600, (sec % 3600) ~/ 60]);
+    if (sec >= 60) return trf('{0}분 {1}초', [sec ~/ 60, sec % 60]);
+    return trf('{0}초', [sec]);
   }
 
   @override

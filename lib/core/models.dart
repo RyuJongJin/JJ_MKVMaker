@@ -1,6 +1,7 @@
 import 'package:path/path.dart' as p;
 
 import 'languages.dart';
+import '../l10n/tr.dart';
 
 /// ffprobe 로 읽은 스트림 정보
 class StreamInfo {
@@ -80,7 +81,7 @@ class SubtitleEntry {
 
   String get displayName => kind == SubtitleKind.external
       ? p.basename(path!)
-      : '트랙 #$streamIndex ($codec)${title != null ? ' - $title' : ''}';
+      : trf('트랙 #{0} ({1}){2}', [streamIndex, codec, title != null ? ' - $title' : '']);
 }
 
 enum JobStatus { ready, running, done, failed }

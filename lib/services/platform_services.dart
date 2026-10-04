@@ -32,6 +32,7 @@ import 'storage_service.dart';
 import 'subtitle_provider.dart';
 import 'system_usage.dart';
 import 'updater.dart';
+import '../l10n/tr.dart';
 
 /// 플랫폼별 구현을 한 곳에서 고른다.
 /// Android 이식 시 이 파일에 분기만 추가하면 된다.
@@ -143,6 +144,6 @@ class PlatformServices {
         ],
       );
     }
-    throw UnsupportedError('아직 지원하지 않는 플랫폼입니다: ${Platform.operatingSystem}');
+    throw UnsupportedError(trf('아직 지원하지 않는 플랫폼입니다: {0}', [Platform.operatingSystem]));
   }
 }

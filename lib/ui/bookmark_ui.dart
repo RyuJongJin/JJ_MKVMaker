@@ -8,6 +8,7 @@ import '../app/bookmarks_controller.dart';
 import '../core/bookmarks.dart';
 import 'app_actions.dart';
 import 'theme.dart';
+import '../l10n/tr.dart';
 
 // 즐겨찾기 공용 화면 조각 (Chrome 의 즐겨찾기를 참고):
 //  - 즐겨찾기 수정 창: 이름 · 주소 · 저장할 폴더 (+ 새 폴더)
@@ -94,20 +95,20 @@ class _BookmarkEditorState extends State<_BookmarkEditor> {
   Widget build(BuildContext context) {
     final n = widget.n;
     return AlertDialog(
-      title: Text(widget.justAdded ? '즐겨찾기 추가됨' : (n.isFolder ? '폴더 수정' : '즐겨찾기 수정')),
+      title: Text(widget.justAdded ? tr('즐겨찾기 추가됨') : (n.isFolder ? tr('폴더 수정') : tr('즐겨찾기 수정'))),
       content: SizedBox(
         width: 440,
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           TextField(
             controller: _title,
             autofocus: true,
-            decoration: const InputDecoration(labelText: '이름', border: OutlineInputBorder()),
+            decoration: InputDecoration(labelText: tr('이름'), border: OutlineInputBorder()),
             onSubmitted: (_) => _save(),
           ),
           if (!n.isFolder) ...[
             const SizedBox(height: 12),
             TextField(
-                controller: _url, decoration: const InputDecoration(labelText: '주소', border: OutlineInputBorder())),
+                controller: _url, decoration: InputDecoration(labelText: tr('주소'), border: OutlineInputBorder())),
           ],
           const SizedBox(height: 12),
           Row(children: [
@@ -117,7 +118,7 @@ class _BookmarkEditorState extends State<_BookmarkEditor> {
                 key: ValueKey(_folder),
                 initialValue: _folder,
                 isExpanded: true,
-                decoration: const InputDecoration(labelText: '폴더', border: OutlineInputBorder()),
+                decoration: InputDecoration(labelText: tr('폴더'), border: OutlineInputBorder()),
                 items: folderItems(widget.bm, exclude: n.isFolder ? n.id : null),
                 onChanged: (v) => setState(() => _folder = v!),
               ),
@@ -126,7 +127,7 @@ class _BookmarkEditorState extends State<_BookmarkEditor> {
             OutlinedButton.icon(
               onPressed: _newFolder,
               icon: const Icon(Icons.create_new_folder_outlined, size: 18),
-              label: const Text('새 폴더'),
+              label: Text(tr('새 폴더')),
             ),
           ]),
         ]),
@@ -134,10 +135,10 @@ class _BookmarkEditorState extends State<_BookmarkEditor> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context, 'del'),
-          child: Text(widget.justAdded ? '추가 취소' : '삭제', style: const TextStyle(color: JjColors.danger)),
+          child: Text(widget.justAdded ? tr('추가 취소') : tr('삭제'), style: const TextStyle(color: JjColors.danger)),
         ),
-        if (!widget.justAdded) TextButton(onPressed: () => Navigator.pop(context), child: const Text('취소')),
-        FilledButton(onPressed: _save, child: Text(widget.justAdded ? '완료' : '저장')),
+        if (!widget.justAdded) TextButton(onPressed: () => Navigator.pop(context), child: Text(tr('취소'))),
+        FilledButton(onPressed: _save, child: Text(widget.justAdded ? tr('완료') : tr('저장'))),
       ],
     );
   }
@@ -145,8 +146,8 @@ class _BookmarkEditorState extends State<_BookmarkEditor> {
 
 /// 새 폴더 (폴더 [parentId] 안의 맨 뒤). 만든 폴더, 취소하면 null.
 Future<BookmarkNode?> showNewFolderDialog(BuildContext context, BookmarksController bm, String parentId) async {
-  final name = await askText(context, '새 폴더', '폴더 이름', '새 폴더',
-      help: '"${bm.tree.find(parentId)?.title ?? ''}" 안에 만듭니다');
+  final name = await askText(context, tr('새 폴더'), tr('폴더 이름'), tr('새 폴더'),
+      help: trf('"{0}" 안에 만듭니다', [bm.tree.find(parentId)?.title ?? '']));
   if (name == null) return null;
   return bm.addFolder(name, parentId: parentId);
 }
@@ -159,29 +160,29 @@ Future<void> showNewBookmarkDialog(BuildContext context, BookmarksController bm,
   final ok = await showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
-      title: const Text('즐겨찾기 추가'),
+      title: Text(tr('즐겨찾기 추가')),
       content: SizedBox(
         width: 440,
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           TextField(
-              controller: t, autofocus: true, decoration: const InputDecoration(labelText: '이름', border: OutlineInputBorder())),
+              controller: t, autofocus: true, decoration: InputDecoration(labelText: tr('이름'), border: OutlineInputBorder())),
           const SizedBox(height: 12),
           TextField(
             controller: u,
-            decoration: const InputDecoration(labelText: '주소', hintText: 'https://…', border: OutlineInputBorder()),
+            decoration: InputDecoration(labelText: tr('주소'), hintText: 'https://…', border: OutlineInputBorder()),
             onSubmitted: (_) => Navigator.pop(ctx, true),
           ),
           const SizedBox(height: 8),
           Align(
             alignment: Alignment.centerLeft,
-            child: Text('폴더: ${bm.tree.find(parentId)?.title ?? ''}',
+            child: Text(trf('폴더: {0}', [bm.tree.find(parentId)?.title ?? '']),
                 style: const TextStyle(fontSize: 12, color: JjColors.textDim)),
           ),
         ]),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('취소')),
-        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('추가')),
+        TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('취소'))),
+        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('추가'))),
       ],
     ),
   );
@@ -220,8 +221,8 @@ Future<String?> askText(BuildContext context, String title, String label, String
         ]),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('취소')),
-        FilledButton(onPressed: () => Navigator.pop(ctx, ctrl.text), child: const Text('확인')),
+        TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('취소'))),
+        FilledButton(onPressed: () => Navigator.pop(ctx, ctrl.text), child: Text(tr('확인'))),
       ],
     ),
   );
@@ -237,8 +238,8 @@ void removeBookmarkWithUndo(BuildContext context, BookmarksController bm, Bookma
   ScaffoldMessenger.of(context)
     ..clearSnackBars()
     ..showSnackBar(SnackBar(
-      content: Text(n.isFolder ? '폴더 삭제: ${n.title} (안의 ${bm.tree.countLinks(n)}개 포함)' : '삭제: ${n.title}'),
-      action: SnackBarAction(label: '실행 취소', onPressed: bm.undoRemove),
+      content: Text(n.isFolder ? trf('폴더 삭제: {0} (안의 {1}개 포함)', [n.title, bm.tree.countLinks(n)]) : trf('삭제: {0}', [n.title])),
+      action: SnackBarAction(label: tr('실행 취소'), onPressed: bm.undoRemove),
     ));
 }
 
@@ -275,23 +276,23 @@ Future<void> showBookmarkMenu(
     position: RelativeRect.fromLTRB(at.dx, at.dy, overlay.size.width - at.dx, overlay.size.height - at.dy),
     items: [
       if (n != null && !n.isFolder) ...[
-        item('open', Icons.open_in_browser, '열기'),
-        if (onOpenExternal != null) item('ext', Icons.open_in_new, '외부 브라우저로 열기'),
+        item('open', Icons.open_in_browser, tr('열기')),
+        if (onOpenExternal != null) item('ext', Icons.open_in_new, tr('외부 브라우저로 열기')),
         const PopupMenuDivider(),
       ],
       if (n != null) ...[
-        item('edit', Icons.edit_outlined, n.isFolder ? '이름 바꾸기 · 이동' : '수정 · 이동'),
-        item('del', Icons.delete_outline, '삭제',
+        item('edit', Icons.edit_outlined, n.isFolder ? tr('이름 바꾸기 · 이동') : tr('수정 · 이동')),
+        item('del', Icons.delete_outline, tr('삭제'),
             enabled: n.id != BookmarkTree.barId && n.id != BookmarkTree.otherId),
         const PopupMenuDivider(),
       ],
       item('addPage', Icons.bookmark_add_outlined,
-          n != null && n.isFolder ? '이 폴더에 현재 페이지 추가' : '현재 페이지 추가', enabled: currentUrl.startsWith('http')),
-      item('addLink', Icons.add_link, '즐겨찾기 추가…'),
-      item('addFolder', Icons.create_new_folder_outlined, n != null && n.isFolder ? '이 폴더에 새 폴더' : '새 폴더…'),
+          n != null && n.isFolder ? tr('이 폴더에 현재 페이지 추가') : tr('현재 페이지 추가'), enabled: currentUrl.startsWith('http')),
+      item('addLink', Icons.add_link, tr('즐겨찾기 추가…')),
+      item('addFolder', Icons.create_new_folder_outlined, n != null && n.isFolder ? tr('이 폴더에 새 폴더') : tr('새 폴더…')),
       if (onOpenManager != null) ...[
         const PopupMenuDivider(),
-        item('manager', Icons.bookmarks_outlined, '즐겨찾기 관리자'),
+        item('manager', Icons.bookmarks_outlined, tr('즐겨찾기 관리자')),
       ],
     ],
   );
@@ -410,8 +411,8 @@ class _BookmarkManagerPageState extends State<BookmarkManagerPage> {
 
   Future<void> _export() async {
     final uri = await FilePicker.saveFile(
-      dialogTitle: '즐겨찾기 내보내기 (HTML)',
-      fileName: 'JJ_MKVMaker_즐겨찾기.html',
+      dialogTitle: tr('즐겨찾기 내보내기 (HTML)'),
+      fileName: tr('JJ_MKVMaker_즐겨찾기.html'),
       bytes: Uint8List.fromList(utf8.encode(bm.tree.toNetscapeHtml())),
       type: FileType.custom,
       allowedExtensions: const ['html'],
@@ -420,19 +421,19 @@ class _BookmarkManagerPageState extends State<BookmarkManagerPage> {
     final file = uri.scheme == 'file' ? uri.toFilePath() : uri.toString();
     await bm.exportHtml(file);
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('내보냈습니다: $file')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(trf('내보냈습니다: {0}', [file]))));
     }
   }
 
   Future<void> _importHtml() async {
     final r = await FilePicker.pickFiles(
-        dialogTitle: '즐겨찾기 HTML 가져오기', type: FileType.custom, allowedExtensions: const ['html', 'htm']);
+        dialogTitle: tr('즐겨찾기 HTML 가져오기'), type: FileType.custom, allowedExtensions: const ['html', 'htm']);
     final path = r.isEmpty ? null : r.single.path;
     if (path == null) return;
     final n = await bm.importHtml(path);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(n > 0 ? '$n개를 "기타 즐겨찾기" 에 가져왔습니다.' : '가져올 즐겨찾기가 없습니다.')));
+        SnackBar(content: Text(n > 0 ? trf('{0}개를 "기타 즐겨찾기" 에 가져왔습니다.', [n]) : tr('가져올 즐겨찾기가 없습니다.'))));
     if (n > 0) setState(() => _folder = BookmarkTree.otherId);
   }
 
@@ -440,7 +441,7 @@ class _BookmarkManagerPageState extends State<BookmarkManagerPage> {
     final n = await bm.importFrom(b);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(n < 0 ? '이 브라우저의 즐겨찾기 파일을 찾지 못했습니다.' : '$n개를 "기타 즐겨찾기" 에 가져왔습니다.')));
+        content: Text(n < 0 ? tr('이 브라우저의 즐겨찾기 파일을 찾지 못했습니다.') : trf('{0}개를 "기타 즐겨찾기" 에 가져왔습니다.', [n]))));
     if (n > 0) setState(() => _folder = BookmarkTree.otherId);
   }
 
@@ -475,7 +476,7 @@ class _BookmarkManagerPageState extends State<BookmarkManagerPage> {
           const SizedBox(width: 8),
           const Icon(Icons.bookmarks_outlined, color: JjColors.accent),
           const SizedBox(width: 8),
-          const Text('즐겨찾기 관리자', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+          Text(tr('즐겨찾기 관리자'), style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
           const SizedBox(width: 24),
           Expanded(
             child: TextField(
@@ -485,12 +486,12 @@ class _BookmarkManagerPageState extends State<BookmarkManagerPage> {
                 isDense: true,
                 filled: true,
                 fillColor: JjColors.bg,
-                hintText: '즐겨찾기 검색 (이름 · 주소)',
+                hintText: tr('즐겨찾기 검색 (이름 · 주소)'),
                 prefixIcon: const Icon(Icons.search, size: 18),
                 suffixIcon: _search.text.isEmpty
                     ? null
                     : IconButton(
-                        tooltip: '검색 지우기',
+                        tooltip: tr('검색 지우기'),
                         icon: const Icon(Icons.close, size: 16),
                         onPressed: () => setState(_search.clear)),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: BorderSide.none),
@@ -500,18 +501,18 @@ class _BookmarkManagerPageState extends State<BookmarkManagerPage> {
           ),
           const SizedBox(width: 8),
           PopupMenuButton<String>(
-            tooltip: '관리 메뉴',
+            tooltip: tr('관리 메뉴'),
             icon: const Icon(Icons.more_vert),
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'link', child: Text('새 즐겨찾기 추가')),
-              PopupMenuItem(value: 'folder', child: Text('새 폴더 추가')),
+            itemBuilder: (_) => [
+              PopupMenuItem(value: 'link', child: Text(tr('새 즐겨찾기 추가'))),
+              PopupMenuItem(value: 'folder', child: Text(tr('새 폴더 추가'))),
               PopupMenuDivider(),
-              PopupMenuItem(value: 'chrome', child: Text('Chrome 에서 가져오기')),
-              PopupMenuItem(value: 'edge', child: Text('Edge 에서 가져오기')),
-              PopupMenuItem(value: 'whale', child: Text('Whale 에서 가져오기')),
-              PopupMenuItem(value: 'html', child: Text('HTML 파일에서 가져오기')),
+              PopupMenuItem(value: 'chrome', child: Text(tr('Chrome 에서 가져오기'))),
+              PopupMenuItem(value: 'edge', child: Text(tr('Edge 에서 가져오기'))),
+              PopupMenuItem(value: 'whale', child: Text(tr('Whale 에서 가져오기'))),
+              PopupMenuItem(value: 'html', child: Text(tr('HTML 파일에서 가져오기'))),
               PopupMenuDivider(),
-              PopupMenuItem(value: 'export', child: Text('HTML 파일로 내보내기')),
+              PopupMenuItem(value: 'export', child: Text(tr('HTML 파일로 내보내기'))),
             ],
             onSelected: (v) async {
               switch (v) {
@@ -625,21 +626,21 @@ class _BookmarkManagerPageState extends State<BookmarkManagerPage> {
             onPressed: () => showNewBookmarkDialog(context, bm, folder.id,
                 title: widget.currentTitle, url: widget.currentUrl),
             icon: const Icon(Icons.add_link, size: 18),
-            label: const Text('즐겨찾기 추가'),
+            label: Text(tr('즐겨찾기 추가')),
           ),
           const SizedBox(width: 8),
           OutlinedButton.icon(
             onPressed: () => showNewFolderDialog(context, bm, folder.id),
             icon: const Icon(Icons.create_new_folder_outlined, size: 18),
-            label: const Text('새 폴더'),
+            label: Text(tr('새 폴더')),
           ),
         ]),
       ),
       const Divider(height: 1),
       Expanded(
         child: items.isEmpty
-            ? const Center(
-                child: Text('비어 있는 폴더입니다.\n위의 [즐겨찾기 추가] · [새 폴더] 를 누르거나, 즐겨찾기를 왼쪽 폴더로 끌어다 놓으세요.',
+            ? Center(
+                child: Text(tr('비어 있는 폴더입니다.\n위의 [즐겨찾기 추가] · [새 폴더] 를 누르거나, 즐겨찾기를 왼쪽 폴더로 끌어다 놓으세요.'),
                     textAlign: TextAlign.center, style: TextStyle(color: JjColors.textDim)))
             : ReorderableListView.builder(
                 buildDefaultDragHandles: false,
@@ -648,9 +649,9 @@ class _BookmarkManagerPageState extends State<BookmarkManagerPage> {
                 itemBuilder: (_, i) => _row(items[i], i, folder),
               ),
       ),
-      const Padding(
+      Padding(
         padding: EdgeInsets.all(8),
-        child: Text('왼쪽 손잡이로 순서 바꾸기 · 아이콘을 끌어 왼쪽 폴더나 목록의 폴더 위에 놓으면 그 폴더로 이동 · 오른쪽 클릭 메뉴',
+        child: Text(tr('왼쪽 손잡이로 순서 바꾸기 · 아이콘을 끌어 왼쪽 폴더나 목록의 폴더 위에 놓으면 그 폴더로 이동 · 오른쪽 클릭 메뉴'),
             textAlign: TextAlign.center, style: TextStyle(fontSize: 11, color: JjColors.textDim)),
       ),
     ]);
@@ -672,11 +673,11 @@ class _BookmarkManagerPageState extends State<BookmarkManagerPage> {
         ),
       ]),
       title: Text(n.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-      subtitle: Text(n.isFolder ? '${n.children!.length}개 · 주소 ${bm.tree.countLinks(n)}개' : n.url!,
+      subtitle: Text(n.isFolder ? trf('{0}개 · 주소 {1}개', [n.children!.length, bm.tree.countLinks(n)]) : n.url!,
           maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11)),
       onTap: () => n.isFolder ? setState(() => _folder = n.id) : _open(n.url!),
       trailing: IconButton(
-        tooltip: '더 보기',
+        tooltip: tr('더 보기'),
         icon: const Icon(Icons.more_vert, size: 18),
         onPressed: () {
           final box = context.findRenderObject() as RenderBox?;
@@ -705,11 +706,11 @@ class _BookmarkManagerPageState extends State<BookmarkManagerPage> {
   // 검색 결과 (위치 = 들어 있는 폴더)
   Widget _results(String q) {
     final found = bm.tree.search(q);
-    if (found.isEmpty) return const Center(child: Text('찾는 즐겨찾기가 없습니다.', style: TextStyle(color: JjColors.textDim)));
+    if (found.isEmpty) return Center(child: Text(tr('찾는 즐겨찾기가 없습니다.'), style: TextStyle(color: JjColors.textDim)));
     return ListView(children: [
       Padding(
         padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
-        child: Text('"$q" 검색 결과 ${found.length}개', style: const TextStyle(fontWeight: FontWeight.w600)),
+        child: Text(trf('"{0}" 검색 결과 {1}개', [q, found.length]), style: const TextStyle(fontWeight: FontWeight.w600)),
       ),
       for (final n in found)
         GestureDetector(

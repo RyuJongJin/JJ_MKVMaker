@@ -13,6 +13,7 @@ import '../../core/nllb_tokenizer.dart';
 import '../../services/ai_services.dart';
 import 'onnx_external.dart';
 import 'ort_tensors.dart';
+import '../../l10n/tr.dart';
 
 /// NLLB-200 (ONNX, int8) 로컬 번역기. Windows·Android 공용.
 ///
@@ -44,7 +45,7 @@ class NllbTranslator implements Translator {
     if (_isolate != null) return;
     for (final f in files) {
       if (!File(p.join(modelDir, f)).existsSync() && !OnnxExternal.isReady(p.join(modelDir, f))) {
-        throw FileSystemException('번역 모델 파일이 없습니다', p.join(modelDir, f));
+        throw FileSystemException(tr('번역 모델 파일이 없습니다'), p.join(modelDir, f));
       }
     }
     final ready = Completer<void>();
@@ -94,7 +95,7 @@ class NllbTranslator implements Translator {
     AiProgress? onProgress,
   }) {
     final port = _toWorker;
-    if (port == null) throw StateError('번역 모델을 먼저 불러와야 합니다.');
+    if (port == null) throw StateError(tr('번역 모델을 먼저 불러와야 합니다.'));
     _cancelFlag.value = 0;
     final id = _nextId++;
     final job = _Job(onProgress);

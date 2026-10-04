@@ -4,7 +4,10 @@ import '../core/subtitle_search.dart';
 
 class SubtitleProviderException implements Exception {
   final String message;
-  const SubtitleProviderException(this.message);
+
+  /// 오늘 받을 수 있는 자막 수를 다 썼다 (더 받아 봐야 소용없음)
+  final bool quotaExceeded;
+  const SubtitleProviderException(this.message, {this.quotaExceeded = false});
   @override
   String toString() => message;
 }

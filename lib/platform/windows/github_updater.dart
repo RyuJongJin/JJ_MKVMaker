@@ -9,6 +9,7 @@ import 'app_paths.dart';
 
 import '../../core/app_update.dart';
 import '../../services/updater.dart';
+import '../../l10n/tr.dart';
 
 /// GitHub Release 로 업데이트 (Windows)
 ///
@@ -47,7 +48,7 @@ class GitHubUpdater implements Updater {
     final body = await res.transform(utf8.decoder).join();
     if (res.statusCode == 404) return null;
     if (res.statusCode != 200) {
-      throw UpdateException('최신 버전을 확인할 수 없습니다 (${res.statusCode})');
+      throw UpdateException(trf('최신 버전을 확인할 수 없습니다 ({0})', [res.statusCode]));
     }
     return parseLatestRelease(jsonDecode(body) as Map<String, dynamic>);
   }
@@ -67,7 +68,7 @@ class GitHubUpdater implements Updater {
   @override
   Future<String> download(ReleaseInfo r, void Function(double progress) onProgress) async {
     final url = r.zipUrl;
-    if (url == null) throw const UpdateException('이 버전에는 Windows 용 zip 이 없습니다.');
+    if (url == null) throw UpdateException(tr('이 버전에는 Windows 용 zip 이 없습니다.'));
     final work = Directory(p.join(Directory.systemTemp.path, 'jj_mkvmaker_update_${r.version}'));
     if (await work.exists()) await work.delete(recursive: true);
     await work.create(recursive: true);
@@ -76,7 +77,7 @@ class GitHubUpdater implements Updater {
     // 받기
     final req = await _http.getUrl(Uri.parse(url));
     final res = await req.close();
-    if (res.statusCode != 200) throw UpdateException('내려받기 실패 (${res.statusCode})');
+    if (res.statusCode != 200) throw UpdateException(trf('내려받기 실패 ({0})', [res.statusCode]));
     final total = res.contentLength > 0 ? res.contentLength : r.zipSize;
     final sink = zip.openWrite();
     var got = 0;
@@ -92,7 +93,7 @@ class GitHubUpdater implements Updater {
       final hash = (await sha256.bind(zip.openRead()).first).toString();
       if (hash != r.sha256) {
         await work.delete(recursive: true);
-        throw UpdateException('받은 파일이 손상되었거나 다른 파일입니다 (SHA256 불일치). 설치를 중단했습니다.');
+        throw UpdateException(tr('받은 파일이 손상되었거나 다른 파일입니다 (SHA256 불일치). 설치를 중단했습니다.'));
       }
     }
 
@@ -100,7 +101,7 @@ class GitHubUpdater implements Updater {
     final out = Directory(p.join(work.path, 'extract'));
     await out.create();
     final t = await Process.run('tar', ['-xf', zip.path, '-C', out.path]);
-    if (t.exitCode != 0) throw UpdateException('압축을 풀 수 없습니다: ${t.stderr}');
+    if (t.exitCode != 0) throw UpdateException(trf('압축을 풀 수 없습니다: {0}', [t.stderr]));
     await zip.delete();
     final exeName = p.basename(Platform.resolvedExecutable).toLowerCase();
     // 배포 폴더 맨 위 = 가장 얕은 곳의 jj_mkvmaker.exe (Lib 구조면 시작 프로그램, 예전 구조면 프로그램 자신)
@@ -109,7 +110,7 @@ class GitHubUpdater implements Updater {
         .where((e) => e is File && {'jj_mkvmaker.exe', exeName}.contains(p.basename(e.path).toLowerCase()))
         .map((e) => e.path)
         .toList();
-    if (exes.isEmpty) throw const UpdateException('압축 파일 안에 프로그램이 없습니다.');
+    if (exes.isEmpty) throw UpdateException(tr('압축 파일 안에 프로그램이 없습니다.'));
     exes.sort((a, b) => p.split(a).length.compareTo(p.split(b).length));
     onProgress(1);
     return p.dirname(exes.first);

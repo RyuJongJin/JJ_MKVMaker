@@ -7,6 +7,7 @@ import 'package:ffmpeg_kit_flutter_new_min_gpl/return_code.dart';
 
 import '../../core/models.dart';
 import '../../services/media_tool.dart';
+import '../../l10n/tr.dart';
 import '../windows/process_media_tool.dart' show parseEncoderList, parseFfmpegInfo, parseProbeJson;
 
 /// Android: 앱에 넣은 FFmpeg 라이브러리 (ffmpeg-kit) 로 실행하는 구현.
@@ -52,7 +53,7 @@ class FfmpegKitMediaTool implements MediaTool {
     final text = await s.getOutput() ?? '';
     final info = parseFfmpegInfo(text);
     if (info.streams.isEmpty) {
-      throw MediaToolException('파일을 분석할 수 없습니다: ${text.trim().split('\n').last}');
+      throw MediaToolException(trf('파일을 분석할 수 없습니다: {0}', [text.trim().split('\n').last]));
     }
     return info;
   }
@@ -79,9 +80,9 @@ class FfmpegKitMediaTool implements MediaTool {
         _running.remove(id);
         final rc = await s.getReturnCode();
         if (_cancelled.remove(id) || ReturnCode.isCancel(rc)) {
-          done.completeError(const MediaToolException('사용자가 취소했습니다.'));
+          done.completeError(MediaToolException(tr('사용자가 취소했습니다.')));
         } else if (!ReturnCode.isSuccess(rc)) {
-          done.completeError(MediaToolException('ffmpeg 오류 (코드 ${rc?.getValue()})\n${errTail.join('\n')}'));
+          done.completeError(MediaToolException(trf('ffmpeg 오류 (코드 {0})\n{1}', [rc?.getValue(), errTail.join('\n')])));
         } else {
           done.complete();
         }

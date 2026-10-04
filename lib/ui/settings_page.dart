@@ -16,9 +16,11 @@ import '../app/settings.dart';
 import '../platform/windows/cef_runtime.dart';
 import '../platform/android/android_shell.dart' show applyScreenOrientation;
 import 'folder_picker.dart';
+import 'language_settings.dart';
 import 'app_actions.dart';
 import 'cef_setup.dart';
 import 'theme.dart';
+import '../l10n/tr.dart';
 
 /// 동시 작업 수 고르기: 1 · 5 · 10 · 무한(0) · 직접 입력
 class CountSelector extends StatelessWidget {
@@ -27,7 +29,7 @@ class CountSelector extends StatelessWidget {
   const CountSelector({super.key, required this.value, required this.onChanged});
 
   static const _presets = [1, 5, 10, 0];
-  static String label(int n) => n <= 0 ? '무한' : '$n개';
+  static String label(int n) => n <= 0 ? tr('무한') : trf('{0}개', [n]);
 
   Future<void> _custom(BuildContext context) async {
     // 목록 메뉴가 완전히 닫힌 뒤 입력 창을 연다
@@ -47,7 +49,7 @@ class CountSelector extends StatelessWidget {
       value: value,
       items: [
         for (final n in items) DropdownMenuItem(value: n, child: Text(label(n))),
-        const DropdownMenuItem(value: -1, child: Text('직접 입력…')),
+        DropdownMenuItem(value: -1, child: Text(tr('직접 입력…'))),
       ],
       onChanged: (n) => n == -1 ? _custom(context) : onChanged(n!),
     );
@@ -74,18 +76,18 @@ class _CountInputDialogState extends State<_CountInputDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-        title: const Text('직접 입력'),
+        title: Text(tr('직접 입력')),
         content: TextField(
           controller: _ctrl,
           autofocus: true,
           keyboardType: TextInputType.number,
           inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-          decoration: const InputDecoration(labelText: '동시에 처리할 개수 (0 = 무한)', border: OutlineInputBorder()),
+          decoration: InputDecoration(labelText: tr('동시에 처리할 개수 (0 = 무한)'), border: OutlineInputBorder()),
           onSubmitted: (t) => Navigator.pop(context, int.tryParse(t)),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('취소')),
-          FilledButton(onPressed: () => Navigator.pop(context, int.tryParse(_ctrl.text)), child: const Text('확인')),
+          TextButton(onPressed: () => Navigator.pop(context), child: Text(tr('취소'))),
+          FilledButton(onPressed: () => Navigator.pop(context, int.tryParse(_ctrl.text)), child: Text(tr('확인'))),
         ],
       );
 }
@@ -108,10 +110,10 @@ class _ExternalPlayers extends StatelessWidget {
         });
 
     return ExpansionTile(
-      title: const Text('확장자별 재생 프로그램'),
+      title: Text(tr('확장자별 재생 프로그램')),
       subtitle: Text(map.isEmpty
-          ? '모두 내장 플레이어'
-          : map.entries.map((e) => '${e.key}: ${e.value == 'system' ? '기본 프로그램' : e.value.split(RegExp(r'[\\/]')).last}').join(', ')),
+          ? tr('모두 내장 플레이어')
+          : map.entries.map((e) => '${e.key}: ${e.value == 'system' ? tr('기본 프로그램') : e.value.split(RegExp(r'[\\/]')).last}').join(', ')),
       children: [
         for (final ext in videoExtensions)
           ListTile(
@@ -120,17 +122,17 @@ class _ExternalPlayers extends StatelessWidget {
             trailing: DropdownButton<String>(
               value: map[ext] ?? '',
               items: [
-                const DropdownMenuItem(value: '', child: Text('내장 플레이어')),
-                const DropdownMenuItem(value: 'system', child: Text('Windows 기본 프로그램')),
+                DropdownMenuItem(value: '', child: Text(tr('내장 플레이어'))),
+                DropdownMenuItem(value: 'system', child: Text(tr('Windows 기본 프로그램'))),
                 if (vlc != null) DropdownMenuItem(value: vlc, child: const Text('VLC')),
                 if (map[ext] != null && map[ext] != 'system' && map[ext] != vlc)
                   DropdownMenuItem(value: map[ext], child: Text(map[ext]!.split(RegExp(r'[\\/]')).last)),
-                const DropdownMenuItem(value: '*pick', child: Text('프로그램 직접 선택…')),
+                DropdownMenuItem(value: '*pick', child: Text(tr('프로그램 직접 선택…'))),
               ],
               onChanged: (v) async {
                 if (v == '*pick') {
                   final r = await FilePicker.pickFile(
-                      dialogTitle: '.$ext 재생 프로그램 (exe)', type: FileType.custom, allowedExtensions: const ['exe']);
+                      dialogTitle: trf('.{0} 재생 프로그램 (exe)', [ext]), type: FileType.custom, allowedExtensions: const ['exe']);
                   if (r?.path != null) await set(ext, r!.path);
                 } else {
                   await set(ext, v);
@@ -139,9 +141,9 @@ class _ExternalPlayers extends StatelessWidget {
             ),
           ),
         if (vlc == null)
-          const Padding(
+          Padding(
             padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: Text('VLC 가 설치되어 있지 않습니다. 설치하면 목록에 나타납니다 (videolan.org).',
+            child: Text(tr('VLC 가 설치되어 있지 않습니다. 설치하면 목록에 나타납니다 (videolan.org).'),
                 style: TextStyle(fontSize: 12, color: JjColors.textDim)),
           ),
       ],
@@ -181,7 +183,7 @@ class _ContextMenuTileState extends State<_ContextMenuTile> {
     } else {
       final ok = await shell.registerContextMenu();
       if (!ok && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('등록 중 일부가 실패했습니다.')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('등록 중 일부가 실패했습니다.'))));
       }
     }
     await _refresh();
@@ -190,15 +192,15 @@ class _ContextMenuTileState extends State<_ContextMenuTile> {
 
   @override
   Widget build(BuildContext context) => ListTile(
-        title: const Text('탐색기 오른쪽 클릭 메뉴'),
+        title: Text(tr('탐색기 오른쪽 클릭 메뉴')),
         subtitle: Text(_registered == true
-            ? '등록됨: "JJ_MKVMaker 로 재생" · "JJ_MKVMaker 로 자막 만들기" (Windows 11: 더 많은 옵션 표시)'
-            : '동영상 파일을 오른쪽 클릭해 바로 재생하거나 자막을 만들 수 있게 합니다 (현재 사용자만)'),
+            ? tr('등록됨: "JJ_MKVMaker 로 재생" · "JJ_MKVMaker 로 자막 만들기" (Windows 11: 더 많은 옵션 표시)')
+            : tr('동영상 파일을 오른쪽 클릭해 바로 재생하거나 자막을 만들 수 있게 합니다 (현재 사용자만)')),
         trailing: _registered == null
             ? null
             : OutlinedButton(
                 onPressed: _busy ? null : _toggle,
-                child: Text(_registered! ? '해제' : '등록'),
+                child: Text(_registered! ? tr('해제') : tr('등록')),
               ),
       );
 }
@@ -229,11 +231,11 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _applyHotkey() async {
     final text = _hotkey.text.trim();
     if (parseHotkey(text) == null) {
-      setState(() => _hotkeyError = '예: Ctrl+Shift+X (Ctrl·Shift·Alt·Win + 영문자·숫자·F1~F12)');
+      setState(() => _hotkeyError = tr('예: Ctrl+Shift+X (Ctrl·Shift·Alt·Win + 영문자·숫자·F1~F12)'));
       return;
     }
     final ok = await c.services.shell.setHotkey(text);
-    setState(() => _hotkeyError = ok ? null : '이 단축키를 등록할 수 없습니다 (다른 프로그램이 사용 중일 수 있음)');
+    setState(() => _hotkeyError = ok ? null : tr('이 단축키를 등록할 수 없습니다 (다른 프로그램이 사용 중일 수 있음)'));
     if (ok) await c.updateSettings((s) => s.showHotkey = text);
   }
 
@@ -254,9 +256,9 @@ class _SettingsPageState extends State<SettingsPage> {
               child: Row(children: [
                 const AppNavButtons(),
                 const SizedBox(width: 8),
-                const Text('환경 설정', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                Text(tr('환경 설정'), style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
                 const Spacer(),
-                const Text('바꾸면 바로 저장됩니다', style: TextStyle(fontSize: 12, color: JjColors.textDim)),
+                Text(tr('바꾸면 바로 저장됩니다'), style: TextStyle(fontSize: 12, color: JjColors.textDim)),
                 const SizedBox(width: 8),
                 AppActions(c: c, onSettingsPage: true),
               ]),
@@ -265,39 +267,42 @@ class _SettingsPageState extends State<SettingsPage> {
               child: ListView(
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
                 children: [
-                  // 맨 위: 지금 버전 · 최신 버전 확인 (Windows · Android)
+                  // 맨 위: 화면 언어 (읽을 수 없는 언어를 골라도 바로 찾아 되돌릴 수 있게)
+                  _section('${tr('화면 언어')} · Language'),
+                  const LanguageSettings(),
+                  // 지금 버전 · 최신 버전 확인 (Windows · Android)
                   if (c.services.updater != null) ...[
-                    _section('프로그램 정보 · 업데이트'),
+                    _section(tr('프로그램 정보 · 업데이트')),
                     ListTile(
                       leading: const Icon(Icons.system_update_alt, color: JjColors.accent),
                       title: FutureBuilder<String>(
                         future: c.services.updater!.currentVersion(),
                         builder: (_, v) => Text('JJ_MKVMaker v${v.data ?? '…'}'),
                       ),
-                      subtitle: const Text('GitHub 의 최신 버전과 비교해, 새 버전이 있으면 받아서 설치합니다'),
+                      subtitle: Text(tr('GitHub 의 최신 버전과 비교해, 새 버전이 있으면 받아서 설치합니다')),
                       trailing: FilledButton.icon(
                         onPressed: () => checkForUpdate(context, c, manual: true),
                         icon: const Icon(Icons.refresh, size: 18),
-                        label: const Text('최신 버전 확인'),
+                        label: Text(tr('최신 버전 확인')),
                       ),
                     ),
                     SwitchListTile(
                       value: s.autoCheckUpdates,
                       onChanged: (v) => c.updateSettings((x) => x.autoCheckUpdates = v),
-                      title: const Text('시작할 때 새 버전 확인 (하루 한 번)'),
+                      title: Text(tr('시작할 때 새 버전 확인 (하루 한 번)')),
                     ),
                   ],
-                  _section('화면'),
+                  _section(tr('화면')),
                   if (!desk)
                     ListTile(
-                      title: const Text('화면 방향'),
-                      subtitle: const Text('가로 고정 · 세로 고정, 또는 자동 (기기를 돌리는 대로, 기기의 자동 회전 설정을 따름)'),
+                      title: Text(tr('화면 방향')),
+                      subtitle: Text(tr('가로 고정 · 세로 고정, 또는 자동 (기기를 돌리는 대로, 기기의 자동 회전 설정을 따름)')),
                       trailing: DropdownButton<String>(
                         value: s.screenOrientation,
-                        items: const [
-                          DropdownMenuItem(value: 'landscape', child: Text('가로 고정 (기본)')),
-                          DropdownMenuItem(value: 'portrait', child: Text('세로 고정')),
-                          DropdownMenuItem(value: 'auto', child: Text('자동')),
+                        items: [
+                          DropdownMenuItem(value: 'landscape', child: Text(tr('가로 고정 (기본)'))),
+                          DropdownMenuItem(value: 'portrait', child: Text(tr('세로 고정'))),
+                          DropdownMenuItem(value: 'auto', child: Text(tr('자동'))),
                         ],
                         onChanged: (v) {
                           c.updateSettings((x) => x.screenOrientation = v!);
@@ -306,16 +311,15 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                     ),
                   ListTile(
-                    title: const Text('기본 화면 크기'),
-                    subtitle: Text('글자 · 버튼 크기입니다. 위쪽 막대의 − · + 로 그때그때 바꿀 수 있고, 가운데 숫자를 누르면 이 크기로 돌아갑니다 '
-                        '(지금 ${(s.uiScale * 100).round()}%)'),
+                    title: Text(tr('기본 화면 크기')),
+                    subtitle: Text(trf('글자 · 버튼 크기입니다. 위쪽 막대의 − · + 로 그때그때 바꿀 수 있고, 가운데 숫자를 누르면 이 크기로 돌아갑니다 ' '(지금 {0}%)', [(s.uiScale * 100).round()])),
                     trailing: DropdownButton<double>(
                       value: s.uiScaleDefault,
                       items: [
                         for (var v = AppSettings.uiScaleMin; v <= AppSettings.uiScaleMax + 0.001; v += 0.1)
                           DropdownMenuItem(
                               value: AppSettings.clampUiScale(v),
-                              child: Text('${(v * 100).round()}%${(v - 1).abs() < 0.001 ? ' (보통)' : ''}')),
+                              child: Text('${(v * 100).round()}%${(v - 1).abs() < 0.001 ? tr(' (보통)') : ''}')),
                         // 5% 단위로 저장된 값이 목록에 없을 때
                         if (((s.uiScaleDefault * 100).round() % 10) != 0)
                           DropdownMenuItem(
@@ -327,62 +331,57 @@ class _SettingsPageState extends State<SettingsPage> {
                         ..uiScale = v),
                     ),
                   ),
-                  _section('시작 · 웹 브라우저'),
+                  _section(tr('시작 · 웹 브라우저')),
                   ListTile(
-                    title: const Text('홈 화면'),
-                    subtitle: const Text('프로그램을 켰을 때, 그리고 위쪽 왼쪽 JJ 아이콘을 눌렀을 때 보일 화면'),
+                    title: Text(tr('홈 화면')),
+                    subtitle: Text(tr('프로그램을 켰을 때, 그리고 위쪽 왼쪽 JJ 아이콘을 눌렀을 때 보일 화면')),
                     trailing: DropdownButton<String>(
                       value: s.startScreen,
-                      items: const [
-                        DropdownMenuItem(value: 'home', child: Text('MKV 화면 (기본)')),
-                        DropdownMenuItem(value: 'browser', child: Text('웹 브라우저 (홈 주소)')),
+                      items: [
+                        DropdownMenuItem(value: 'home', child: Text(tr('MKV 화면 (기본)'))),
+                        DropdownMenuItem(value: 'browser', child: Text(tr('웹 브라우저 (홈 주소)'))),
                       ],
                       onChanged: (v) => c.updateSettings((x) => x.startScreen = v!),
                     ),
                   ),
-                  _textTile('홈 주소', s.homeUrl, '웹 브라우저의 시작 · 🏠 주소',
+                  _textTile(tr('홈 주소'), s.homeUrl, tr('웹 브라우저의 시작 · 🏠 주소'),
                       (v) => c.updateSettings((x) => x.homeUrl = v.trim().isEmpty ? 'https://www.youtube.com/' : v.trim())),
                   SwitchListTile(
                     value: s.youtubeAdSkip,
                     onChanged: (v) => c.updateSettings((x) => x.youtubeAdSkip = v),
-                    title: const Text('YouTube 광고 자동 건너뛰기'),
-                    subtitle: const Text('앱 안 웹 브라우저: [건너뛰기] 를 대신 누르고, 건너뛸 수 없는 광고는 소리를 끄고 빨리 넘깁니다 '
-                        '(넘기는 동안 화면 위쪽에 "광고 건너뛰는 중…")'),
+                    title: Text(tr('YouTube 광고 자동 건너뛰기')),
+                    subtitle: Text(tr('앱 안 웹 브라우저: [건너뛰기] 를 대신 누르고, 건너뛸 수 없는 광고는 소리를 끄고 빨리 넘깁니다 ' '(넘기는 동안 화면 위쪽에 "광고 건너뛰는 중…")')),
                   ),
                   SwitchListTile(
                     value: s.youtubeAdHide,
                     onChanged: (v) => c.updateSettings((x) => x.youtubeAdHide = v),
-                    title: const Text('YouTube 광고 배너 숨기기'),
-                    subtitle: const Text('목록 · 영상 옆 · 영상 위에 나오는 광고 영역을 감춥니다'),
+                    title: Text(tr('YouTube 광고 배너 숨기기')),
+                    subtitle: Text(tr('목록 · 영상 옆 · 영상 위에 나오는 광고 영역을 감춥니다')),
                   ),
                   if (desk) ...[
                   ListTile(
-                    title: const Text('브라우저 엔진 (앱 안)'),
+                    title: Text(tr('브라우저 엔진 (앱 안)')),
                     subtitle: Text(
-                        'Edge: Windows 에 들어 있어 따로 설치하지 않습니다. 여기서 YouTube 에 로그인하면 다운로드에도 그 로그인이 쓰입니다.\n'
-                        'Chrome: 고르면 약 ${CefRuntime.approxDownloadMb}MB 를 내려받고 다시 시작한 뒤 쓸 수 있습니다 '
-                        '(Google 로그인은 막힐 수 있음).'
-                        '${CefRuntime.installed ? ' 지금 설치됨 (${CefRuntime.installedMb()}MB)' : ''}'
-                        '${s.browserEngine == 'chrome' && !CefRuntime.readyThisRun ? ' · 다시 시작해야 Chrome 으로 바뀝니다' : ''}'),
+                        trf('Edge: Windows 에 들어 있어 따로 설치하지 않습니다. 여기서 YouTube 에 로그인하면 다운로드에도 그 로그인이 쓰입니다.\n' 'Chrome: 고르면 약 {0}MB 를 내려받고 다시 시작한 뒤 쓸 수 있습니다 ' '(Google 로그인은 막힐 수 있음).' '{1}' '{2}', [CefRuntime.approxDownloadMb, CefRuntime.installed ? trf(' 지금 설치됨 ({0}MB)', [CefRuntime.installedMb()]) : '', s.browserEngine == 'chrome' && !CefRuntime.readyThisRun ? tr(' · 다시 시작해야 Chrome 으로 바뀝니다') : ''])),
                     isThreeLine: true,
                     trailing: Row(mainAxisSize: MainAxisSize.min, children: [
                       if (s.browserEngine == 'edge' && CefRuntime.installed && !CefRuntime.readyThisRun)
                         IconButton(
-                          tooltip: '내려받은 Chrome 엔진 지우기',
+                          tooltip: tr('내려받은 Chrome 엔진 지우기'),
                           icon: const Icon(Icons.delete_outline, color: JjColors.textDim),
                           onPressed: () async {
                             final ok = await CefRuntime.uninstall();
-                            c.note(ok ? '내장 Chrome 엔진을 지웠습니다.' : '내장 Chrome 엔진을 지우지 못했습니다 (사용 중).');
+                            c.note(ok ? tr('내장 Chrome 엔진을 지웠습니다.') : tr('내장 Chrome 엔진을 지우지 못했습니다 (사용 중).'));
                             setState(() {});
                           },
                         ),
                       DropdownButton<String>(
                         value: s.browserEngine,
                         items: [
-                          const DropdownMenuItem(value: 'edge', child: Text('Edge (내장)')),
+                          DropdownMenuItem(value: 'edge', child: Text(tr('Edge (내장)'))),
                           DropdownMenuItem(
                               value: 'chrome',
-                              child: Text(CefRuntime.installed ? 'Chrome (내장)' : 'Chrome (내려받기)')),
+                              child: Text(CefRuntime.installed ? tr('Chrome (내장)') : tr('Chrome (내려받기)'))),
                         ],
                         onChanged: (v) async {
                           if (v == 'chrome') {
@@ -396,12 +395,12 @@ class _SettingsPageState extends State<SettingsPage> {
                     ]),
                   ),
                   ListTile(
-                    title: const Text('외부 브라우저'),
-                    subtitle: const Text('"외부 브라우저로 열기" 에 쓸 브라우저 (이 PC 에 설치된 것)'),
+                    title: Text(tr('외부 브라우저')),
+                    subtitle: Text(tr('"외부 브라우저로 열기" 에 쓸 브라우저 (이 PC 에 설치된 것)')),
                     trailing: DropdownButton<String>(
                       value: s.externalBrowser,
                       items: [
-                        const DropdownMenuItem(value: 'system', child: Text('Windows 기본 브라우저')),
+                        DropdownMenuItem(value: 'system', child: Text(tr('Windows 기본 브라우저'))),
                         for (final b in {...c.services.shell.installedBrowsers(), if (s.externalBrowser != 'system') s.externalBrowser})
                           DropdownMenuItem(value: b, child: Text(switch (b) {
                             'chrome' => 'Chrome',
@@ -415,49 +414,49 @@ class _SettingsPageState extends State<SettingsPage> {
                     ),
                   ),
                   ],
-                  _section('저장 위치'),
+                  _section(tr('저장 위치')),
                   _folderTile(
-                    title: 'MKV · 자막 (jj_mkv)',
+                    title: tr('MKV · 자막 (jj_mkv)'),
                     value: s.mkvOutputRoot,
-                    defaultText: '동영상이 있는 폴더 아래 jj_mkv (기본)',
+                    defaultText: tr('동영상이 있는 폴더 아래 jj_mkv (기본)'),
                     onPick: () async {
-                      final d = await _pickDir('MKV · 자막 저장 위치', s.mkvOutputRoot);
+                      final d = await _pickDir(tr('MKV · 자막 저장 위치'), s.mkvOutputRoot);
                       if (d != null) await c.updateSettings((x) => x.mkvOutputRoot = d);
                     },
                     onReset: () => c.updateSettings((x) => x.mkvOutputRoot = null),
                   ),
                   _folderTile(
-                    title: '이동 폴더',
+                    title: tr('이동 폴더'),
                     value: s.moveTargetDir,
-                    defaultText: '정하지 않음: MKV 목록에서 [이동] 을 처음 누를 때 고릅니다',
+                    defaultText: tr('정하지 않음: MKV 목록에서 [이동] 을 처음 누를 때 고릅니다'),
                     onPick: () async {
-                      final d = await _pickDir('이동 폴더', s.moveTargetDir);
+                      final d = await _pickDir(tr('이동 폴더'), s.moveTargetDir);
                       if (d != null) await c.updateSettings((x) => x.moveTargetDir = d);
                     },
                     onReset: () => c.updateSettings((x) => x.moveTargetDir = null),
                   ),
                   _folderTile(
-                    title: '다운로드 (jj_yt-dlp · jj_aria2)',
+                    title: tr('다운로드 (jj_yt-dlp · jj_aria2)'),
                     value: s.downloadRoot,
-                    defaultText: '${desk ? '프로그램 폴더' : '내장 저장소'} (기본): ${s.resolvedDownloadRoot()}',
+                    defaultText: trf('{0} (기본): {1}', [desk ? tr('프로그램 폴더') : tr('내장 저장소'), s.resolvedDownloadRoot()]),
                     onPick: () async {
-                      final d = await _pickDir('다운로드 위치', s.resolvedDownloadRoot());
+                      final d = await _pickDir(tr('다운로드 위치'), s.resolvedDownloadRoot());
                       if (d != null) await c.updateSettings((x) => x.downloadRoot = d);
                     },
                     onReset: () => c.updateSettings((x) => x.downloadRoot = null),
                   ),
-                  if (desk) _section('다운로드'),
+                  if (desk) _section(tr('다운로드')),
                   if (desk)
                   SwitchListTile(
                     value: s.clipboardWatch,
                     onChanged: (v) => c.updateSettings((x) => x.clipboardWatch = v),
-                    title: const Text('복사(Ctrl+C)한 주소 자동 다운로드'),
-                    subtitle: const Text('YouTube → yt-dlp, 마그넷 · .torrent → aria2 (완료 후 올려 주기 안 함)'),
+                    title: Text(tr('복사(Ctrl+C)한 주소 자동 다운로드')),
+                    subtitle: Text(tr('YouTube → yt-dlp, 마그넷 · .torrent → aria2 (완료 후 올려 주기 안 함)')),
                   ),
-                  _section('재생'),
+                  _section(tr('재생')),
                   ListTile(
-                    title: const Text('동영상 하나를 재생할 때'),
-                    subtitle: const Text('시리즈: file_001 · file_002, S01E01 · S01E02 처럼 번호만 다른 파일'),
+                    title: Text(tr('동영상 하나를 재생할 때')),
+                    subtitle: Text(tr('시리즈: file_001 · file_002, S01E01 · S01E02 처럼 번호만 다른 파일')),
                     trailing: DropdownButton<PlaylistMode>(
                       value: s.playlistMode,
                       items: [
@@ -467,28 +466,28 @@ class _SettingsPageState extends State<SettingsPage> {
                     ),
                   ),
                   ListTile(
-                    title: Text(desk ? '탐색기에서 동영상을 열 때' : '다른 앱에서 동영상을 열 때'),
+                    title: Text(desk ? tr('탐색기에서 동영상을 열 때') : tr('다른 앱에서 동영상을 열 때')),
                     subtitle: Text(desk
-                        ? '더블클릭 · 연결 프로그램으로 JJ_MKVMaker 를 골랐을 때 (오른쪽 클릭 메뉴는 그대로)'
-                        : '파일 앱의 "다음으로 열기" · 공유에서 JJ_MKVMaker 를 골랐을 때'),
+                        ? tr('더블클릭 · 연결 프로그램으로 JJ_MKVMaker 를 골랐을 때 (오른쪽 클릭 메뉴는 그대로)')
+                        : tr('파일 앱의 "다음으로 열기" · 공유에서 JJ_MKVMaker 를 골랐을 때')),
                     trailing: DropdownButton<String>(
                       value: s.openFileAction,
-                      items: const [
-                        DropdownMenuItem(value: 'play', child: Text('바로 재생 (기본)')),
-                        DropdownMenuItem(value: 'add', child: Text('편집 목록에 추가 (MKV 만들기 대상)')),
+                      items: [
+                        DropdownMenuItem(value: 'play', child: Text(tr('바로 재생 (기본)'))),
+                        DropdownMenuItem(value: 'add', child: Text(tr('편집 목록에 추가 (MKV 만들기 대상)'))),
                       ],
                       onChanged: (v) => c.updateSettings((x) => x.openFileAction = v!),
                     ),
                   ),
                   if (desk) ...[
                   ListTile(
-                    title: const Text('탐색기에서 연 동영상을 재생할 창'),
-                    subtitle: const Text('프로그램이 이미 켜져 있을 때. 새 창은 재생만 하는 창이며 닫으면 그 창만 끝납니다'),
+                    title: Text(tr('탐색기에서 연 동영상을 재생할 창')),
+                    subtitle: Text(tr('프로그램이 이미 켜져 있을 때. 새 창은 재생만 하는 창이며 닫으면 그 창만 끝납니다')),
                     trailing: DropdownButton<String>(
                       value: s.openFileWindow,
-                      items: const [
-                        DropdownMenuItem(value: 'same', child: Text('켜져 있는 창에서 (기본)')),
-                        DropdownMenuItem(value: 'new', child: Text('새 창에서')),
+                      items: [
+                        DropdownMenuItem(value: 'same', child: Text(tr('켜져 있는 창에서 (기본)'))),
+                        DropdownMenuItem(value: 'new', child: Text(tr('새 창에서'))),
                       ],
                       onChanged: (v) => c.updateSettings((x) => x.openFileWindow = v!),
                     ),
@@ -496,17 +495,17 @@ class _SettingsPageState extends State<SettingsPage> {
                   _ExternalPlayers(c: c),
                   _ContextMenuTile(c: c),
                   ],
-                  _section('인터넷 자막 (OpenSubtitles.com)'),
-                  _textTile('API 키 (필수, 무료)', s.openSubtitlesKey,
-                      '가입 → 프로필 → API consumers → New consumer',
+                  _section(tr('인터넷 자막 (OpenSubtitles.com)')),
+                  _textTile(tr('API 키 (필수, 무료)'), s.openSubtitlesKey,
+                      tr('가입 → 프로필 → API consumers → New consumer'),
                       (v) => c.updateSettings((x) => x.openSubtitlesKey = v.trim())),
-                  _textTile('아이디 (선택)', s.openSubtitlesUser, '로그인하면 하루 받기 횟수가 늘어납니다',
+                  _textTile(tr('아이디 (선택)'), s.openSubtitlesUser, tr('로그인하면 하루 받기 횟수가 늘어납니다'),
                       (v) => c.updateSettings((x) => x.openSubtitlesUser = v.trim())),
-                  _textTile('비밀번호 (선택)', s.openSubtitlesPassword, '이 ${desk ? 'PC' : '기기'} 의 설정 파일에 저장됩니다',
+                  _textTile(tr('비밀번호 (선택)'), s.openSubtitlesPassword, trf('이 {0} 의 설정 파일에 저장됩니다', [desk ? 'PC' : tr('기기')]),
                       (v) => c.updateSettings((x) => x.openSubtitlesPassword = v), obscure: true),
                   ListTile(
-                    title: const Text('YouTube 받을 형식'),
-                    subtitle: const Text('기본: MP4. 음성만 받으면 MP3 · M4A 로 저장'),
+                    title: Text(tr('YouTube 받을 형식')),
+                    subtitle: Text(tr('기본: MP4. 음성만 받으면 MP3 · M4A 로 저장')),
                     trailing: DropdownButton<YtContainer>(
                       value: s.ytContainer,
                       items: [for (final v in YtContainer.values) DropdownMenuItem(value: v, child: Text(v.label))],
@@ -515,8 +514,8 @@ class _SettingsPageState extends State<SettingsPage> {
                   ),
                   ListTile(
                     enabled: !s.ytContainer.audioOnly,
-                    title: const Text('YouTube 화질'),
-                    subtitle: const Text('고른 크기 이하에서 가장 좋은 화질 (영상에 없는 크기면 가까운 것)'),
+                    title: Text(tr('YouTube 화질')),
+                    subtitle: Text(tr('고른 크기 이하에서 가장 좋은 화질 (영상에 없는 크기면 가까운 것)')),
                     trailing: DropdownButton<YtQuality>(
                       value: s.ytQuality,
                       items: [for (final v in YtQuality.values) DropdownMenuItem(value: v, child: Text(v.label))],
@@ -526,34 +525,34 @@ class _SettingsPageState extends State<SettingsPage> {
                   SwitchListTile(
                     value: s.ytExpandPlaylists,
                     onChanged: (v) => c.updateSettings((x) => x.ytExpandPlaylists = v),
-                    title: const Text('재생목록 주소면 목록 전체 받기'),
-                    subtitle: const Text('영상마다 한 줄씩 보여 주고 jj_yt-dlp\\재생목록 이름\\ 에 저장 (믹스 목록 제외)'),
+                    title: Text(tr('재생목록 주소면 목록 전체 받기')),
+                    subtitle: Text(tr('영상마다 한 줄씩 보여 주고 jj_yt-dlp\\재생목록 이름\\ 에 저장 (믹스 목록 제외)')),
                   ),
                   ListTile(
-                    title: const Text('YouTube 쿠키 (로봇 확인이 나올 때)'),
+                    title: Text(tr('YouTube 쿠키 (로봇 확인이 나올 때)')),
                     subtitle: Text(s.ytCookiesFile.isNotEmpty
                         ? 'cookies.txt: ${s.ytCookiesFile}'
                         : s.ytCookiesBrowser == internalBrowserCookies
-                            ? '앱 안 브라우저의 로그인 사용 (브라우저 화면에서 YouTube 에 로그인하세요)'
+                            ? tr('앱 안 브라우저의 로그인 사용 (브라우저 화면에서 YouTube 에 로그인하세요)')
                             : s.ytCookiesBrowser.isNotEmpty
-                                ? '${s.ytCookiesBrowser} 브라우저의 YouTube 로그인 쿠키 사용 (Chrome · Edge 는 브라우저를 닫아야 읽힐 수 있음)'
-                                : '사용 안 함. "Sign in to confirm you\'re not a bot" 오류가 나오면 설정하세요'),
+                                ? trf('{0} 브라우저의 YouTube 로그인 쿠키 사용 (Chrome · Edge 는 브라우저를 닫아야 읽힐 수 있음)', [s.ytCookiesBrowser])
+                                : tr('사용 안 함. "Sign in to confirm you\'re not a bot" 오류가 나오면 설정하세요')),
                     trailing: Row(mainAxisSize: MainAxisSize.min, children: [
                       DropdownButton<String>(
                         value: s.ytCookiesFile.isNotEmpty ? '*file' : s.ytCookiesBrowser,
                         items: [
-                          const DropdownMenuItem(value: '', child: Text('사용 안 함')),
-                          const DropdownMenuItem(value: internalBrowserCookies, child: Text('앱 안 브라우저 (권장)')),
+                          DropdownMenuItem(value: '', child: Text(tr('사용 안 함'))),
+                          DropdownMenuItem(value: internalBrowserCookies, child: Text(tr('앱 안 브라우저 (권장)'))),
                           // PC 브라우저의 쿠키는 Windows 에서만
                           if (desk)
                             for (final b in const ['firefox', 'chrome', 'edge', 'brave', 'whale', 'opera'])
                               DropdownMenuItem(value: b, child: Text(b[0].toUpperCase() + b.substring(1))),
-                          const DropdownMenuItem(value: '*file', child: Text('cookies.txt 파일…')),
+                          DropdownMenuItem(value: '*file', child: Text(tr('cookies.txt 파일…'))),
                         ],
                         onChanged: (v) async {
                           if (v == '*file') {
                             final f = await FilePicker.pickFile(
-                                dialogTitle: 'cookies.txt (Netscape 형식)',
+                                dialogTitle: tr('cookies.txt (Netscape 형식)'),
                                 type: FileType.custom,
                                 allowedExtensions: const ['txt']);
                             if (f?.path != null) {
@@ -571,36 +570,34 @@ class _SettingsPageState extends State<SettingsPage> {
                     ]),
                   ),
                   ListTile(
-                    title: const Text('동시 다운로드 수'),
-                    subtitle: const Text('나머지는 대기했다가 차례로 받습니다'),
+                    title: Text(tr('동시 다운로드 수')),
+                    subtitle: Text(tr('나머지는 대기했다가 차례로 받습니다')),
                     trailing: CountSelector(
                       value: s.maxParallelDownloads,
                       onChanged: (n) => c.updateSettings((x) => x.maxParallelDownloads = n),
                     ),
                   ),
-                  _section('변환'),
+                  _section(tr('변환')),
                   ListTile(
-                    title: const Text('동시 MKV 변환 수'),
-                    subtitle: const Text('여러 동영상을 MKV 로 만들 때 동시에 처리할 개수 (재인코딩은 CPU 를 많이 씁니다)'),
+                    title: Text(tr('동시 MKV 변환 수')),
+                    subtitle: Text(tr('여러 동영상을 MKV 로 만들 때 동시에 처리할 개수 (재인코딩은 CPU 를 많이 씁니다)')),
                     trailing: CountSelector(
                       value: s.maxParallelJobs,
                       onChanged: (n) => c.updateSettings((x) => x.maxParallelJobs = n),
                     ),
                   ),
                   if (desk) ...[
-                  _section('실행'),
+                  _section(tr('실행')),
                   ListTile(
-                    title: const Text('종료 (창 닫기 ✕ · 종료 버튼) 를 누르면'),
-                    subtitle: Text('백그라운드: 창만 숨기고 다운로드 · 변환은 계속합니다. ${s.showHotkey} 또는 트레이 아이콘으로 다시 엽니다.\n'
-
-                        '완전히 끝내려면 트레이 아이콘 오른쪽 클릭 > 종료 (어느 설정이든 항상 종료)'),
+                    title: Text(tr('종료 (창 닫기 ✕ · 종료 버튼) 를 누르면')),
+                    subtitle: Text(trf('백그라운드: 창만 숨기고 다운로드 · 변환은 계속합니다. {0} 또는 트레이 아이콘으로 다시 엽니다.\n' '완전히 끝내려면 트레이 아이콘 오른쪽 클릭 > 종료 (어느 설정이든 항상 종료)', [s.showHotkey])),
                     isThreeLine: true,
                     trailing: DropdownButton<String>(
                       value: s.closeAction,
-                      items: const [
-                        DropdownMenuItem(value: 'background', child: Text('백그라운드로 계속 (기본)')),
-                        DropdownMenuItem(value: 'quit', child: Text('다운로드 · 변환도 모두 종료 (묻지 않음)')),
-                        DropdownMenuItem(value: 'ask', child: Text('매번 고르기')),
+                      items: [
+                        DropdownMenuItem(value: 'background', child: Text(tr('백그라운드로 계속 (기본)'))),
+                        DropdownMenuItem(value: 'quit', child: Text(tr('다운로드 · 변환도 모두 종료 (묻지 않음)'))),
+                        DropdownMenuItem(value: 'ask', child: Text(tr('매번 고르기'))),
                       ],
                       onChanged: (v) => c.updateSettings((x) => x.closeAction = v!),
                     ),
@@ -608,13 +605,13 @@ class _SettingsPageState extends State<SettingsPage> {
                   SwitchListTile(
                     value: s.minimizeToTray,
                     onChanged: (v) => c.updateSettings((x) => x.minimizeToTray = v),
-                    title: const Text('최소화하면 트레이로 (백그라운드 실행)'),
-                    subtitle: const Text('트레이 아이콘을 누르거나 아래 단축키로 다시 엽니다'),
+                    title: Text(tr('최소화하면 트레이로 (백그라운드 실행)')),
+                    subtitle: Text(tr('트레이 아이콘을 누르거나 아래 단축키로 다시 엽니다')),
                   ),
                   ListTile(
-                    title: const Text('창 보이기 / 숨기기 단축키'),
+                    title: Text(tr('창 보이기 / 숨기기 단축키')),
                     subtitle: _hotkeyError == null
-                        ? const Text('어디서나 누르면 JJ_MKVMaker 창이 나타납니다')
+                        ? Text(tr('어디서나 누르면 JJ_MKVMaker 창이 나타납니다'))
                         : Text(_hotkeyError!, style: const TextStyle(color: JjColors.danger)),
                     trailing: SizedBox(
                       width: 260,
@@ -627,58 +624,56 @@ class _SettingsPageState extends State<SettingsPage> {
                           ),
                         ),
                         const SizedBox(width: 8),
-                        OutlinedButton(onPressed: _applyHotkey, child: const Text('적용')),
+                        OutlinedButton(onPressed: _applyHotkey, child: Text(tr('적용'))),
                       ]),
                     ),
                   ),
                   SwitchListTile(
                     value: s.addFinishedDownloads,
                     onChanged: (v) => c.updateSettings((x) => x.addFinishedDownloads = v),
-                    title: const Text('완료시 자동 동영상추가'),
-                    subtitle: const Text('다 받는 대로 MKV 만들기의 동영상 목록에 넣고, 다운로드 목록에서는 뺍니다 (다운로드 화면의 체크 상자와 같음)'),
+                    title: Text(tr('완료시 자동 동영상추가')),
+                    subtitle: Text(tr('다 받는 대로 MKV 만들기의 동영상 목록에 넣고, 다운로드 목록에서는 뺍니다 (다운로드 화면의 체크 상자와 같음)')),
                   ),
                   ],
-                  _section('AI 자막'),
+                  _section(tr('AI 자막')),
                   SwitchListTile(
                     value: s.askAiOptions,
                     onChanged: (v) => c.updateSettings((x) => x.askAiOptions = v),
-                    title: const Text('시작할 때마다 설정 창 보기'),
-                    subtitle: Text('끄면 마지막 설정으로 바로 시작: 원어 ${c.aiOptions.source.name}, '
-                        '언어 ${c.aiOptions.targets.map((t) => t.code).join('/')}, ${c.aiOptions.whisper.label}'),
+                    title: Text(tr('시작할 때마다 설정 창 보기')),
+                    subtitle: Text(trf('끄면 마지막 설정으로 바로 시작: 원어 {0}, ' '언어 {1}, {2}', [c.aiOptions.source.name, c.aiOptions.targets.map((t) => t.code).join('/'), c.aiOptions.whisper.label])),
                   ),
-                  _section('프로그램'),
+                  _section(tr('프로그램')),
                   if (desk) ...[
                   ListTile(
-                    title: const Text('필수 프로그램 점검'),
-                    subtitle: const Text('FFmpeg · yt-dlp · aria2 · Deno 가 없으면 내려받아 설치합니다'),
+                    title: Text(tr('필수 프로그램 점검')),
+                    subtitle: Text(tr('FFmpeg · yt-dlp · aria2 · Deno 가 없으면 내려받아 설치합니다')),
                     trailing: OutlinedButton(
                       onPressed: () => checkRequiredTools(context, c.services.shell, quietIfOk: false),
-                      child: const Text('점검'),
+                      child: Text(tr('점검')),
                     ),
                   ),
                   ],
                   ListTile(
-                    title: const Text('오픈 소스 라이선스'),
-                    subtitle: const Text('포함된 구성 요소와 라이선스 (THIRD_PARTY_NOTICES.txt)'),
+                    title: Text(tr('오픈 소스 라이선스')),
+                    subtitle: Text(tr('포함된 구성 요소와 라이선스 (THIRD_PARTY_NOTICES.txt)')),
                     trailing: Row(mainAxisSize: MainAxisSize.min, children: [
                       if (desk) OutlinedButton(
                         onPressed: () => c.services.shell.openExternal('system', [
                           '${File(Platform.resolvedExecutable).parent.path}\\THIRD_PARTY_NOTICES.txt',
                         ]),
-                        child: const Text('고지 문서'),
+                        child: Text(tr('고지 문서')),
                       ),
                       if (desk) const SizedBox(width: 6),
                       OutlinedButton(
                         onPressed: () => showLicensePage(context: context, applicationName: 'JJ_MKVMaker'),
-                        child: const Text('패키지 라이선스'),
+                        child: Text(tr('패키지 라이선스')),
                       ),
                     ]),
                   ),
-                  _section('인코딩'),
+                  _section(tr('인코딩')),
                   ListTile(
-                    title: const Text('마지막 인코딩 설정을 기억합니다'),
-                    subtitle: Text('${c.encode.resolution.label} · ${c.encode.codec.label}'
-                        '${c.encode.reencode ? ' · ${c.encode.quality.label}' : ''}  (메인 화면 상단에서 변경)'),
+                    title: Text(tr('마지막 인코딩 설정을 기억합니다')),
+                    subtitle: Text(trf('{0} · {1}' '{2}  (메인 화면 상단에서 변경)', [c.encode.resolution.label, c.encode.codec.label, c.encode.reencode ? ' · ${c.encode.quality.label}' : ''])),
                   ),
                 ],
               ),
@@ -724,10 +719,10 @@ class _SettingsPageState extends State<SettingsPage> {
         title: Text(title),
         subtitle: Text(value ?? defaultText, maxLines: 2, overflow: TextOverflow.ellipsis),
         trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-          OutlinedButton(onPressed: onPick, child: const Text('폴더 선택')),
+          OutlinedButton(onPressed: onPick, child: Text(tr('폴더 선택'))),
           if (value != null) ...[
             const SizedBox(width: 6),
-            TextButton(onPressed: onReset, child: const Text('기본값')),
+            TextButton(onPressed: onReset, child: Text(tr('기본값'))),
           ],
         ]),
       );

@@ -13,6 +13,7 @@ import '../core/srt.dart' show formatSrtTime;
 import '../services/media_player.dart';
 import 'app_actions.dart';
 import 'theme.dart';
+import '../l10n/tr.dart';
 
 /// 파일들을 재생 (외부 프로그램이 지정된 확장자면 그 프로그램으로)
 Future<void> playFiles(BuildContext context, AppController c, List<String> files,
@@ -315,7 +316,7 @@ class _PlayerPageState extends State<PlayerPage> {
                 child: Container(
                   padding: const EdgeInsets.all(8),
                   color: JjColors.danger.withValues(alpha: 0.85),
-                  child: Text('재생 오류: $_error', style: const TextStyle(color: Colors.white)),
+                  child: Text(trf('재생 오류: {0}', [_error]), style: const TextStyle(color: Colors.white)),
                 ),
               ),
             // 전체 화면 · 팝업: 위에 떠 있는 조작 막대
@@ -347,37 +348,37 @@ class _PlayerPageState extends State<PlayerPage> {
           child: Text(label),
         );
     return [
-      item(s.playing ? '일시정지' : '재생', () => pl.playOrPause(), key: 'Space'),
-      item('정지', () => pl.stop()),
-      item('이전', () => pl.previous(), key: 'P'),
-      item('다음', () => pl.next(), key: 'N'),
+      item(s.playing ? tr('일시정지') : tr('재생'), () => pl.playOrPause(), key: 'Space'),
+      item(tr('정지'), () => pl.stop()),
+      item(tr('이전'), () => pl.previous(), key: 'P'),
+      item(tr('다음'), () => pl.next(), key: 'N'),
       const Divider(height: 1),
-      item('전체 화면', _toggleFull, key: 'F', checked: _full),
+      item(tr('전체 화면'), _toggleFull, key: 'F', checked: _full),
       // 팝업 (항상 위 작은 창) · 창 크기는 PC 만
       if (!Platform.isAndroid) ...[
-        item('팝업 보기', _togglePopup, checked: _popup),
+        item(tr('팝업 보기'), _togglePopup, checked: _popup),
         SubmenuButton(menuChildren: [
-          for (final f in const [0.5, 1.0, 2.0, 4.0]) item('원본의 $f배', () => _fit(f)),
-        ], child: const Text('화면 크기')),
+          for (final f in const [0.5, 1.0, 2.0, 4.0]) item(trf('원본의 {0}배', [f]), () => _fit(f)),
+        ], child: Text(tr('화면 크기'))),
       ],
       const Divider(height: 1),
-      item('자막 보기', _toggleSubtitles, key: 'S', checked: s.subtitleId != null),
+      item(tr('자막 보기'), _toggleSubtitles, key: 'S', checked: s.subtitleId != null),
       SubmenuButton(menuChildren: [
-        item('끄기', () => _setSub(null), checked: s.subtitleId == null),
+        item(tr('끄기'), () => _setSub(null), checked: s.subtitleId == null),
         for (final t in subs) item(t.label, () => _setSub(t), checked: s.subtitleId == t.id),
-      ], child: const Text('자막 선택')),
+      ], child: Text(tr('자막 선택'))),
       if (s.audioTracks.length > 1)
         SubmenuButton(menuChildren: [
           for (final t in s.audioTracks) item(t.label, () => pl.setAudioTrack(t), checked: s.audioId == t.id),
-        ], child: const Text('음성 선택')),
+        ], child: Text(tr('음성 선택'))),
       SubmenuButton(menuChildren: [
         for (final r in const [0.5, 0.75, 1.0, 1.25, 1.5, 2.0])
           item('${r}x', () => pl.setRate(r), checked: s.rate == r),
-      ], child: const Text('재생 속도')),
-      item('재생 목록', () => setState(() => _showList = !_showList), key: 'L', checked: _showList),
+      ], child: Text(tr('재생 속도'))),
+      item(tr('재생 목록'), () => setState(() => _showList = !_showList), key: 'L', checked: _showList),
       const Divider(height: 1),
-      if (vlc != null) item('VLC 로 열기', () => c.services.shell.openExternal(vlc, [_currentFile])),
-      item('기본 프로그램으로 열기', () => c.services.shell.openExternal('system', [_currentFile])),
+      if (vlc != null) item(tr('VLC 로 열기'), () => c.services.shell.openExternal(vlc, [_currentFile])),
+      item(tr('기본 프로그램으로 열기'), () => c.services.shell.openExternal('system', [_currentFile])),
     ];
   }
 
@@ -419,15 +420,15 @@ class _PlayerPageState extends State<PlayerPage> {
                     style: const TextStyle(fontSize: 12, color: Colors.white70, fontFamily: 'Consolas')),
               ]),
               Row(children: [
-                btn(Icons.skip_previous, '이전 (P)', () => pl.previous()),
-                if (!compact) btn(Icons.replay_10, '10초 뒤로 (←)', () => _seekBy(-10)),
-                btn(s.playing ? Icons.pause_circle_filled : Icons.play_circle_fill, '재생/일시정지 (Space)',
+                btn(Icons.skip_previous, tr('이전 (P)'), () => pl.previous()),
+                if (!compact) btn(Icons.replay_10, tr('10초 뒤로 (←)'), () => _seekBy(-10)),
+                btn(s.playing ? Icons.pause_circle_filled : Icons.play_circle_fill, tr('재생/일시정지 (Space)'),
                     () => pl.playOrPause(), size: 34),
-                btn(Icons.stop, '정지', () => pl.stop()),
-                if (!compact) btn(Icons.forward_10, '10초 앞으로 (→)', () => _seekBy(10)),
-                btn(Icons.skip_next, '다음 (N)', () => pl.next()),
+                btn(Icons.stop, tr('정지'), () => pl.stop()),
+                if (!compact) btn(Icons.forward_10, tr('10초 앞으로 (→)'), () => _seekBy(10)),
+                btn(Icons.skip_next, tr('다음 (N)'), () => pl.next()),
                 const SizedBox(width: 8),
-                btn(s.volume == 0 ? Icons.volume_off : Icons.volume_up, '음소거 (M)', _toggleMute),
+                btn(s.volume == 0 ? Icons.volume_off : Icons.volume_up, tr('음소거 (M)'), _toggleMute),
                 if (!compact)
                   SizedBox(
                     width: 100,
@@ -435,26 +436,26 @@ class _PlayerPageState extends State<PlayerPage> {
                   ),
                 const Spacer(),
                 if (!compact) ...[
-                  _menuButton(Icons.speed, '재생 속도', [
+                  _menuButton(Icons.speed, tr('재생 속도'), [
                     for (final r in const [0.5, 0.75, 1.0, 1.25, 1.5, 2.0])
                       (label: '${r}x', checked: s.rate == r, onTap: () => pl.setRate(r)),
                   ]),
-                  _menuButton(Icons.subtitles, '자막 (S)', [
-                    (label: '끄기', checked: s.subtitleId == null, onTap: () => _setSub(null)),
+                  _menuButton(Icons.subtitles, tr('자막 (S)'), [
+                    (label: tr('끄기'), checked: s.subtitleId == null, onTap: () => _setSub(null)),
                     for (final t in _subtitleChoices())
                       (label: t.label, checked: s.subtitleId == t.id, onTap: () => _setSub(t)),
                   ]),
                   if (s.audioTracks.length > 1)
-                    _menuButton(Icons.audiotrack, '음성', [
+                    _menuButton(Icons.audiotrack, tr('음성'), [
                       for (final t in s.audioTracks)
                         (label: t.label, checked: s.audioId == t.id, onTap: () => pl.setAudioTrack(t)),
                     ]),
-                  btn(Icons.playlist_play, '재생 목록 (L)', () => setState(() => _showList = !_showList)),
+                  btn(Icons.playlist_play, tr('재생 목록 (L)'), () => setState(() => _showList = !_showList)),
                 ],
                 if (!Platform.isAndroid)
-                  btn(_popup ? Icons.close_fullscreen : Icons.picture_in_picture_alt, _popup ? '팝업 끄기' : '팝업 보기',
+                  btn(_popup ? Icons.close_fullscreen : Icons.picture_in_picture_alt, _popup ? tr('팝업 끄기') : tr('팝업 보기'),
                       _togglePopup),
-                btn(_full ? Icons.fullscreen_exit : Icons.fullscreen, '전체 화면 (F)', _toggleFull),
+                btn(_full ? Icons.fullscreen_exit : Icons.fullscreen, tr('전체 화면 (F)'), _toggleFull),
               ]),
             ]),
           );
@@ -480,11 +481,11 @@ class _PlayerPageState extends State<PlayerPage> {
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 10, 4, 6),
             child: Row(children: [
-              Text('재생 목록 ${pl.playlist.length}개', style: const TextStyle(fontSize: 13)),
+              Text(trf('재생 목록 {0}개', [pl.playlist.length]), style: const TextStyle(fontSize: 13)),
               const Spacer(),
               IconButton(
                 iconSize: 18,
-                tooltip: '닫기',
+                tooltip: tr('닫기'),
                 icon: const Icon(Icons.close),
                 onPressed: () => setState(() => _showList = false),
               ),
@@ -507,9 +508,9 @@ class _PlayerPageState extends State<PlayerPage> {
             ),
           ),
           if (!Platform.isAndroid)
-          const Padding(
+          Padding(
             padding: EdgeInsets.all(8),
-            child: Text('동영상을 끌어다 놓으면 목록에 추가됩니다',
+            child: Text(tr('동영상을 끌어다 놓으면 목록에 추가됩니다'),
                 textAlign: TextAlign.center, style: TextStyle(fontSize: 11, color: JjColors.textDim)),
           ),
         ]),

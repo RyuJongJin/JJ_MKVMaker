@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 
 import '../../core/models.dart';
 import '../../services/media_tool.dart';
+import '../../l10n/tr.dart';
 
 /// ffmpeg.exe / ffprobe.exe 를 자식 프로세스로 실행하는 구현 (데스크톱용).
 class ProcessMediaTool implements MediaTool {
@@ -74,7 +75,7 @@ class ProcessMediaTool implements MediaTool {
         );
         if (r.exitCode != 0) {
           throw MediaToolException(
-              '파일을 분석할 수 없습니다: ${(r.stderr as String).trim()}');
+              trf('파일을 분석할 수 없습니다: {0}', [(r.stderr as String).trim()]));
         }
         return parseProbeJson(r.stdout as String);
       } on ProcessException {
@@ -91,13 +92,13 @@ class ProcessMediaTool implements MediaTool {
       r = await Process.run(ffmpeg, ['-hide_banner', '-nostdin', '-i', path],
           stderrEncoding: const Utf8Codec(allowMalformed: true));
     } on ProcessException catch (e) {
-      throw MediaToolException('ffmpeg 를 실행할 수 없습니다: ${e.message}');
+      throw MediaToolException(trf('ffmpeg 를 실행할 수 없습니다: {0}', [e.message]));
     }
     final text = r.stderr as String;
     final info = parseFfmpegInfo(text);
     if (info.streams.isEmpty) {
       throw MediaToolException(
-          '파일을 분석할 수 없습니다: ${text.trim().split('\n').last}');
+          trf('파일을 분석할 수 없습니다: {0}', [text.trim().split('\n').last]));
     }
     return info;
   }
@@ -112,7 +113,7 @@ class ProcessMediaTool implements MediaTool {
     try {
       proc = await Process.start(ffmpeg, args);
     } on ProcessException catch (e) {
-      throw MediaToolException('ffmpeg 를 실행할 수 없습니다: ${e.message}');
+      throw MediaToolException(trf('ffmpeg 를 실행할 수 없습니다: {0}', [e.message]));
     }
     _running.add(proc);
 
@@ -142,9 +143,9 @@ class ProcessMediaTool implements MediaTool {
     await Future.wait([stdoutDone, stderrDone]);
     _running.remove(proc);
 
-    if (_killed.remove(proc)) throw const MediaToolException('사용자가 취소했습니다.');
+    if (_killed.remove(proc)) throw MediaToolException(tr('사용자가 취소했습니다.'));
     if (code != 0) {
-      throw MediaToolException('ffmpeg 오류 (코드 $code)\n${errTail.join('\n')}');
+      throw MediaToolException(trf('ffmpeg 오류 (코드 {0})\n{1}', [code, errTail.join('\n')]));
     }
     onProgress?.call(1.0);
   }

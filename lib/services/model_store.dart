@@ -4,17 +4,23 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../platform/common/onnx_external.dart';
+import '../l10n/tr.dart';
 
 /// 내려받을 AI 모델
 class ModelSpec {
   final String id;
-  final String label;
+
+  /// 한국어 이름 (번역 사전의 열쇠)
+  final String koLabel;
+
+  /// 화면에 보일 이름 (화면 언어로)
+  String get label => tr(koLabel);
 
   /// 모델 폴더 아래 상대 경로의 폴더
   final String folder;
   final List<ModelFile> files;
 
-  const ModelSpec(this.id, this.label, this.folder, this.files);
+  const ModelSpec(this.id, this.koLabel, this.folder, this.files);
 
   int get totalBytes => files.fold(0, (a, f) => a + f.bytes);
   String get sizeLabel => '${(totalBytes / 1e6).round()}MB';
@@ -34,7 +40,7 @@ const _whisperBase = 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main'
 const _nllbBase = 'https://huggingface.co/Xenova/nllb-200-distilled-600M/resolve/main';
 
 /// 음성인식 모델
-const whisperModels = [
+final whisperModels = [
   ModelSpec('whisper-base', 'Whisper base (빠름)', 'whisper',
       [ModelFile('ggml-base.bin', '$_whisperBase/ggml-base.bin', 147951465)]),
   ModelSpec('whisper-small', 'Whisper small (정확)', 'whisper',
@@ -42,7 +48,7 @@ const whisperModels = [
 ];
 
 /// 번역 모델 (NLLB-200 600M, int8)
-const nllbModel = ModelSpec('nllb-600m', 'NLLB-200 번역 (600M)', 'nllb-200-distilled-600M', [
+final nllbModel = ModelSpec('nllb-600m', 'NLLB-200 번역 (600M)', 'nllb-200-distilled-600M', [
   ModelFile('tokenizer.json', '$_nllbBase/tokenizer.json', 17331176),
   ModelFile('encoder_model_quantized.onnx', '$_nllbBase/onnx/encoder_model_quantized.onnx', 419100000),
   ModelFile('decoder_model_merged_quantized.onnx',
@@ -113,7 +119,7 @@ class ModelStore {
         final req = await client.getUrl(Uri.parse(f.url));
         final res = await req.close();
         if (res.statusCode != 200) {
-          throw HttpException('모델을 내려받을 수 없습니다 (${res.statusCode}): ${f.url}');
+          throw HttpException(trf('모델을 내려받을 수 없습니다 ({0}): {1}', [res.statusCode, f.url]));
         }
         final sink = part.openWrite();
         var got = 0;
@@ -140,5 +146,5 @@ class ModelStore {
 class _Cancelled implements Exception {
   const _Cancelled();
   @override
-  String toString() => '사용자가 취소했습니다.';
+  String toString() => tr('사용자가 취소했습니다.');
 }

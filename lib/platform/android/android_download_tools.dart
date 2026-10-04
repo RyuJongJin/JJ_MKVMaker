@@ -7,6 +7,7 @@ import '../../core/download_detect.dart';
 import '../../services/downloader.dart';
 import '../windows/aria2_backend.dart';
 import '../windows/ytdlp_backend.dart';
+import '../../l10n/tr.dart';
 
 /// Android 의 다운로드 프로그램 (youtubedl-android 가 앱에 넣은 Python · yt-dlp · ffmpeg · aria2c).
 /// MainActivity.kt 의 "downloadToolsInit" 이 처음 켤 때 풀고, 직접 실행할 경로 · 환경 변수를 알려 준다.
@@ -50,12 +51,12 @@ class AndroidDownloadTools {
     final m = await _ch.invokeMethod<Map<Object?, Object?>>('downloadToolsInit');
     try {
       final r = await _ch.invokeMethod<String>('downloadToolsUpdate').timeout(const Duration(seconds: 30));
-      if (r == 'DONE') log?.call('yt-dlp 를 새 버전으로 바꿨습니다');
+      if (r == 'DONE') log?.call(tr('yt-dlp 를 새 버전으로 바꿨습니다'));
     } catch (e) {
-      log?.call('yt-dlp 업데이트 확인 실패 (지금 버전으로 받습니다): $e');
+      log?.call(trf('yt-dlp 업데이트 확인 실패 (지금 버전으로 받습니다): {0}', [e]));
     }
     final tools = AndroidDownloadTools._(m!);
-    log?.call('다운로드 준비됨: yt-dlp ${tools.version}');
+    log?.call(trf('다운로드 준비됨: yt-dlp {0}', [tools.version]));
     return tools;
   }
 
@@ -119,7 +120,7 @@ class _Deferred implements DownloadBackend {
     } catch (e) {
       t
         ..state = DownloadState.failed
-        ..error = '다운로드 프로그램을 준비할 수 없습니다: $e';
+        ..error = trf('다운로드 프로그램을 준비할 수 없습니다: {0}', [e]);
       changed();
       return;
     }
