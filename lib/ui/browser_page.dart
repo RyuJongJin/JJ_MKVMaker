@@ -13,6 +13,7 @@ import '../app/download_manager.dart';
 import '../core/bookmarks.dart';
 import '../core/download_detect.dart' show CookieRecord, toNetscapeCookies;
 import '../core/web_address.dart';
+import '../core/youtube_ads.dart';
 import '../platform/windows/cef_runtime.dart';
 import '../platform/windows/com_guard.dart';
 import '../services/downloader.dart' show DownloadState;
@@ -35,6 +36,9 @@ abstract class WebNav {
 
   /// 페이지의 동영상 · 소리 멈추기 (다른 화면으로 갈 때)
   Future<void> pauseMedia();
+
+  /// 페이지에서 스크립트 실행 (YouTube 광고 건너뛰기 등)
+  Future<void> runScript(String js);
 }
 
 /// 페이지의 모든 동영상 · 소리를 멈추는 스크립트
@@ -135,6 +139,7 @@ class _BrowserPageState extends State<BrowserPage> with RouteAware {
       BrowserPage._lastUrl = u;
       setState(() => _url = u);
       if (!_addressFocus.hasFocus) _address.text = u;
+      _applyAdSettings();
     },
     onTitle: (t) => mounted ? setState(() => _title = t) : null,
     onProgress: (p) => mounted ? setState(() => _progress = p) : null,
@@ -168,6 +173,17 @@ class _BrowserPageState extends State<BrowserPage> with RouteAware {
   @override
   void didPushNext() {
     _nav?.pauseMedia();
+  }
+
+  /// 설정 화면 등에서 돌아왔다: 바뀐 광고 설정을 지금 페이지에 적용
+  @override
+  void didPopNext() => _applyAdSettings();
+
+  /// YouTube 페이지면 광고 건너뛰기 · 숨기기 스크립트를 넣는다 (환경 설정 > 시작 · 웹 브라우저)
+  void _applyAdSettings() {
+    if (!(Uri.tryParse(_url)?.host ?? '').endsWith('youtube.com')) return;
+    final s = widget.c.settings;
+    _nav?.runScript(youtubeAdScript(skip: s.youtubeAdSkip, hide: s.youtubeAdHide));
   }
 
   /// MKV 화면 등으로 가며 브라우저 화면이 닫힌다: 살려 둔 웹뷰에서 소리만 나지 않게 멈춘다
@@ -582,6 +598,13 @@ class _InAppNav implements WebNav {
     } catch (_) {}
   }
 
+  @override
+  Future<void> runScript(String js) async {
+    try {
+      await c.evaluateJavascript(source: js);
+    } catch (_) {}
+  }
+
   static const _cookieSites = [
     'https://www.youtube.com/',
     'https://m.youtube.com/',
@@ -736,6 +759,13 @@ class _CefNav implements WebNav {
   Future<void> pauseMedia() async {
     try {
       await c.evaluateJavascript(pauseMediaScript);
+    } catch (_) {}
+  }
+
+  @override
+  Future<void> runScript(String js) async {
+    try {
+      await c.evaluateJavascript(js);
     } catch (_) {}
   }
 

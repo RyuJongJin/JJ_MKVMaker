@@ -342,6 +342,19 @@ class _SettingsPageState extends State<SettingsPage> {
                   ),
                   _textTile('홈 주소', s.homeUrl, '웹 브라우저의 시작 · 🏠 주소',
                       (v) => c.updateSettings((x) => x.homeUrl = v.trim().isEmpty ? 'https://www.youtube.com/' : v.trim())),
+                  SwitchListTile(
+                    value: s.youtubeAdSkip,
+                    onChanged: (v) => c.updateSettings((x) => x.youtubeAdSkip = v),
+                    title: const Text('YouTube 광고 자동 건너뛰기'),
+                    subtitle: const Text('앱 안 웹 브라우저: [건너뛰기] 를 대신 누르고, 건너뛸 수 없는 광고는 소리를 끄고 빨리 넘깁니다 '
+                        '(넘기는 동안 화면 위쪽에 "광고 건너뛰는 중…")'),
+                  ),
+                  SwitchListTile(
+                    value: s.youtubeAdHide,
+                    onChanged: (v) => c.updateSettings((x) => x.youtubeAdHide = v),
+                    title: const Text('YouTube 광고 배너 숨기기'),
+                    subtitle: const Text('목록 · 영상 옆 · 영상 위에 나오는 광고 영역을 감춥니다'),
+                  ),
                   if (desk) ...[
                   ListTile(
                     title: const Text('브라우저 엔진 (앱 안)'),

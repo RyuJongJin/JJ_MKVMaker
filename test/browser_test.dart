@@ -44,6 +44,9 @@ class _Nav implements WebNav {
   int paused = 0;
   @override
   Future<void> pauseMedia() async => paused++;
+  final scripts = <String>[];
+  @override
+  Future<void> runScript(String js) async => scripts.add(js);
   final loads = <String>[];
   @override
   Future<void> load(String url) async => loads.add(url);
