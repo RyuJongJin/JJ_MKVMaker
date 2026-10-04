@@ -1172,8 +1172,9 @@ class AppController extends ChangeNotifier {
       }
 
       await Future.wait([for (var i = 0; i < limit.clamp(1, queue.length); i++) worker()]);
-      final ok = videos.where((v) => v.status == JobStatus.done).length;
-      _log(trf('완료: 성공 {0} / 전체 {1}', [ok, videos.length]));
+      // 이번에 만든 것 기준 (목록의 다른 동영상은 세지 않음)
+      final ok = queue.where((v) => v.status == JobStatus.done).length;
+      _log(trf('완료: 성공 {0} / 전체 {1}', [ok, queue.length]));
     } finally {
       notifyListeners();
     }

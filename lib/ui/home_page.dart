@@ -458,6 +458,8 @@ class _VideoList extends StatelessWidget {
                       c.checked.isEmpty
                           ? trf('동영상 {0}개 · 전체 선택', [c.videos.length])
                           : trf('선택 {0} / {1}개', [c.checked.length, c.videos.length]),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(color: JjColors.textDim, fontSize: 12)),
                 ),
               ),

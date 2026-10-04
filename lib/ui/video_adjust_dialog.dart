@@ -18,7 +18,7 @@ Future<void> showVideoAdjust(BuildContext context, AppController c) => showDialo
       builder: (_) => Dialog(
         insetPadding: const EdgeInsets.all(16),
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 1100, maxHeight: 720),
+          constraints: const BoxConstraints(maxWidth: 1400, maxHeight: 900),
           child: _VideoAdjust(c: c),
         ),
       ),
