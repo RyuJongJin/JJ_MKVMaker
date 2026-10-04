@@ -264,12 +264,16 @@ class _SettingsPageState extends State<SettingsPage> {
                 AppActions(c: c, onSettingsPage: true),
               ]),
             ),
+            // 묶음 바로가기 (누르면 그 묶음으로). 스크롤해도 위에 그대로
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+              child: _groupBar(desk),
+            ),
             Expanded(
-              child: ListView(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                children: [
-                  // 묶음 바로가기 (누르면 그 묶음으로)
-                  _groupBar(desk),
+              // 모든 묶음을 한 번에 그린다 (ListView 는 화면 밖 묶음을 그리지 않아 바로가기로 갈 수 없었음)
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(24, 4, 24, 16),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                   _group('general', Icons.tune, tr('일반'), [
                     // 화면 언어 (읽을 수 없는 언어를 골라도 바로 찾아 되돌릴 수 있게 맨 위)
                     const LanguageSettings(),
@@ -696,7 +700,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       ]),
                     ),
                   ]),
-                ],
+                ]),
               ),
             ),
           ]),
@@ -736,7 +740,9 @@ class _SettingsPageState extends State<SettingsPage> {
                 onPressed: () {
                   final ctx = _groupKeys[id]?.currentContext;
                   if (ctx != null) {
-                    Scrollable.ensureVisible(ctx, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+                    // 그 묶음의 제목이 맨 위에 오게
+                    Scrollable.ensureVisible(ctx,
+                        alignment: 0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
                   }
                 },
               ),

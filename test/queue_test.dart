@@ -204,6 +204,29 @@ void main() {
     expect(find.byTooltip('작업 기록 숨기기'), findsOneWidget);
   });
 
+  testWidgets('환경 설정: 위쪽 묶음 버튼을 누르면 (화면 밖 묶음도) 그 묶음으로 간다', (tester) async {
+    tester.view.physicalSize = const Size(1400, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final c = AppController(PlatformServices(mediaTool: _Tool(), storage: DesktopStorageService()));
+    await tester.pumpWidget(MaterialApp(home: SettingsPage(c: c)));
+    await tester.pumpAndSettle();
+    final groups = ['다운로드', '웹 브라우저', '자막 (AI · 인터넷)', 'MKV 만들기', '화면', '실행 · 종료', '재생', '일반'];
+    for (final g in groups) {
+      await tester.tap(find.widgetWithText(ActionChip, g));
+      await tester.pumpAndSettle();
+      // 묶음 제목 (버튼이 아닌 카드 안의 글) 이 화면 위쪽에 보인다
+      final title = find.descendant(of: find.byType(Card), matching: find.text(g)).first;
+      final y = tester.getTopLeft(title).dy;
+      expect(y, inInclusiveRange(0, 400), reason: '$g 묶음 제목 위치 $y');
+    }
+    // 끝의 묶음 (프로그램 정보) 도 화면에 보인다
+    await tester.tap(find.widgetWithText(ActionChip, '프로그램 정보'));
+    await tester.pumpAndSettle();
+    final about = find.descendant(of: find.byType(Card), matching: find.text('프로그램 정보')).first;
+    expect(tester.getTopLeft(about).dy, inInclusiveRange(0, 800));
+  });
+
   testWidgets('환경 설정: 새 항목이 깨지지 않고 보임', (tester) async {
     // 스크롤 없이 모두 보이도록 세로로 긴 화면
     tester.view.physicalSize = const Size(1400, 3200);
