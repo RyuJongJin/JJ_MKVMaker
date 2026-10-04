@@ -885,7 +885,12 @@ class AppController extends ChangeNotifier {
         ..message = e is MediaToolException ? e.message : '$e';
       _log(trf('AI 자막 실패: {0}\n{1}', [v.fileName, v.message]));
     } finally {
-      await storage.delete(wav);
+      // 작업 폴더째 지운다 (음성인식이 만드는 변환 사본 audio.wav.wav 도 함께)
+      try {
+        await Directory(tmp).delete(recursive: true);
+      } catch (_) {
+        await storage.delete(wav);
+      }
       notifyListeners();
     }
   }

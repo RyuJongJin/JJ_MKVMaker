@@ -19,6 +19,7 @@ import 'folder_picker.dart';
 import 'language_settings.dart';
 import 'app_actions.dart';
 import 'cef_setup.dart';
+import 'cleanup_dialog.dart';
 import 'theme.dart';
 import '../l10n/tr.dart';
 
@@ -652,6 +653,20 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                     ),
                   ]),
+                  _group('cleanup', Icons.cleaning_services_outlined, tr('저장 공간 정리'), [
+                    ListTile(
+                      title: Text(tr('임시 파일 · 남은 조각 정리')),
+                      subtitle: Text(tr('작업하다 남은 임시 파일 · 받다 만 다운로드 (.part 등) · 받다 만 AI 모델 · '
+                          '업데이트하고 남은 파일 · 지난 작업 기록을 찾아 지웁니다. '
+                          '받은 동영상 · 만든 MKV · 자막은 지우지 않고, 진행 중인 작업 · 다운로드가 쓰는 것은 건너뜁니다')),
+                      isThreeLine: true,
+                      trailing: FilledButton.icon(
+                        onPressed: () => showCleanup(context, c, AppScope.maybeOf(context)?.downloads),
+                        icon: const Icon(Icons.cleaning_services_outlined, size: 18),
+                        label: Text(tr('정리…')),
+                      ),
+                    ),
+                  ]),
                   _group('about', Icons.info_outline, tr('프로그램 정보'), [
                     if (desk) ...[
                     ListTile(
@@ -693,7 +708,9 @@ class _SettingsPageState extends State<SettingsPage> {
   /// 묶음 이름 → 위치 (바로가기 버튼으로 그 묶음까지 스크롤)
   final _groupKeys = <String, GlobalKey>{};
 
-  static const _groupIds = ['general', 'display', 'mkv', 'subtitle', 'play', 'browser', 'download', 'run', 'about'];
+  static const _groupIds = [
+    'general', 'display', 'mkv', 'subtitle', 'play', 'browser', 'download', 'run', 'cleanup', 'about', //
+  ];
 
   String _groupTitle(String id) => switch (id) {
         'general' => tr('일반'),
@@ -704,6 +721,7 @@ class _SettingsPageState extends State<SettingsPage> {
         'browser' => tr('웹 브라우저'),
         'download' => tr('다운로드'),
         'run' => tr('실행 · 종료'),
+        'cleanup' => tr('저장 공간 정리'),
         _ => tr('프로그램 정보'),
       };
 
