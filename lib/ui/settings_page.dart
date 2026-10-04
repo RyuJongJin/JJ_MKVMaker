@@ -14,6 +14,7 @@ import 'setup_dialog.dart';
 import 'update_dialog.dart';
 import '../app/settings.dart';
 import '../platform/windows/cef_runtime.dart';
+import '../platform/android/android_shell.dart' show applyScreenOrientation;
 import 'android_file_browser.dart';
 import 'app_actions.dart';
 import 'cef_setup.dart';
@@ -289,6 +290,23 @@ class _SettingsPageState extends State<SettingsPage> {
                     ),
                   ],
                   _section('화면'),
+                  if (!desk)
+                    ListTile(
+                      title: const Text('화면 방향'),
+                      subtitle: const Text('가로 고정 · 세로 고정, 또는 자동 (기기를 돌리는 대로, 기기의 자동 회전 설정을 따름)'),
+                      trailing: DropdownButton<String>(
+                        value: s.screenOrientation,
+                        items: const [
+                          DropdownMenuItem(value: 'landscape', child: Text('가로 고정 (기본)')),
+                          DropdownMenuItem(value: 'portrait', child: Text('세로 고정')),
+                          DropdownMenuItem(value: 'auto', child: Text('자동')),
+                        ],
+                        onChanged: (v) {
+                          c.updateSettings((x) => x.screenOrientation = v!);
+                          applyScreenOrientation(v!);
+                        },
+                      ),
+                    ),
                   ListTile(
                     title: const Text('기본 화면 크기'),
                     subtitle: Text('글자 · 버튼 크기입니다. 위쪽 막대의 − · + 로 그때그때 바꿀 수 있고, 가운데 숫자를 누르면 이 크기로 돌아갑니다 '

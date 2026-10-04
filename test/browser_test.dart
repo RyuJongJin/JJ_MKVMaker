@@ -260,8 +260,19 @@ void main() {
     expect(find.text('목록 보기'), findsOneWidget);
     await tester.pump(const Duration(seconds: 30));
     expect(find.text('목록 보기'), findsOneWidget, reason: '준비 중에는 그대로');
+    expect(find.byIcon(Icons.close), findsOneWidget); // [✕] 로 바로 닫을 수도 있다
     d.tasks.first.progress = 0.1;
     d.refresh();
+    await settle();
+    expect(find.text('목록 보기'), findsNothing);
+
+    // [✕] 누르면 바로 닫힘
+    host.onUrl('https://www.youtube.com/watch?v=ghi');
+    await tester.pump();
+    await tester.tap(find.text('다운로드'));
+    await settle();
+    expect(find.text('목록 보기'), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.close));
     await settle();
     expect(find.text('목록 보기'), findsNothing);
     d.dispose();

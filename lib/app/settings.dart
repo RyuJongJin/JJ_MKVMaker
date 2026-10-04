@@ -74,6 +74,9 @@ class AppSettings {
   /// 탐색기에서 동영상을 열었을 때 (더블클릭 · 연결 프로그램): 'play' 바로 재생 / 'add' 편집 목록에 추가
   String openFileAction = 'play';
 
+  /// Android 화면 방향: 'landscape' 가로 고정 (기본) / 'portrait' 세로 고정 / 'auto' 기기 방향 따라
+  String screenOrientation = 'landscape';
+
   /// 프로그램이 켜져 있을 때 탐색기에서 연 동영상 재생: 'same' 켜져 있는 창에서 / 'new' 새 재생 창
   String openFileWindow = 'same';
   String homeUrl = 'https://www.youtube.com/';
@@ -134,6 +137,7 @@ class AppSettings {
         'uiScale': uiScale,
         'uiScaleDefault': uiScaleDefault,
         'openFileAction': openFileAction,
+        'screenOrientation': screenOrientation,
         'openFileWindow': openFileWindow,
         'homeUrl': homeUrl,
         'browserEngine': browserEngine,
@@ -181,6 +185,9 @@ class AppSettings {
       ..uiScale = clampUiScale(j['uiScale'] as num?)
       ..uiScaleDefault = clampUiScale(j['uiScaleDefault'] as num?)
       ..openFileAction = j['openFileAction'] == 'add' ? 'add' : 'play'
+      ..screenOrientation = const ['portrait', 'auto'].contains(j['screenOrientation'])
+          ? j['screenOrientation'] as String
+          : 'landscape'
       ..openFileWindow = j['openFileWindow'] == 'new' ? 'new' : 'same'
       ..homeUrl = j['homeUrl'] as String? ?? 'https://www.youtube.com/'
       ..browserEngine = j['browserEngine'] as String? ?? 'edge'

@@ -159,6 +159,16 @@ void main() {
       final back = AppSettings.fromJson(s.toJson());
       expect([back.openFileAction, back.openFileWindow], ['add', 'new']);
     });
+
+    test('Android 화면 방향: 기본 가로 고정, 세로 · 자동 저장, 모르는 값은 가로', () {
+      final s = AppSettings();
+      expect(s.screenOrientation, 'landscape');
+      for (final m in ['portrait', 'auto', 'landscape']) {
+        s.screenOrientation = m;
+        expect(AppSettings.fromJson(s.toJson()).screenOrientation, m);
+      }
+      expect(AppSettings.fromJson({'screenOrientation': 'sideways'}).screenOrientation, 'landscape');
+    });
   });
 
   test('중복 실행 방지: 나중 실행은 넘기고, 짧은 시간의 요청은 하나로', () async {

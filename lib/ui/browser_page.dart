@@ -214,6 +214,7 @@ class _BrowserPageState extends State<BrowserPage> with RouteAware {
     final bar = m.showSnackBar(SnackBar(
       content: Text('다운로드 추가: ${_title.isEmpty ? _url : _title}'),
       duration: const Duration(minutes: 10),
+      showCloseIcon: true, // [✕] 로 바로 닫기
       action: SnackBarAction(label: '목록 보기', onPressed: () => DownloadsPage.open(nav, d)),
     ));
     // 받기 준비가 끝나면 (진행률이 나오거나 · 끝 · 실패 · 취소 · 목록에서 지움) 알림을 닫는다
