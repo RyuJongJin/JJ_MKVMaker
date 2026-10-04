@@ -109,7 +109,7 @@ class AppNavButtons extends StatelessWidget {
           onDownloadsPage ? '다운로드 목록 (지금 여기)' : '다운로드 목록',
           downloads == null || onDownloadsPage
               ? null
-              : () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => DownloadsPage(d: downloads))),
+              : () => DownloadsPage.open(Navigator.of(context), downloads),
           here: onDownloadsPage,
         ),
       ]),

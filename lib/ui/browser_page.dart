@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -14,6 +15,7 @@ import '../core/download_detect.dart' show CookieRecord, toNetscapeCookies;
 import '../core/web_address.dart';
 import '../platform/windows/cef_runtime.dart';
 import '../platform/windows/com_guard.dart';
+import '../services/downloader.dart' show DownloadState;
 import 'app_actions.dart';
 import 'bookmark_ui.dart';
 import 'downloads_page.dart';
@@ -199,18 +201,34 @@ class _BrowserPageState extends State<BrowserPage> with RouteAware {
       await _nav?.exportCookies();
     } catch (_) {}
     if (!mounted) return;
-    final t = widget.downloads!.addPage(_url);
+    final d = widget.downloads!;
+    final t = d.addPage(_url);
     final m = ScaffoldMessenger.of(context);
-    m.showSnackBar(SnackBar(
-      content: Text(t == null ? '이미 받는 중이거나 받을 수 없는 주소입니다.' : '다운로드 추가: ${_title.isEmpty ? _url : _title}'),
-      action: t == null
-          ? null
-          : SnackBarAction(
-              label: '목록 보기',
-              onPressed: () => Navigator.push(
-                  context, MaterialPageRoute<void>(builder: (_) => DownloadsPage(d: widget.downloads!))),
-            ),
+    if (t == null) {
+      m.showSnackBar(const SnackBar(content: Text('이미 받는 중이거나 받을 수 없는 주소입니다.')));
+      return;
+    }
+    // 알림은 앱 전체에 떠 있으므로 이 브라우저 화면이 아니라 앱의 Navigator 로 연다
+    // (화면을 오가 이 브라우저 화면이 닫혀도 "목록 보기" 가 된다)
+    final nav = Navigator.of(context);
+    final bar = m.showSnackBar(SnackBar(
+      content: Text('다운로드 추가: ${_title.isEmpty ? _url : _title}'),
+      duration: const Duration(minutes: 10),
+      action: SnackBarAction(label: '목록 보기', onPressed: () => DownloadsPage.open(nav, d)),
     ));
+    // 받기 준비가 끝나면 (진행률이 나오거나 · 끝 · 실패 · 취소 · 목록에서 지움) 알림을 닫는다
+    void check() {
+      final ready = !d.tasks.contains(t) ||
+          t.progress != null ||
+          (t.state != DownloadState.queued && t.state != DownloadState.downloading);
+      if (ready) {
+        d.removeListener(check);
+        bar.close();
+      }
+    }
+
+    d.addListener(check);
+    unawaited(bar.closed.then((_) => d.removeListener(check)));
   }
 
   void _openExternal(String url) =>

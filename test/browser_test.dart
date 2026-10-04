@@ -14,6 +14,7 @@ import 'package:jj_mkvmaker/platform/windows/process_media_tool.dart';
 import 'package:jj_mkvmaker/services/downloader.dart';
 import 'package:jj_mkvmaker/services/platform_services.dart';
 import 'package:jj_mkvmaker/ui/browser_page.dart';
+import 'package:jj_mkvmaker/ui/downloads_page.dart';
 import 'package:path/path.dart' as p;
 
 class _Backend implements DownloadBackend {
@@ -180,6 +181,90 @@ void main() {
       expect(got, [t.id]);
       d.dispose();
     });
+  });
+
+  testWidgets('다운로드 알림: 브라우저 화면이 닫혀도 "목록 보기" 가 되고, 준비가 끝나면 사라진다', (tester) async {
+    tester.view.physicalSize = const Size(1500, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final dir = Directory.systemTemp.createTempSync('jj_dlbar_');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final c = AppController(PlatformServices(mediaTool: ProcessMediaTool('x', 'y'), storage: DesktopStorageService()));
+    final bm = BookmarksController(p.join(dir.path, 'bookmarks.json'));
+    final d = DownloadManager(
+        backends: [_Backend(DownloadKind.video)], settings: () => c.settings, readClipboard: () async => null);
+    final navKey = GlobalKey<NavigatorState>();
+    late BrowserHost host;
+    Future<void> settle() async {
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+    }
+
+    await tester.pumpWidget(MaterialApp(navigatorKey: navKey, home: const Scaffold(body: Text('MKV 화면'))));
+    navKey.currentState!.push(MaterialPageRoute<void>(
+      builder: (_) => BrowserPage(
+        c: c,
+        bookmarks: bm,
+        downloads: d,
+        initialUrl: 'https://www.youtube.com/watch?v=abc',
+        viewBuilder: (h, url) {
+          host = h;
+          h.attach(_Nav());
+          return const ColoredBox(color: Colors.white);
+        },
+      ),
+    ));
+    await settle();
+    host.onUrl('https://www.youtube.com/watch?v=abc');
+    await tester.pump();
+    await tester.tap(find.text('다운로드'));
+    await settle();
+    expect(find.text('목록 보기'), findsOneWidget);
+    final t = d.tasks.single;
+
+    // MKV 화면으로 (브라우저 화면이 닫힘) → 알림의 "목록 보기" 를 눌러도 다운로드 목록이 열린다
+    navKey.currentState!.popUntil((r) => r.isFirst);
+    await settle();
+    expect(find.byType(BrowserPage), findsNothing);
+    await tester.tap(find.text('목록 보기'));
+    await settle();
+    expect(find.byType(DownloadsPage), findsOneWidget);
+    expect(find.text('목록 보기'), findsNothing); // 누르면 알림은 닫힘
+    // 다시 열어도 (위쪽 버튼 등) 목록 화면이 겹쳐 쌓이지 않는다
+    await DownloadsPage.open(navKey.currentState!, d);
+    await settle();
+    expect(find.byType(DownloadsPage, skipOffstage: false), findsOneWidget);
+    expect(t.state, DownloadState.downloading);
+
+    // 다른 동영상: 받기 준비가 끝나면 (진행률이 나오면) 알림이 저절로 사라진다
+    navKey.currentState!.popUntil((r) => r.isFirst);
+    navKey.currentState!.push(MaterialPageRoute<void>(
+      builder: (_) => BrowserPage(
+        c: c,
+        bookmarks: bm,
+        downloads: d,
+        initialUrl: 'https://www.youtube.com/watch?v=def',
+        viewBuilder: (h, url) {
+          host = h;
+          h.attach(_Nav());
+          return const ColoredBox(color: Colors.white);
+        },
+      ),
+    ));
+    await settle();
+    host.onUrl('https://www.youtube.com/watch?v=def');
+    await tester.pump();
+    await tester.tap(find.text('다운로드'));
+    await settle();
+    expect(find.text('목록 보기'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 30));
+    expect(find.text('목록 보기'), findsOneWidget, reason: '준비 중에는 그대로');
+    d.tasks.first.progress = 0.1;
+    d.refresh();
+    await settle();
+    expect(find.text('목록 보기'), findsNothing);
+    d.dispose();
   });
 
   testWidgets('브라우저: ☆ 추가 · 표시줄 · 다운로드 버튼 · 관리 패널 (삭제 · 실행 취소)', (tester) async {

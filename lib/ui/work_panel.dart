@@ -48,12 +48,7 @@ class WorkPanel extends StatelessWidget {
                   _title(
                     '다운로드 ${downloads!.tasks.length}개',
                     action: TextButton(
-                      onPressed: () => Navigator.push(
-                        context,
-                        MaterialPageRoute<void>(
-                          builder: (_) => DownloadsPage(d: downloads!),
-                        ),
-                      ),
+                      onPressed: () => DownloadsPage.open(Navigator.of(context), downloads!),
                       child: const Text(
                         '전체 목록',
                         style: TextStyle(fontSize: 12),

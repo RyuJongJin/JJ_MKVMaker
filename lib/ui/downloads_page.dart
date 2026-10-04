@@ -15,13 +15,43 @@ class DownloadsPage extends StatefulWidget {
 
   @override
   State<DownloadsPage> createState() => _DownloadsPageState();
+
+  /// 다운로드 목록 화면의 경로 이름 (이미 열려 있으면 그 화면으로 돌아가기 위해)
+  static const routeName = 'downloads';
+
+  /// 열려 있는 다운로드 목록 화면 수
+  static int _open = 0;
+
+  /// 다운로드 목록으로: 이미 열려 있으면 그 화면으로 돌아가고, 없으면 새로 연다.
+  /// 위쪽 [다운로드 목록] 버튼 · 브라우저의 "목록 보기" · 작업 현황 등 어디서 열어도 같다.
+  static Future<void> open(NavigatorState nav, DownloadManager d) async {
+    if (_open > 0) {
+      var found = false;
+      nav.popUntil((r) {
+        if (r.settings.name == routeName) found = true;
+        return found || r.isFirst;
+      });
+      if (found) return;
+    }
+    await nav.push(MaterialPageRoute<void>(
+      settings: const RouteSettings(name: routeName),
+      builder: (_) => DownloadsPage(d: d),
+    ));
+  }
 }
 
 class _DownloadsPageState extends State<DownloadsPage> {
   final _url = TextEditingController();
 
   @override
+  void initState() {
+    super.initState();
+    DownloadsPage._open++;
+  }
+
+  @override
   void dispose() {
+    DownloadsPage._open--;
     _url.dispose();
     super.dispose();
   }

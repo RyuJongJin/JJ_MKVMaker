@@ -288,8 +288,7 @@ class _DownloadBox extends StatelessWidget {
           final p = d.overallProgress;
           return InkWell(
             borderRadius: BorderRadius.circular(6),
-            onTap: () => Navigator.push(
-                context, MaterialPageRoute<void>(builder: (_) => DownloadsPage(d: d))),
+            onTap: () => DownloadsPage.open(Navigator.of(context), d),
             child: Container(
               width: 150,
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),

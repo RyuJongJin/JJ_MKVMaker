@@ -177,8 +177,10 @@ Future<void> main(List<String> args) async {
     hotkey: controller.settings.showHotkey,
     minimizeToTray: () => controller.settings.minimizeToTray,
     onCloseRequested: confirmQuit,
-    onDownloadsRequested: () => navigatorKey.currentState
-        ?.push(MaterialPageRoute<void>(builder: (_) => DownloadsPage(d: downloads))),
+    onDownloadsRequested: () {
+      final nav = navigatorKey.currentState;
+      if (nav != null) unawaited(DownloadsPage.open(nav, downloads));
+    },
   );
   // 제목 표시줄에 버전 · 지난번 창 위치에서 열기 · 동영상 목록 불러오기 (창끼리 공유)
   await windowManager.setTitle(appTitle);
