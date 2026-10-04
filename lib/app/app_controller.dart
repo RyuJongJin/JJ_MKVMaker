@@ -425,12 +425,11 @@ class AppController extends ChangeNotifier {
     return n;
   }
 
-  /// 동영상을 이동 폴더 (환경 설정) 로 옮긴다. 옆에 있는 같은 이름의 자막 파일 (a.srt · a.ko.smi …) 과
+  /// 동영상을 [dest] (환경 설정의 이동 버튼 폴더) 로 옮긴다. 옆에 있는 같은 이름의 자막 파일 (a.srt · a.ko.smi …) 과
   /// 만든 결과물 (jj_mkv 의 a.mkv · a_AI.srt · a_ko.srt …) 도 함께 (결과물은 이동 폴더의 jj_mkv 로).
   /// 옮긴 동영상은 목록에서 뺀다. 작업 중인 것은 옮기지 않는다. 반환: (옮긴 수, 못 옮긴 이유들)
-  Future<(int, List<String>)> moveVideos(List<VideoItem> targets) async {
-    final dest = settings.moveTargetDir;
-    if (dest == null || dest.isEmpty) return (0, [tr('이동할 폴더가 정해지지 않았습니다 (환경 설정 > 저장 위치)')]);
+  Future<(int, List<String>)> moveVideos(List<VideoItem> targets, String dest) async {
+    if (dest.isEmpty) return (0, [tr('이동할 폴더가 정해지지 않았습니다 (환경 설정 > MKV 만들기 > 이동 버튼)')]);
     var moved = 0;
     final errors = <String>[];
     try {

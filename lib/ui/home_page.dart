@@ -14,6 +14,9 @@ import '../core/output_paths.dart';
 import 'ai_dialog.dart';
 import 'app_actions.dart';
 import 'downloads_page.dart';
+import 'package:path/path.dart' as p;
+
+import '../app/settings.dart' show MoveTarget;
 import 'folder_picker.dart';
 import 'player_page.dart';
 import 'subtitle_editor_page.dart';
@@ -707,25 +710,41 @@ class _VideoDetail extends StatelessWidget {
     // 이 동영상을 처리하는 중일 때만 잠금 (다른 작업 중이면 대기열에 넣는다)
     final locked = v.status == JobStatus.running;
 
-    // 오른쪽 아래 [이동]: 체크한 동영상이 있으면 그것들, 없으면 지금 보고 있는 이 동영상
-    final moveTargets = c.checked.isEmpty ? [v] : c.batchTargets;
+    // 오른쪽 아래 이동 버튼들 (환경 설정 > MKV 만들기 > 이동 버튼): 표시 이름으로, 위로 하나씩.
+    // 체크한 동영상이 있으면 그것들, 없으면 지금 보고 있는 이 동영상을 그 버튼의 폴더로 옮긴다.
+    final moving = c.checked.isEmpty ? [v] : c.batchTargets;
+    final canMove = moving.any((x) => x.status != JobStatus.running);
+    final count = c.checked.isEmpty ? '' : ' (${c.checked.length})';
+    final buttons = c.settings.moveTargets;
+    Widget button(MoveTarget? t) => Tooltip(
+          message: t == null
+              ? tr('이동: 옮길 폴더를 골라 이동 버튼을 만듭니다 (환경 설정 > MKV 만들기 > 이동 버튼에서 여러 개 만들 수 있음)')
+              : c.checked.isEmpty
+                  ? trf('{0}: 이 동영상을 {1} 로 옮깁니다', [t.name, t.dir])
+                  : trf('{0}: 체크한 동영상 {1}개를 {2} 로 옮깁니다', [t.name, c.checked.length, t.dir]),
+          child: FloatingActionButton.extended(
+            heroTag: null,
+            onPressed: canMove ? () => moveToTarget(context, c, moving, target: t) : null,
+            icon: const Icon(Icons.drive_file_move_outline),
+            label: Text('${t?.name ?? tr('이동')}$count'),
+          ),
+        );
     return Stack(children: [
       _list(context, info, video, audioCount, locked),
       Positioned(
         right: 16,
         bottom: 16,
-        child: Tooltip(
-          message: c.checked.isEmpty
-              ? trf('이동: 이 동영상을 이동 폴더로 옮깁니다{0}', [c.settings.moveTargetDir == null ? '' : ' (${c.settings.moveTargetDir})'])
-              : trf('이동: 체크한 동영상 {0}개를 이동 폴더로 옮깁니다', [c.checked.length]),
-          child: FloatingActionButton.extended(
-            heroTag: null,
-            onPressed: moveTargets.any((x) => x.status != JobStatus.running)
-                ? () => moveToTarget(context, c, moveTargets)
-                : null,
-            icon: const Icon(Icons.drive_file_move_outline),
-            label: Text(c.checked.isEmpty ? tr('이동') : trf('이동 ({0})', [c.checked.length])),
-          ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            if (buttons.isEmpty) button(null),
+            // 첫 번째 버튼이 맨 아래 (예전 [이동] 자리), 다음 버튼은 그 위로
+            for (var i = buttons.length - 1; i >= 0; i--) ...[
+              button(buttons[i]),
+              if (i > 0) const SizedBox(height: 10),
+            ],
+          ],
         ),
       ),
     ]);
@@ -1044,19 +1063,23 @@ class _LogStrip extends StatelessWidget {
       );
 }
 
-/// 동영상을 이동 폴더로 옮긴다 (MKV 목록의 [이동] · 세 번 누르기). 이동 폴더를 아직 안 정했으면 먼저 고른다.
-Future<void> moveToTarget(BuildContext context, AppController c, List<VideoItem> targets) async {
-  if (targets.isEmpty) return;
+/// 동영상을 이동 버튼의 폴더로 옮긴다 (세부 정보의 이동 버튼 · 세 번 누르기). [target] 이 없으면 첫 번째 버튼,
+/// 이동 버튼이 하나도 없으면 폴더를 골라 하나 만든다 (표시 이름은 폴더 이름).
+Future<void> moveToTarget(BuildContext context, AppController c, List<VideoItem> videos, {MoveTarget? target}) async {
+  if (videos.isEmpty) return;
   final messenger = ScaffoldMessenger.maybeOf(context);
-  if (c.settings.moveTargetDir == null) {
+  var t = target ?? c.settings.moveTargets.firstOrNull;
+  if (t == null) {
     final d = await pickFolder(context, tr('이동 폴더 (환경 설정에서 바꿀 수 있음)'));
     if (d == null) return;
-    await c.updateSettings((x) => x.moveTargetDir = d);
+    t = MoveTarget(p.basename(d).isEmpty ? tr('이동') : p.basename(d), d);
+    final add = t;
+    await c.updateSettings((x) => x.moveTargets = [...x.moveTargets, add]);
   }
-  final (moved, errors) = await c.moveVideos(targets);
+  final (moved, errors) = await c.moveVideos(videos, t.dir);
   messenger?.showSnackBar(SnackBar(
     content: Text([
-      if (moved > 0) trf('{0}개를 옮겼습니다 → {1}', [moved, c.settings.moveTargetDir]),
+      if (moved > 0) trf('{0}개를 옮겼습니다 → {1} ({2})', [moved, t.name, t.dir]),
       ...errors,
     ].join('\n')),
   ));

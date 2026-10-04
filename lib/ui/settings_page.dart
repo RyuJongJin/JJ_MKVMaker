@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import 'package:flutter/services.dart';
+import 'package:path/path.dart' as p;
 
 import '../app/app_controller.dart';
 import '../core/download_detect.dart';
@@ -373,15 +374,31 @@ class _SettingsPageState extends State<SettingsPage> {
                       },
                       onReset: () => c.updateSettings((x) => x.mkvOutputRoot = null),
                     ),
-                    _folderTile(
-                      title: tr('이동 폴더'),
-                      value: s.moveTargetDir,
-                      defaultText: tr('정하지 않음: MKV 목록에서 [이동] 을 처음 누를 때 고릅니다'),
-                      onPick: () async {
-                        final d = await _pickDir(tr('이동 폴더'), s.moveTargetDir);
-                        if (d != null) await c.updateSettings((x) => x.moveTargetDir = d);
-                      },
-                      onReset: () => c.updateSettings((x) => x.moveTargetDir = null),
+                    _subTitle(tr('이동 버튼 (세부 정보 오른쪽 아래, 위로 하나씩)')),
+                    for (var i = 0; i < s.moveTargets.length; i++) _moveTargetTile(i, s.moveTargets[i]),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                      child: Row(children: [
+                        OutlinedButton.icon(
+                          onPressed: () async {
+                            final d = await _pickDir(tr('이동 버튼의 폴더'));
+                            if (d == null) return;
+                            final name = p.basename(d).isEmpty ? tr('이동') : p.basename(d);
+                            await c.updateSettings((x) => x.moveTargets = [...x.moveTargets, MoveTarget(name, d)]);
+                          },
+                          icon: const Icon(Icons.add, size: 18),
+                          label: Text(tr('이동 버튼 추가')),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            s.moveTargets.isEmpty
+                                ? tr('없음: 세부 정보의 [이동] 을 처음 누를 때 폴더를 골라 하나 만듭니다')
+                                : tr('표시 이름은 바로 고칠 수 있습니다. 동영상 줄을 세 번 누르면 첫 번째 버튼의 폴더로 옮깁니다'),
+                            style: const TextStyle(fontSize: 12, color: JjColors.textDim),
+                          ),
+                        ),
+                      ]),
                     ),
                   ]),
                   _group('subtitle', Icons.subtitles_outlined, tr('자막 (AI · 인터넷)'), [
@@ -706,6 +723,45 @@ class _SettingsPageState extends State<SettingsPage> {
           ]),
         );
       },
+    );
+  }
+
+  /// 이동 버튼 하나: 표시 이름 (바로 고침) · 폴더 · 순서 올리기 · 폴더 바꾸기 · 지우기
+  Widget _moveTargetTile(int i, MoveTarget t) {
+    final s = c.settings;
+    void update(List<MoveTarget> Function(List<MoveTarget>) f) =>
+        c.updateSettings((x) => x.moveTargets = f([...x.moveTargets]));
+    return ListTile(
+      key: ValueKey('move_${i}_${t.dir}'),
+      leading: const Icon(Icons.drive_file_move_outline, color: JjColors.accent),
+      title: TextFormField(
+        initialValue: t.name,
+        decoration: InputDecoration(isDense: true, labelText: tr('표시 이름')),
+        onChanged: (v) => update((l) => l..[i] = t.copyWith(name: v.trim().isEmpty ? tr('이동') : v.trim())),
+      ),
+      subtitle: Padding(
+        padding: const EdgeInsets.only(top: 4),
+        child: Text(t.dir, maxLines: 2, overflow: TextOverflow.ellipsis),
+      ),
+      trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+        IconButton(
+          tooltip: tr('위로'),
+          icon: const Icon(Icons.arrow_upward, size: 18),
+          onPressed: i == 0 ? null : () => update((l) => l..insert(i - 1, l.removeAt(i))),
+        ),
+        OutlinedButton(
+          onPressed: () async {
+            final d = await _pickDir(tr('이동 버튼의 폴더'), t.dir);
+            if (d != null) update((l) => l..[i] = t.copyWith(dir: d));
+          },
+          child: Text(tr('폴더 선택')),
+        ),
+        IconButton(
+          tooltip: tr('이 이동 버튼 지우기'),
+          icon: const Icon(Icons.delete_outline),
+          onPressed: s.moveTargets.length > i ? () => update((l) => l..removeAt(i)) : null,
+        ),
+      ]),
     );
   }
 

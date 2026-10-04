@@ -8,13 +8,34 @@ import '../core/download_detect.dart';
 import '../core/encode_options.dart';
 import '../core/playlist.dart';
 
+/// MKV 세부 정보의 이동 버튼 하나: 표시 이름 · 옮길 폴더
+class MoveTarget {
+  final String name;
+  final String dir;
+  const MoveTarget(this.name, this.dir);
+
+  MoveTarget copyWith({String? name, String? dir}) => MoveTarget(name ?? this.name, dir ?? this.dir);
+
+  Map<String, Object?> toJson() => {'name': name, 'dir': dir};
+
+  factory MoveTarget.fromJson(Map<Object?, Object?> j) =>
+      MoveTarget((j['name'] as String?)?.trim().isNotEmpty == true ? j['name'] as String : '이동', j['dir'] as String);
+
+  @override
+  bool operator ==(Object other) => other is MoveTarget && other.name == name && other.dir == dir;
+
+  @override
+  int get hashCode => Object.hash(name, dir);
+}
+
 /// 환경 설정 (settings.json 에 저장)
 class AppSettings {
   /// MKV·자막 저장 위치. null 이면 동영상이 있는 폴더 아래 jj_mkv
   String? mkvOutputRoot;
 
-  /// MKV 목록의 [이동] · 세 번 누르기로 동영상을 옮길 폴더. null 이면 처음 옮길 때 고른다
-  String? moveTargetDir;
+  /// MKV 세부 정보 오른쪽 아래의 이동 버튼들 (표시 이름 · 폴더). 세 번 누르기는 첫 번째 버튼의 폴더로.
+  /// 비어 있으면 [이동] 을 처음 누를 때 폴더를 골라 하나 만든다.
+  List<MoveTarget> moveTargets = [];
 
   /// 웹 브라우저에서 YouTube 광고 자동 건너뛰기 (건너뛰기 버튼 누르기 · 건너뛸 수 없는 광고는 빨리 감기 · 소리 끄기)
   bool youtubeAdSkip = true;
@@ -130,7 +151,7 @@ class AppSettings {
 
   Map<String, Object?> toJson() => {
         'mkvOutputRoot': mkvOutputRoot,
-        'moveTargetDir': moveTargetDir,
+        'moveTargets': [for (final t in moveTargets) t.toJson()],
         'youtubeAdSkip': youtubeAdSkip,
         'youtubeAdHide': youtubeAdHide,
         'downloadRoot': downloadRoot,
@@ -193,7 +214,12 @@ class AppSettings {
     final e = (j['encode'] as Map?) ?? const {};
     return AppSettings()
       ..mkvOutputRoot = j['mkvOutputRoot'] as String?
-      ..moveTargetDir = j['moveTargetDir'] as String?
+      ..moveTargets = [
+        for (final x in (j['moveTargets'] as List?) ?? const [])
+          if (x is Map && x['dir'] is String) MoveTarget.fromJson(x),
+        // 예전 판의 이동 폴더 하나 → "이동" 버튼으로
+        if (j['moveTargets'] == null && j['moveTargetDir'] is String) MoveTarget('이동', j['moveTargetDir'] as String),
+      ]
       ..youtubeAdSkip = j['youtubeAdSkip'] as bool? ?? true
       ..youtubeAdHide = j['youtubeAdHide'] as bool? ?? true
       ..downloadRoot = j['downloadRoot'] as String?

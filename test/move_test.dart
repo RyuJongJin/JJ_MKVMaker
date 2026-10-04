@@ -27,7 +27,6 @@ void main() {
   test('이동: 동영상 + 옆의 같은 이름 자막을 옮기고 목록에서 뺀다. 같은 이름이 있으면 (2)', () async {
     final c = _controller();
     final dest = p.join(dir.path, 'done');
-    c.settings.moveTargetDir = dest;
     final a = VideoItem(make('a.mp4').path)
       ..subtitles.add(SubtitleEntry.external(path: make('a.ko.srt').path, language: undetermined))
       ..subtitles.add(SubtitleEntry.external(path: make('other.srt').path, language: undetermined));
@@ -43,7 +42,7 @@ void main() {
     c.videos.addAll([a, b, busy]);
     c.selected = a;
 
-    final (moved, errors) = await c.moveVideos([a, b, busy]);
+    final (moved, errors) = await c.moveVideos([a, b, busy], dest);
     expect(moved, 2);
     expect(errors.single, contains('작업 중'));
     expect(File(p.join(dest, 'a.mp4')).existsSync(), isTrue);
@@ -80,25 +79,28 @@ void main() {
     final c = _controller();
     final a = VideoItem(make('a.mp4').path);
     c.videos.add(a);
-    final (moved, errors) = await c.moveVideos([a]);
+    final (moved, errors) = await c.moveVideos([a], '');
     expect(moved, 0);
     expect(errors.single, contains('이동할 폴더'));
     expect(File(a.path).existsSync(), isTrue);
   });
 
-  test('이동 폴더 설정 저장', () {
-    final s = AppSettings()..moveTargetDir = r'D:\done';
-    expect(AppSettings.fromJson(s.toJson()).moveTargetDir, r'D:\done');
-    expect(AppSettings().moveTargetDir, isNull);
+  test('이동 버튼 설정 저장 (표시 이름 · 폴더 · 순서), 예전 이동 폴더 하나는 "이동" 버튼으로', () {
+    final s = AppSettings()
+      ..moveTargets = const [MoveTarget('완료', r'D:\done'), MoveTarget('보관', r'E:\archive')];
+    expect(AppSettings.fromJson(s.toJson()).moveTargets, s.moveTargets);
+    expect(AppSettings().moveTargets, isEmpty);
+    expect(AppSettings.fromJson({'moveTargetDir': r'D:\old'}).moveTargets, const [MoveTarget('이동', r'D:\old')]);
   });
 
-  testWidgets('MKV 목록: 세 번 누르면 이동 · 세부 정보의 [이동] 은 체크한 것 (없으면 보고 있는 것)', (tester) async {
+  testWidgets('MKV 목록: 세 번 누르면 첫 번째 이동 버튼으로 · 세부 정보의 이동 버튼 (표시 이름) 은 그 폴더로', (tester) async {
     tester.view.physicalSize = const Size(1600, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     final c = _controller();
     final dest = p.join(dir.path, 'done');
-    c.settings.moveTargetDir = dest;
+    final archive = p.join(dir.path, 'archive');
+    c.settings.moveTargets = [MoveTarget('완료함', dest), MoveTarget('보관함', archive)];
     final a = VideoItem(make('a.mp4').path);
     final b = VideoItem(make('b.mp4').path);
     final d = VideoItem(make('d.mp4').path);
@@ -124,13 +126,21 @@ void main() {
     expect(File(p.join(dest, 'b.mp4')).existsSync(), isTrue);
     expect(c.videos.map((v) => v.fileName), ['a.mp4', 'd.mp4']);
 
-    // 체크 없음: [이동] → 보고 있는 동영상 (a)
+    // 세부 정보 오른쪽 아래: 표시 이름 버튼 두 개 (첫 번째가 아래, 두 번째가 그 위)
     c.select(a);
     await tester.pump();
-    expect(find.text('이동'), findsOneWidget);
-    await tester.tap(find.text('이동'));
+    expect(find.text('완료함'), findsOneWidget);
+    expect(find.text('보관함'), findsOneWidget);
+    expect(find.text('이동'), findsNothing);
+    expect(tester.getCenter(find.text('보관함')).dy, lessThan(tester.getCenter(find.text('완료함')).dy));
+    // 체크 없음: [보관함] → 보고 있는 동영상 (a) 를 보관 폴더로
+    await tester.tap(find.text('보관함'));
     await settleIo();
-    expect(File(p.join(dest, 'a.mp4')).existsSync(), isTrue);
+    expect(File(p.join(archive, 'a.mp4')).existsSync(), isTrue);
     expect(c.videos.map((v) => v.fileName), ['d.mp4']);
+    // 체크하면 버튼에 개수
+    c.toggleChecked(d);
+    await tester.pump();
+    expect(find.text('완료함 (1)'), findsOneWidget);
   });
 }
