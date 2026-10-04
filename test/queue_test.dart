@@ -192,7 +192,7 @@ void main() {
     addTearDown(tester.view.reset);
     final c = AppController(PlatformServices(mediaTool: _Tool(), storage: DesktopStorageService()));
     await c.init();
-    await tester.pumpWidget(JjCapCutApp(controller: c));
+    await tester.pumpWidget(JjMkvMakerApp(controller: c));
     expect(find.byTooltip('작업 기록 숨기기'), findsOneWidget);
     await tester.tap(find.byTooltip('작업 기록 숨기기'));
     await tester.pump();

@@ -293,7 +293,7 @@ Future<void> main(List<String> args) async {
     if (ctx2 != null && ctx2.mounted) await checkForUpdate(ctx2, controller);
   });
 
-  runApp(JjCapCutApp(
+  runApp(JjMkvMakerApp(
     controller: controller,
     downloads: downloads,
     bookmarks: bookmarks,
@@ -453,7 +453,7 @@ Future<void> runAndroid(String dataDir) async {
     }
   });
 
-  runApp(JjCapCutApp(
+  runApp(JjMkvMakerApp(
     controller: controller,
     downloads: downloads,
     bookmarks: bookmarks,
@@ -499,7 +499,7 @@ Future<void> runSecondWindow(List<String> files, String dataDir) async {
   await i18n.apply(controller.settings.uiLanguage, save: false);
   controller.settings = await SettingsStore().load();
   final navigatorKey = GlobalKey<NavigatorState>();
-  runApp(JjCapCutApp(controller: controller, navigatorKey: navigatorKey, onExit: () => exit(0)));
+  runApp(JjMkvMakerApp(controller: controller, navigatorKey: navigatorKey, onExit: () => exit(0)));
   WidgetsBinding.instance.addPostFrameCallback((_) async {
     await controller.shareVideoList(p.join(dataDir, 'videos.json'));
     unawaited(controller.addVideos(files, allowOutputFolder: true));
@@ -508,7 +508,7 @@ Future<void> runSecondWindow(List<String> files, String dataDir) async {
   });
 }
 
-class JjCapCutApp extends StatelessWidget {
+class JjMkvMakerApp extends StatelessWidget {
   final AppController controller;
   final DownloadManager? downloads;
   final BookmarksController? bookmarks;
@@ -516,7 +516,7 @@ class JjCapCutApp extends StatelessWidget {
   final GlobalKey<ScaffoldMessengerState>? messengerKey;
   final VoidCallback? onExit;
 
-  const JjCapCutApp({
+  const JjMkvMakerApp({
     super.key,
     required this.controller,
     this.downloads,

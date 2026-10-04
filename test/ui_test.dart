@@ -173,7 +173,7 @@ void main() {
     final c = AppController(
         PlatformServices(mediaTool: _FakeTool(), storage: _FakeStorage()));
     await c.init();
-    await tester.pumpWidget(JjCapCutApp(controller: c));
+    await tester.pumpWidget(JjMkvMakerApp(controller: c));
     expect(find.text('"동영상 추가" 로 파일을 선택하세요'), findsOneWidget);
 
     await c.addVideos([r'D:\m\영화.mkv']);
