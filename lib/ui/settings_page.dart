@@ -278,6 +278,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   _group('general', Icons.tune, tr('일반'), [
                     // 화면 언어 (읽을 수 없는 언어를 골라도 바로 찾아 되돌릴 수 있게 맨 위)
                     const LanguageSettings(),
+                    _appIconTile(c, desk),
                     if (c.services.updater != null) ...[
                       ListTile(
                         leading: const Icon(Icons.system_update_alt, color: JjColors.accent),
@@ -829,6 +830,54 @@ class _SettingsPageState extends State<SettingsPage> {
       );
 
   /// 묶음 안의 작은 제목
+  /// 앱 아이콘 고르기: 그림을 누르면 바로 바뀐다
+  Widget _appIconTile(AppController c, bool desk) {
+    final now = appIconOf(c.settings.appIcon);
+    return ListTile(
+      title: Text(tr('앱 아이콘')),
+      subtitle: Padding(
+        padding: const EdgeInsets.only(top: 4),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(desk
+              ? tr('창 · 작업 표시줄 · 트레이와 앱 안 왼쪽 위 버튼의 아이콘입니다 (실행 파일 · 바탕 화면 바로 가기 아이콘은 그대로)')
+              : tr('앱 목록 · 홈 화면과 앱 안 왼쪽 위 버튼의 아이콘입니다. 바꾸면 홈 화면에 둔 아이콘이 없어질 수 있어 앱 목록에서 다시 끌어다 놓아야 할 수 있습니다')),
+          const SizedBox(height: 8),
+          Wrap(spacing: 10, runSpacing: 10, children: [
+            for (final id in appIconIds)
+              Tooltip(
+                message: id == appIconIds.first ? '${_appIconName(id)} (${tr('기본')})' : _appIconName(id),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(14),
+                  onTap: id == now
+                      ? null
+                      : () {
+                          c.updateSettings((x) => x.appIcon = id);
+                          c.services.shell.setAppIcon(id);
+                        },
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: id == now ? JjColors.accent : Colors.transparent, width: 3),
+                    ),
+                    child: Image.asset(appIconPreviewAsset(id), width: 56, height: 56, filterQuality: FilterQuality.medium),
+                  ),
+                ),
+              ),
+          ]),
+        ]),
+      ),
+    );
+  }
+
+  static String _appIconName(String id) => switch (id) {
+        'yellow' => tr('노랑'),
+        'black' => tr('검정'),
+        'film_jj' => tr('필름 + JJ'),
+        'film' => tr('필름'),
+        _ => tr('처음 아이콘 (파랑)'),
+      };
+
   Widget _subTitle(String t) => Padding(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
         child: Text(t, style: const TextStyle(fontSize: 13, color: JjColors.accent, fontWeight: FontWeight.w600)),

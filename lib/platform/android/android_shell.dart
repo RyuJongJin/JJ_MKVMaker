@@ -29,6 +29,14 @@ class AndroidShell extends NoopShell {
   @override
   Future<bool> isFullScreen() async => _full;
 
+  /// 앱 목록 · 홈 화면 아이콘: 고른 아이콘의 activity-alias 만 켠다 (런처가 다시 그리는 데 몇 초 걸릴 수 있음)
+  @override
+  Future<void> setAppIcon(String id) async {
+    try {
+      await _ch.invokeMethod<bool>('setAppIcon', {'id': appIconOf(id)});
+    } catch (_) {}
+  }
+
   /// 기기의 기본 브라우저로 (고른 브라우저는 PC 에서만)
   @override
   Future<void> openUrl(String url, {String browser = 'system'}) async {

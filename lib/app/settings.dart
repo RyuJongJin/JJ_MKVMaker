@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import '../core/download_detect.dart';
 import '../core/encode_options.dart';
 import '../core/playlist.dart';
+import '../services/app_shell.dart' show appIconOf;
 
 /// MKV 세부 정보의 이동 버튼 하나: 표시 이름 · 옮길 폴더
 class MoveTarget {
@@ -110,6 +111,9 @@ class AppSettings {
   /// 화면 언어 (ko · en · ja · zh-Hans, 또는 더한 언어)
   String uiLanguage = 'ko';
 
+  /// 앱 아이콘 (appIconIds 중 하나: 'yellow' 기본 · 'black' · 'film_jj' · 'film' · 'blue')
+  String appIcon = 'yellow';
+
   /// 더한 화면 언어 (AI 로 자동 번역한 사전이 설정 폴더 l10n 에 있음)
   List<String> uiLanguagesAdded = [];
 
@@ -178,6 +182,7 @@ class AppSettings {
         'openFileAction': openFileAction,
         'screenOrientation': screenOrientation,
         'uiLanguage': uiLanguage,
+        'appIcon': appIcon,
         'uiLanguagesAdded': uiLanguagesAdded,
         'openFileWindow': openFileWindow,
         'homeUrl': homeUrl,
@@ -245,6 +250,7 @@ class AppSettings {
       ..uiScaleDefault = clampUiScale(j['uiScaleDefault'] as num?)
       ..openFileAction = j['openFileAction'] == 'add' ? 'add' : 'play'
       ..uiLanguage = j['uiLanguage'] as String? ?? 'ko'
+      ..appIcon = appIconOf(j['appIcon'] as String?)
       ..uiLanguagesAdded = [for (final x in (j['uiLanguagesAdded'] as List?) ?? const []) '$x']
       ..screenOrientation = const ['portrait', 'auto'].contains(j['screenOrientation'])
           ? j['screenOrientation'] as String

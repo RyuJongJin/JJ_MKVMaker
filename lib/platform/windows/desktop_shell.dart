@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/services.dart';
+import 'package:path/path.dart' as p;
 import 'package:hotkey_manager/hotkey_manager.dart';
 import 'package:tray_manager/tray_manager.dart' as tray;
 import 'package:screen_retriever/screen_retriever.dart';
@@ -41,11 +42,31 @@ class DesktopShell with WindowListener implements AppShell {
     await setHotkey(hotkey);
   }
 
+  /// 고른 앱 아이콘 (init 전에 [setAppIcon] 으로 정해 둘 수 있음)
+  String _icon = appIconIds.first;
+
+  tray.Image? _trayImage() =>
+      tray.ImageAsset.fromAsset('assets/icon/variants/$_icon.ico') ??
+      tray.ImageAsset.fromAsset('assets/tray_icon.ico') ??
+      tray.Image.fromFile(Platform.resolvedExecutable);
+
+  /// 창 · 작업 표시줄 · 트레이 아이콘 (exe 파일 아이콘 · 바탕 화면 바로 가기는 그대로)
+  @override
+  Future<void> setAppIcon(String id) async {
+    _icon = appIconOf(id);
+    final ico = p.join(p.dirname(Platform.resolvedExecutable), 'data', 'flutter_assets', 'assets', 'icon', 'variants',
+        '$_icon.ico');
+    try {
+      if (File(ico).existsSync()) await windowManager.setIcon(ico);
+    } catch (_) {}
+    final t = _tray;
+    if (t != null) t.icon = _trayImage();
+  }
+
   void _initTray() {
     final t = tray.TrayIcon.create();
     if (t == null) return;
-    t.icon = tray.ImageAsset.fromAsset('assets/tray_icon.ico') ??
-        tray.Image.fromFile(Platform.resolvedExecutable);
+    t.icon = _trayImage();
     t.setTooltip('JJ_MKVMaker');
 
     final menu = tray.Menu.create()!;

@@ -61,6 +61,7 @@ class MainActivity : FlutterActivity() {
                     result.error("INSTALL", e.message ?: e.toString(), null)
                 }
                 "openFolder" -> result.success(openFolder(call.argument<String>("path") ?: ""))
+                "setAppIcon" -> result.success(setAppIcon(call.argument<String>("id") ?: ""))
                 "keepAlive" -> {
                     keepAlive(call.argument<String>("text") ?: "", call.argument<Int>("progress") ?: -1)
                     result.success(null)
@@ -238,6 +239,23 @@ class MainActivity : FlutterActivity() {
     }
 
     /// 폴더를 파일 앱으로 연다 (내장 저장소 안의 폴더만). 열 앱이 없으면 false.
+    /// 앱 아이콘 바꾸기: 고른 아이콘의 activity-alias 만 켜고 나머지는 끈다 (앱은 계속 켜 둔 채로)
+    private fun setAppIcon(id: String): Boolean {
+        val ids = listOf("yellow", "black", "film_jj", "film", "blue")
+        if (id !in ids) return false
+        val pm = packageManager
+        for (i in ids) {
+            val name = "$packageName.Icon" + i.split('_').joinToString("") { it.replaceFirstChar(Char::uppercaseChar) }
+            val state = if (i == id) PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+            else PackageManager.COMPONENT_ENABLED_STATE_DISABLED
+            val cn = android.content.ComponentName(this, name)
+            if (pm.getComponentEnabledSetting(cn) != state) {
+                pm.setComponentEnabledSetting(cn, state, PackageManager.DONT_KILL_APP)
+            }
+        }
+        return true
+    }
+
     private fun openFolder(path: String): Boolean {
         // 내장 저장소 (primary) 또는 SD 카드 · USB (/storage/XXXX-XXXX → 문서 ID "XXXX-XXXX:...")
         val root = Environment.getExternalStorageDirectory().path

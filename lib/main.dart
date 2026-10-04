@@ -188,6 +188,7 @@ Future<void> main(List<String> args) async {
       if (nav != null) unawaited(DownloadsPage.open(nav, downloads));
     },
   );
+  await services.shell.setAppIcon(controller.settings.appIcon);
   // 제목 표시줄에 버전 · 지난번 창 위치에서 열기 · 동영상 목록 불러오기 (창끼리 공유)
   await windowManager.setTitle(appTitle);
   final shell = services.shell;
@@ -370,6 +371,7 @@ Future<void> runAndroid(String dataDir) async {
   i18n.init(controller, dataDir);
   await i18n.apply(controller.settings.uiLanguage, save: false);
   await applyScreenOrientation(controller.settings.screenOrientation);
+  unawaited(services.shell.setAppIcon(controller.settings.appIcon));
   final bookmarks = BookmarksController();
   await bookmarks.load();
   final navigatorKey = GlobalKey<NavigatorState>();

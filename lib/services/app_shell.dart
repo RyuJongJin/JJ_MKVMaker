@@ -25,6 +25,9 @@ abstract class AppShell {
   /// 프로그램 종료
   Future<void> quit();
 
+  /// 앱 아이콘 바꾸기 ([appIconIds] 중 하나). Windows: 창 · 작업 표시줄 · 트레이, Android: 앱 목록 · 홈 화면
+  Future<void> setAppIcon(String id);
+
   // ───────── 플레이어 창 ─────────
 
   Future<void> setFullScreen(bool on);
@@ -88,6 +91,8 @@ class NoopShell implements AppShell {
   @override
   Future<void> quit() async {}
   @override
+  Future<void> setAppIcon(String id) async {}
+  @override
   Future<void> setFullScreen(bool on) async {}
   @override
   Future<bool> isFullScreen() async => false;
@@ -118,6 +123,19 @@ class NoopShell implements AppShell {
   @override
   Future<void> restart() async {}
 }
+
+/// 고를 수 있는 앱 아이콘 (환경 설정 > 일반 > 앱 아이콘). 첫 번째가 기본.
+/// 그림은 tool/make_icon.py 가 만든다: `assets/icon/variants/<id>_256.png` · `<id>_button.png` · `<id>.ico`
+const appIconIds = ['yellow', 'black', 'film_jj', 'film', 'blue'];
+
+/// 저장된 값이 모르는 것이면 기본 아이콘
+String appIconOf(String? id) => appIconIds.contains(id) ? id! : appIconIds.first;
+
+/// 앱 안 왼쪽 위 홈 버튼 그림
+String appIconButtonAsset(String? id) => 'assets/icon/variants/${appIconOf(id)}_button.png';
+
+/// 설정에서 고를 때 보여 주는 큰 그림
+String appIconPreviewAsset(String id) => 'assets/icon/variants/${appIconOf(id)}_256.png';
 
 /// "Ctrl+Shift+X" → (수식키 목록, 키 이름). 형식이 틀리면 null.
 (List<String>, String)? parseHotkey(String text) {
