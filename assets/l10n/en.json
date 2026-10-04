@@ -176,7 +176,7 @@
  "{0}개 선택": "{0} selected",
  "{0}개 표시함": "{0} marked",
  "{0}개 항목을 {1}": "{0} items {1}",
- "{0}개 항목을 다음 폴더로 {1}:\n{2}": "{0} items to this folder — {1}\n{2}",
+ "{0}개 항목을 다음 폴더로 {1}\n{2}": "{0} items to this folder — {1}\n{2}",
  "{0}개 항목을 지울까요? 되돌릴 수 없습니다.": "Delete {0} items? This cannot be undone.",
  "{0}개를 \"기타 즐겨찾기\" 에 가져왔습니다.": "Imported {0} into \"Other bookmarks\".",
  "{0}개를 옮겼습니다 → {1}": "Moved {0} → {1}",

@@ -576,7 +576,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(move ? tr('이동') : tr('복사')),
-        content: Text(trf('{0}개 항목을 다음 폴더로 {1}:\n{2}', [sources.length, move ? tr('옮길까요?') : tr('복사할까요?'), dest])),
+        content: Text(trf('{0}개 항목을 다음 폴더로 {1}\n{2}', [sources.length, move ? tr('옮길까요?') : tr('복사할까요?'), dest])),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('취소'))),
           FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(move ? tr('이동') : tr('복사'))),
