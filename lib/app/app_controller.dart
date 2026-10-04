@@ -402,6 +402,74 @@ class AppController extends ChangeNotifier {
     return n;
   }
 
+  /// 동영상을 이동 폴더 (환경 설정) 로 옮긴다. 옆에 있는 같은 이름의 자막 파일 (a.srt · a.ko.smi …) 도 함께.
+  /// 옮긴 동영상은 목록에서 뺀다. 작업 중인 것은 옮기지 않는다. 반환: (옮긴 수, 못 옮긴 이유들)
+  Future<(int, List<String>)> moveVideos(List<VideoItem> targets) async {
+    final dest = settings.moveTargetDir;
+    if (dest == null || dest.isEmpty) return (0, ['이동할 폴더가 정해지지 않았습니다 (환경 설정 > 저장 위치)']);
+    var moved = 0;
+    final errors = <String>[];
+    try {
+      await Directory(dest).create(recursive: true);
+    } catch (e) {
+      return (0, ['이동할 폴더를 만들 수 없습니다: $dest ($e)']);
+    }
+    for (final v in List.of(targets)) {
+      if (v.status == JobStatus.running) {
+        errors.add('${v.fileName}: 작업 중이라 옮기지 않았습니다');
+        continue;
+      }
+      if (p.equals(v.directory, dest)) {
+        errors.add('${v.fileName}: 이미 이동 폴더에 있습니다');
+        continue;
+      }
+      try {
+        final side = {
+          for (final s in v.subtitles)
+            if (s.path != null &&
+                p.equals(p.dirname(s.path!), v.directory) &&
+                p.basename(s.path!).startsWith('${v.baseName}.') &&
+                File(s.path!).existsSync())
+              s.path!,
+        };
+        final to = await moveFileInto(v.path, dest);
+        for (final s in side) {
+          try {
+            await moveFileInto(s, dest);
+          } catch (e) {
+            _log('자막 이동 실패: ${p.basename(s)} ($e)');
+          }
+        }
+        _log('이동: ${v.fileName} → $to${side.isEmpty ? '' : ' (자막 ${side.length}개 함께)'}');
+        videos.remove(v);
+        checked.remove(v);
+        moved++;
+      } catch (e) {
+        errors.add('${v.fileName}: $e');
+      }
+    }
+    if (selected != null && !videos.contains(selected)) selected = videos.firstOrNull;
+    _saveVideoList();
+    notifyListeners();
+    return (moved, errors);
+  }
+
+  /// 파일을 폴더 안으로 옮긴다 (같은 이름이 있으면 "이름 (2).mp4"). 다른 드라이브 · SD 카드면 복사 후 지운다. 옮긴 경로를 돌려준다.
+  static Future<String> moveFileInto(String from, String dir) async {
+    final stem = p.basenameWithoutExtension(from), ext = p.extension(from);
+    var to = p.join(dir, p.basename(from));
+    for (var n = 2; File(to).existsSync(); n++) {
+      to = p.join(dir, '$stem ($n)$ext');
+    }
+    try {
+      await File(from).rename(to);
+    } on FileSystemException {
+      await File(from).copy(to);
+      await File(from).delete();
+    }
+    return to;
+  }
+
   void removeVideo(VideoItem v) {
     if (v.status == JobStatus.running) return;
     videos.remove(v);

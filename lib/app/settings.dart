@@ -13,6 +13,15 @@ class AppSettings {
   /// MKV·자막 저장 위치. null 이면 동영상이 있는 폴더 아래 jj_mkv
   String? mkvOutputRoot;
 
+  /// MKV 목록의 [이동] · 세 번 누르기로 동영상을 옮길 폴더. null 이면 처음 옮길 때 고른다
+  String? moveTargetDir;
+
+  /// 웹 브라우저에서 YouTube 광고 자동 건너뛰기 (건너뛰기 버튼 누르기 · 건너뛸 수 없는 광고는 빨리 감기 · 소리 끄기)
+  bool youtubeAdSkip = true;
+
+  /// YouTube 페이지의 광고 배너 · 광고 영역 숨기기
+  bool youtubeAdHide = true;
+
   /// 다운로드 위치 (아래에 jj_yt-dlp, jj_aria2 생성). null 이면 프로그램 폴더
   String? downloadRoot;
 
@@ -115,6 +124,9 @@ class AppSettings {
 
   Map<String, Object?> toJson() => {
         'mkvOutputRoot': mkvOutputRoot,
+        'moveTargetDir': moveTargetDir,
+        'youtubeAdSkip': youtubeAdSkip,
+        'youtubeAdHide': youtubeAdHide,
         'downloadRoot': downloadRoot,
         'clipboardWatch': clipboardWatch,
         'minimizeToTray': minimizeToTray,
@@ -163,6 +175,9 @@ class AppSettings {
     final e = (j['encode'] as Map?) ?? const {};
     return AppSettings()
       ..mkvOutputRoot = j['mkvOutputRoot'] as String?
+      ..moveTargetDir = j['moveTargetDir'] as String?
+      ..youtubeAdSkip = j['youtubeAdSkip'] as bool? ?? true
+      ..youtubeAdHide = j['youtubeAdHide'] as bool? ?? true
       ..downloadRoot = j['downloadRoot'] as String?
       ..clipboardWatch = j['clipboardWatch'] as bool? ?? true
       ..minimizeToTray = j['minimizeToTray'] as bool? ?? true

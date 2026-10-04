@@ -15,7 +15,7 @@ import 'update_dialog.dart';
 import '../app/settings.dart';
 import '../platform/windows/cef_runtime.dart';
 import '../platform/android/android_shell.dart' show applyScreenOrientation;
-import 'android_file_browser.dart';
+import 'folder_picker.dart';
 import 'app_actions.dart';
 import 'cef_setup.dart';
 import 'theme.dart';
@@ -224,9 +224,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   /// 폴더 고르기. Android 는 앱 안 화면 (내장 저장소 · SD 카드 · USB 를 실제 경로로 고를 수 있음)
-  Future<String?> _pickDir(String title, [String? initial]) => Platform.isAndroid
-      ? showAndroidFolderBrowser(context, title: title, initialDirectory: initial)
-      : FilePicker.getDirectoryPath(dialogTitle: title, initialDirectory: initial);
+  Future<String?> _pickDir(String title, [String? initial]) => pickFolder(context, title, initial);
 
   Future<void> _applyHotkey() async {
     final text = _hotkey.text.trim();
@@ -414,6 +412,16 @@ class _SettingsPageState extends State<SettingsPage> {
                       if (d != null) await c.updateSettings((x) => x.mkvOutputRoot = d);
                     },
                     onReset: () => c.updateSettings((x) => x.mkvOutputRoot = null),
+                  ),
+                  _folderTile(
+                    title: '이동 폴더',
+                    value: s.moveTargetDir,
+                    defaultText: '정하지 않음: MKV 목록에서 [이동] 을 처음 누를 때 고릅니다',
+                    onPick: () async {
+                      final d = await _pickDir('이동 폴더', s.moveTargetDir);
+                      if (d != null) await c.updateSettings((x) => x.moveTargetDir = d);
+                    },
+                    onReset: () => c.updateSettings((x) => x.moveTargetDir = null),
                   ),
                   _folderTile(
                     title: '다운로드 (jj_yt-dlp · jj_aria2)',

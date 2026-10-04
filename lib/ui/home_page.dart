@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -13,6 +14,7 @@ import '../core/output_paths.dart';
 import 'ai_dialog.dart';
 import 'app_actions.dart';
 import 'downloads_page.dart';
+import 'folder_picker.dart';
 import 'player_page.dart';
 import 'subtitle_editor_page.dart';
 import 'subtitle_search_dialog.dart';
@@ -246,12 +248,12 @@ class _TopBar extends StatelessWidget {
               message: 'MKV 만들기$count',
               child: mkvText
                   ? FilledButton.icon(
-                      onPressed: !canBuild ? null : (c.checked.isEmpty ? () => _confirmBuildAll(context) : () => c.buildVideos(batch)),
+                      onPressed: !canBuild ? null : (batch.isEmpty ? () => _confirmBuildAll(context) : () => c.buildVideos(batch)),
                       icon: Icon(c.busy ? Icons.playlist_add : Icons.play_arrow, size: 20),
                       label: Text('MKV 만들기$count${c.busy && jobText ? ' (대기열)' : ''}'),
                     )
                   : IconButton.filled(
-                      onPressed: !canBuild ? null : (c.checked.isEmpty ? () => _confirmBuildAll(context) : () => c.buildVideos(batch)),
+                      onPressed: !canBuild ? null : (batch.isEmpty ? () => _confirmBuildAll(context) : () => c.buildVideos(batch)),
                       icon: Icon(c.busy ? Icons.playlist_add : Icons.play_arrow, size: 20),
                     ),
             ),
@@ -535,13 +537,36 @@ class _VideoTile extends StatelessWidget {
     }
   }
 
+  // 연달아 누른 횟수 (두 번이면 재생, 세 번 이상이면 이동). 마지막으로 누르고 잠시 뒤에 정한다.
+  static VideoItem? _tapItem;
+  static int _taps = 0;
+  static Timer? _tapTimer;
+
+  void _tapped(BuildContext context) {
+    c.select(v);
+    _taps = _tapItem == v ? _taps + 1 : 1;
+    _tapItem = v;
+    _tapTimer?.cancel();
+    _tapTimer = Timer(const Duration(milliseconds: 350), () {
+      final n = _taps;
+      _taps = 0;
+      _tapItem = null;
+      if (!context.mounted) return;
+      if (n == 2) {
+        playFiles(context, c, [v.path]);
+      } else if (n >= 3) {
+        moveToTarget(context, c, [v]);
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final isSel = c.selected == v;
     final subs = v.subtitles.where((s) => s.enabled).length;
     return InkWell(
-      onTap: () => c.select(v),
-      onDoubleTap: () => playFiles(context, c, [v.path]),
+      // 한 번: 보기 · 두 번: 재생 · 세 번 이상: 이동 폴더로 옮기기
+      onTap: () => _tapped(context),
       // 오른쪽 클릭: 이 동영상으로 할 수 있는 일
       onSecondaryTapDown: (d) => _menu(context, d.globalPosition),
       child: Container(
@@ -666,8 +691,33 @@ class _VideoDetail extends StatelessWidget {
     // 이 동영상을 처리하는 중일 때만 잠금 (다른 작업 중이면 대기열에 넣는다)
     final locked = v.status == JobStatus.running;
 
+    // 오른쪽 아래 [이동]: 체크한 동영상이 있으면 그것들, 없으면 지금 보고 있는 이 동영상
+    final moveTargets = c.checked.isEmpty ? [v] : c.batchTargets;
+    return Stack(children: [
+      _list(context, info, video, audioCount, locked),
+      Positioned(
+        right: 16,
+        bottom: 16,
+        child: Tooltip(
+          message: c.checked.isEmpty
+              ? '이동: 이 동영상을 이동 폴더로 옮깁니다${c.settings.moveTargetDir == null ? '' : ' (${c.settings.moveTargetDir})'}'
+              : '이동: 체크한 동영상 ${c.checked.length}개를 이동 폴더로 옮깁니다',
+          child: FloatingActionButton.extended(
+            heroTag: null,
+            onPressed: moveTargets.any((x) => x.status != JobStatus.running)
+                ? () => moveToTarget(context, c, moveTargets)
+                : null,
+            icon: const Icon(Icons.drive_file_move_outline),
+            label: Text(c.checked.isEmpty ? '이동' : '이동 (${c.checked.length})'),
+          ),
+        ),
+      ),
+    ]);
+  }
+
+  Widget _list(BuildContext context, MediaInfo? info, StreamInfo? video, int audioCount, bool locked) {
     return ListView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 88),
       children: [
         Row(children: [
           Expanded(
@@ -978,3 +1028,20 @@ class _LogStrip extends StatelessWidget {
       );
 }
 
+/// 동영상을 이동 폴더로 옮긴다 (MKV 목록의 [이동] · 세 번 누르기). 이동 폴더를 아직 안 정했으면 먼저 고른다.
+Future<void> moveToTarget(BuildContext context, AppController c, List<VideoItem> targets) async {
+  if (targets.isEmpty) return;
+  final messenger = ScaffoldMessenger.maybeOf(context);
+  if (c.settings.moveTargetDir == null) {
+    final d = await pickFolder(context, '이동 폴더 (환경 설정에서 바꿀 수 있음)');
+    if (d == null) return;
+    await c.updateSettings((x) => x.moveTargetDir = d);
+  }
+  final (moved, errors) = await c.moveVideos(targets);
+  messenger?.showSnackBar(SnackBar(
+    content: Text([
+      if (moved > 0) '$moved개를 옮겼습니다 → ${c.settings.moveTargetDir}',
+      ...errors,
+    ].join('\n')),
+  ));
+}
