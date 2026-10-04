@@ -9,7 +9,7 @@ import 'package:path/path.dart' as p;
 
 /// NLLB 모델이 있어야 실행 (없으면 건너뜀)
 final modelDir = p.join(
-    Platform.environment['JJ_MKVMAKER_MODELS'] ?? r'M:\jj_CapCut\models', 'nllb-200-distilled-600M');
+    Platform.environment['JJ_MKVMAKER_MODELS'] ?? r'M:\jj_MKVMaker\models', 'nllb-200-distilled-600M');
 
 void main() {
   final hasModel = File(p.join(modelDir, 'tokenizer.json')).existsSync();

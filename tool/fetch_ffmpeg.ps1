@@ -1,7 +1,7 @@
 ﻿# FFmpeg 를 third_party\ffmpeg\windows 로 준비한다 (빌드 시 앱에 동봉됨).
-# 사용법: powershell -File tool\fetch_ffmpeg.ps1 [-Source M:\jj_CapCut\tools\ffmpeg]
+# 사용법: powershell -File tool\fetch_ffmpeg.ps1 [-Source M:\jj_MKVMaker\tools\ffmpeg]
 param(
-    [string]$Source = "M:\jj_CapCut\tools\ffmpeg"
+    [string]$Source = "M:\jj_MKVMaker\tools\ffmpeg"
 )
 $ErrorActionPreference = 'Stop'
 $dest = Join-Path $PSScriptRoot '..\third_party\ffmpeg\windows'

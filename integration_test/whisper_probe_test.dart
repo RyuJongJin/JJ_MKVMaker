@@ -10,7 +10,7 @@ void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets('whisper.cpp base: 영어·한국어 인식', (tester) async {
-    final model = p.join(Platform.environment['JJ_MKVMAKER_MODELS'] ?? r'M:\jj_CapCut\models',
+    final model = p.join(Platform.environment['JJ_MKVMAKER_MODELS'] ?? r'M:\jj_MKVMaker\models',
         'whisper', 'ggml-base.bin');
     final assets = p.join(Directory.current.path, 'test_assets');
     for (final name in ['speech_en.wav', 'speech_ko.wav']) {

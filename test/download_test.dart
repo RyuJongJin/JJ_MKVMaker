@@ -311,7 +311,7 @@ https://example.com/page.html
     final dir = Directory.systemTemp.createTempSync('jj_yt_');
     addTearDown(() => dir.deleteSync(recursive: true));
     final b = YtDlpBackend(
-        ytdlp: exe, ffmpegDir: r'M:\jj_CapCut\tools\ffmpeg\bin', deno: p.join(_tools, 'deno.exe'));
+        ytdlp: exe, ffmpegDir: r'M:\jj_MKVMaker\tools\ffmpeg\bin', deno: p.join(_tools, 'deno.exe'));
     final t = DownloadTask(
         id: 'y', kind: DownloadKind.video, source: 'https://www.youtube.com/watch?v=jNQXAC9IVRw', dir: dir.path);
     final progress = <double>[];

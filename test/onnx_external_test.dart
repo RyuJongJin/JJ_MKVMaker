@@ -7,7 +7,7 @@ import 'package:path/path.dart' as p;
 /// 실제 NLLB 모델을 외부 데이터 형식으로 바꿔 본다 (모델이 없으면 건너뜀).
 /// 바꾼 모델이 원래와 같은 결과를 내는지는 tool/check_onnx_external.py 로 확인한다.
 void main() {
-  final dir = p.join(Platform.environment['JJ_MKVMAKER_MODELS'] ?? r'M:\jj_CapCut\models', 'nllb-200-distilled-600M');
+  final dir = p.join(Platform.environment['JJ_MKVMAKER_MODELS'] ?? r'M:\jj_MKVMaker\models', 'nllb-200-distilled-600M');
   final out = Platform.environment['JJ_ONNX_EXT_OUT'];
   test('ONNX 외부 데이터로 바꾸기', () {
     final tmp = out ?? Directory.systemTemp.createTempSync('onnx_ext').path;
