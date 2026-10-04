@@ -34,6 +34,12 @@ void main() {
     final b = VideoItem(make('b.mkv').path);
     final busy = VideoItem(make('c.mp4').path)..status = JobStatus.running;
     make(p.join('done', 'b.mkv')); // 이미 있는 이름
+    // 만든 결과물 (jj_mkv): a 의 것만 함께 옮긴다
+    make(p.join('jj_mkv', 'a.mkv'));
+    make(p.join('jj_mkv', 'a_AI.srt'));
+    make(p.join('jj_mkv', 'a_zh-Hans.srt'));
+    make(p.join('jj_mkv', 'ab.mkv'));
+    make(p.join('jj_mkv', 'a_1_ko.srt'));
     c.videos.addAll([a, b, busy]);
     c.selected = a;
 
@@ -45,6 +51,13 @@ void main() {
     expect(File(p.join(dir.path, 'other.srt')).existsSync(), isTrue, reason: '이름이 다른 자막은 그대로');
     expect(File(p.join(dest, 'b (2).mkv')).readAsStringSync(), 'b.mkv');
     expect(File(p.join(dir.path, 'a.mp4')).existsSync(), isFalse);
+    for (final f in ['a.mkv', 'a_AI.srt', 'a_zh-Hans.srt']) {
+      expect(File(p.join(dest, 'jj_mkv', f)).existsSync(), isTrue, reason: f);
+      expect(File(p.join(dir.path, 'jj_mkv', f)).existsSync(), isFalse, reason: f);
+    }
+    for (final f in ['ab.mkv', 'a_1_ko.srt']) {
+      expect(File(p.join(dir.path, 'jj_mkv', f)).existsSync(), isTrue, reason: '다른 동영상의 결과물 $f 는 그대로');
+    }
     expect(c.videos, [busy]);
     expect(c.selected, busy);
   });

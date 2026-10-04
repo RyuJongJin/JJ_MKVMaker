@@ -402,7 +402,8 @@ class AppController extends ChangeNotifier {
     return n;
   }
 
-  /// 동영상을 이동 폴더 (환경 설정) 로 옮긴다. 옆에 있는 같은 이름의 자막 파일 (a.srt · a.ko.smi …) 도 함께.
+  /// 동영상을 이동 폴더 (환경 설정) 로 옮긴다. 옆에 있는 같은 이름의 자막 파일 (a.srt · a.ko.smi …) 과
+  /// 만든 결과물 (jj_mkv 의 a.mkv · a_AI.srt · a_ko.srt …) 도 함께 (결과물은 이동 폴더의 jj_mkv 로).
   /// 옮긴 동영상은 목록에서 뺀다. 작업 중인 것은 옮기지 않는다. 반환: (옮긴 수, 못 옮긴 이유들)
   Future<(int, List<String>)> moveVideos(List<VideoItem> targets) async {
     final dest = settings.moveTargetDir;
@@ -440,7 +441,15 @@ class AppController extends ChangeNotifier {
             _log(trf('자막 이동 실패: {0} ({1})', [p.basename(s), e]));
           }
         }
-        _log(trf('이동: {0} → {1}{2}', [v.fileName, to, side.isEmpty ? '' : trf(' (자막 {0}개 함께)', [side.length])]));
+        final results = await _moveResults(v.path, to);
+        _log(trf('이동: {0} → {1}{2}', [
+          v.fileName,
+          to,
+          [
+            if (side.isNotEmpty) trf(' (자막 {0}개 함께)', [side.length]),
+            if (results > 0) trf(' (결과물 {0}개 함께)', [results]),
+          ].join(),
+        ]));
         videos.remove(v);
         checked.remove(v);
         moved++;
@@ -452,6 +461,26 @@ class AppController extends ChangeNotifier {
     _saveVideoList();
     notifyListeners();
     return (moved, errors);
+  }
+
+  /// 만든 결과물 (jj_mkv 의 이름.mkv · 이름_AI.srt · 이름_ko.srt …) 을 옮긴 동영상의 jj_mkv 로. 옮긴 개수.
+  Future<int> _moveResults(String oldVideo, String newVideo) async {
+    final from = outputDirFor(oldVideo), to = outputDirFor(newVideo);
+    if (p.equals(from, to) || !Directory(from).existsSync()) return 0;
+    final stem = p.basenameWithoutExtension(oldVideo);
+    final mine = RegExp('^${RegExp.escape(stem)}(\\.mkv|_[A-Za-z-]+\\.(srt|ass|ssa|smi|vtt|sub))\$', caseSensitive: false);
+    var n = 0;
+    for (final f in Directory(from).listSync().whereType<File>()) {
+      if (!mine.hasMatch(p.basename(f.path))) continue;
+      try {
+        await Directory(to).create(recursive: true);
+        await moveFileInto(f.path, to);
+        n++;
+      } catch (e) {
+        _log(trf('결과물 이동 실패: {0} ({1})', [p.basename(f.path), e]));
+      }
+    }
+    return n;
   }
 
   /// 파일을 폴더 안으로 옮긴다 (같은 이름이 있으면 "이름 (2).mp4"). 다른 드라이브 · SD 카드면 복사 후 지운다. 옮긴 경로를 돌려준다.
