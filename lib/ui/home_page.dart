@@ -20,6 +20,7 @@ import 'subtitle_editor_page.dart';
 import 'subtitle_search_dialog.dart';
 import 'theme.dart';
 import 'translate_dialog.dart';
+import 'video_adjust_dialog.dart';
 import 'work_panel.dart';
 import '../l10n/tr.dart';
 
@@ -382,9 +383,21 @@ class _EncodeBar extends StatelessWidget {
           drop(s.quality, QualityChoice.values, (q) => q.label, c.setQuality),
           const SizedBox(width: 20),
         ],
+        // 화면 비율 (가로 · 세로) · 회전 · 색 보정: 미리보기를 보며 고르는 창
+        Tooltip(
+          message: s.adjusts ? '${tr('화면 · 색 보정')}: ${s.adjustSummary}' : tr('화면 비율 (가로 · 세로) · 회전 · 밝기 · 대비 · 채도 · 색온도'),
+          child: (s.adjusts ? FilledButton.tonalIcon : OutlinedButton.icon)(
+            onPressed: locked ? null : () => showVideoAdjust(context, c),
+            icon: const Icon(Icons.tune, size: 18),
+            label: Text(tr('화면 · 색 보정')),
+          ),
+        ),
+        const SizedBox(width: 12),
         Expanded(
           child: Text(
-            !s.reencode
+            s.adjusts
+                ? s.adjustSummary
+                : !s.reencode
                 ? tr('영상·음성을 그대로 복사합니다 (빠름, 화질 손실 없음)')
                 : trf('영상을 다시 인코딩합니다 (시간이 오래 걸림, 음성은 그대로)' '{0}', [up > 0 ? trf(' · ⚠ {0}개는 원본보다 커서 화질 향상 없이 용량만 늘어납니다', [up]) : '']),
             overflow: TextOverflow.ellipsis,

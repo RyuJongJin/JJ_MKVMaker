@@ -171,11 +171,21 @@ class AppSettings {
           'codec': encode.codec.name,
           'resolution': encode.resolution.name,
           'quality': encode.quality.name,
+          'frame': encode.frame.name,
+          'fit': encode.fit.name,
+          'rotate': encode.rotate.name,
+          'brightness': encode.brightness,
+          'contrast': encode.contrast,
+          'saturation': encode.saturation,
+          'temperature': encode.temperature,
         },
         'aiSource': aiSource,
         'aiTargets': aiTargets,
         'aiWhisper': aiWhisper,
       };
+
+  /// 색 보정 값 (-100 ~ 100)
+  static int _adj(Object? v) => ((v as num?)?.round() ?? 0).clamp(-100, 100);
 
   factory AppSettings.fromJson(Map<String, dynamic> j) {
     T pick<T extends Enum>(List<T> values, Object? name, T fallback) =>
@@ -226,6 +236,13 @@ class AppSettings {
         codec: pick(VideoCodecChoice.values, e['codec'], VideoCodecChoice.copy),
         resolution: pick(ResolutionChoice.values, e['resolution'], ResolutionChoice.original),
         quality: pick(QualityChoice.values, e['quality'], QualityChoice.normal),
+        frame: pick(FrameChoice.values, e['frame'], FrameChoice.original),
+        fit: pick(FitChoice.values, e['fit'], FitChoice.fill),
+        rotate: pick(RotateChoice.values, e['rotate'], RotateChoice.none),
+        brightness: _adj(e['brightness']),
+        contrast: _adj(e['contrast']),
+        saturation: _adj(e['saturation']),
+        temperature: _adj(e['temperature']),
       )
       ..aiSource = j['aiSource'] as String? ?? 'und'
       ..aiTargets = (j['aiTargets'] as List?)?.cast<String>() ?? ['ko', 'en', 'ja']

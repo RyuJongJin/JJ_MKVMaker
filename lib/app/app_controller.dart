@@ -184,10 +184,16 @@ class AppController extends ChangeNotifier {
       c == VideoCodecChoice.copy || c.pickEncoder(encoders) != null;
 
   void setCodec(VideoCodecChoice c) {
-    // 원본 유지(복사)는 크기를 바꿀 수 없으므로 원본 크기로
-    encode = encode.copyWith(
-        codec: c,
-        resolution: c == VideoCodecChoice.copy ? ResolutionChoice.original : null);
+    // 원본 유지(복사)는 크기 · 화면 비율 · 회전 · 색 보정을 할 수 없으므로 처음으로
+    encode = c == VideoCodecChoice.copy
+        ? encode.resetAdjust().copyWith(codec: c, resolution: ResolutionChoice.original)
+        : encode.copyWith(codec: c);
+    _encodeChanged();
+  }
+
+  /// 화면 비율 · 회전 · 색 보정 바꾸기 (재인코딩이 필요하면 기본 H.264 로)
+  void setAdjust(EncodeSettings e) {
+    encode = e.adjusts && e.codec == VideoCodecChoice.copy ? e.copyWith(codec: VideoCodecChoice.h264) : e;
     _encodeChanged();
   }
 
@@ -1180,7 +1186,7 @@ class AppController extends ChangeNotifier {
       ..progress = 0
       ..message = null;
     notifyListeners();
-    _log(trf('시작: {0} → {1}\\{2}' '{3}', [v.fileName, outputFolderName, p.basename(out), encode.reencode ? ' [${encode.codec.label} · ${encode.resolution.label} · ${encode.quality.label}]' : '']));
+    _log(trf('시작: {0} → {1}\\{2}' '{3}', [v.fileName, outputFolderName, p.basename(out), encode.reencode ? ' [${encode.codec.label} · ${encode.resolution.label} · ${encode.quality.label}${encode.adjusts ? ' · ${encode.adjustSummary}' : ''}]' : '']));
     final copies = <SubtitleEntry, String>{};
     var started = false; // FFmpeg 가 출력 파일을 쓰기 시작했는지
     try {
