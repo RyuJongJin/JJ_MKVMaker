@@ -54,10 +54,17 @@ class Whisper {
 
   Future<Map<String, dynamic>> _request({
     required WhisperRequestDto whisperRequest,
+    Map<String, Object?>? extra,
   }) async {
     return Isolate.run(() async {
       final Pointer<Utf8> data =
-          whisperRequest.toRequestString().toNativeUtf8();
+          (extra == null
+                  ? whisperRequest.toRequestString()
+                  : json.encode({
+                      ...json.decode(whisperRequest.toRequestString()) as Map<String, dynamic>,
+                      ...extra,
+                    }))
+              .toNativeUtf8();
       final DynamicLibrary lib = _openLib();
       final Pointer<Utf8> res =
           lib.lookupFunction<WReqNative, WReqNative>('request').call(data);
@@ -80,6 +87,8 @@ class Whisper {
     required TranscribeRequest transcribeRequest,
     required String modelPath,
     void Function(int percent)? onProgress,
+    // JJ: address of an int32 flag; set it to non-zero to stop recognition early
+    int? abortFlagAddress,
   }) async {
     // A listener callable may be invoked from whisper's worker thread;
     // it delivers to this isolate. Kept open until the request finishes.
@@ -105,6 +114,7 @@ class Whisper {
           modelPath,
           progressCallbackAddress: progressCallable?.nativeFunction.address,
         ),
+        extra: abortFlagAddress == null ? null : {'abort_flag': abortFlagAddress},
       );
 
       if (result['text'] == null) {

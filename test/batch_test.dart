@@ -24,6 +24,8 @@ import 'package:jj_mkvmaker/ui/settings_page.dart';
 import 'package:path/path.dart' as p;
 
 class _Recognizer implements SpeechRecognizer {
+  @override
+  void cancel() {}
   final heard = <String>[];
   @override
   Future<List<Cue>> transcribe(String wavPath,

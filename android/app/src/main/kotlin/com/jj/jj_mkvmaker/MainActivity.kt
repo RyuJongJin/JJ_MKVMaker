@@ -17,7 +17,15 @@ import java.io.File
 
 /// 저장소 전체 접근 (동영상 옆 jj_mkv 폴더에 MKV 를 만들기 위해) 확인 · 요청, 다운로드 프로그램 준비
 class MainActivity : FlutterActivity() {
+    companion object {
+        /// 작업 알림을 눌렀을 때: 작업 현황 화면을 연다
+        const val ACTION_SHOW_JOBS = "com.jj.jj_mkvmaker.SHOW_JOBS"
+    }
+
     private var channel: MethodChannel? = null
+
+    /// 앱이 켜질 때 작업 알림으로 열렸는지 (Dart 가 준비되면 가져간다)
+    private var pendingShowJobs = false
 
     /// 다른 앱에서 연 동영상 (앱이 켜질 때 받은 것: Dart 가 준비되면 가져간다)
     private var pendingOpen: List<Map<String, String?>> = emptyList()
@@ -25,6 +33,7 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         pendingOpen = openedFiles(intent)
+        pendingShowJobs = intent?.action == ACTION_SHOW_JOBS
         val ch = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "jj_mkvmaker/android")
         channel = ch
         ch.setMethodCallHandler { call, result ->
@@ -32,6 +41,10 @@ class MainActivity : FlutterActivity() {
                 "takeOpenedFiles" -> {
                     result.success(pendingOpen)
                     pendingOpen = emptyList()
+                }
+                "takeShowJobs" -> {
+                    result.success(pendingShowJobs)
+                    pendingShowJobs = false
                 }
                 "hasAllFilesAccess" -> result.success(hasAllFilesAccess())
                 "requestAllFilesAccess" -> {
@@ -98,6 +111,10 @@ class MainActivity : FlutterActivity() {
     /// 앱이 켜져 있을 때 다른 앱에서 동영상을 열면 (launchMode singleTop)
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        if (intent.action == ACTION_SHOW_JOBS) {
+            channel?.invokeMethod("showJobs", null)
+            return
+        }
         val files = openedFiles(intent)
         if (files.isNotEmpty()) channel?.invokeMethod("openFiles", files)
     }

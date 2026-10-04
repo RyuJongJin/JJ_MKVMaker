@@ -825,7 +825,9 @@ class AppController extends ChangeNotifier {
 
       // 3. 음성인식 (5% ~ 50%)
       phase(tr('음성인식 중'), 0.05);
-      final raw = await services.createRecognizer!().transcribe(
+      final recognizer = _recognizer = services.createRecognizer!();
+      if (_aiCancelled) throw const AiCancelled();
+      final raw = await recognizer.transcribe(
         wav,
         modelPath: await services.models.pathOf(opts.whisper),
         language: opts.source == undetermined ? 'auto' : whisperCode(opts.source),
@@ -1279,7 +1281,11 @@ class AppController extends ChangeNotifier {
   static String get missingFileMessage => tr('동영상 파일이 없습니다 (옮겨졌거나 지워졌습니다). 목록에서 빼고 다시 추가하세요.');
 
   /// 지금 작업 중단 + 대기 중인 작업 모두 비우기
+  /// 지금 음성인식 (취소하면 멈춘다)
+  SpeechRecognizer? _recognizer;
+
   void cancel() {
+    _recognizer?.cancel();
     if (pendingJobs.isNotEmpty) _log(trf('대기 중인 작업 {0}개 취소', [pendingJobs.length]));
     pendingJobs.clear();
     for (final (_, done) in _pendingRuns) {

@@ -16,6 +16,8 @@ import 'package:jj_mkvmaker/services/platform_services.dart';
 import 'package:path/path.dart' as p;
 
 class _FakeRecognizer implements SpeechRecognizer {
+  @override
+  void cancel() {}
   String? lastLanguage;
   @override
   Future<List<Cue>> transcribe(String wavPath,

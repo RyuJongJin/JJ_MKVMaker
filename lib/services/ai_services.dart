@@ -19,6 +19,9 @@ abstract class SpeechRecognizer {
     String language = 'auto',
     AiProgress? onProgress,
   });
+
+  /// 진행 중인 음성인식 멈추기 (transcribe 가 곧 오류로 끝난다)
+  void cancel();
 }
 
 /// 번역 경계. 구현: platform/common/nllb_translator.dart (Windows·Android 공용)

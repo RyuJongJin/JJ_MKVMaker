@@ -38,6 +38,7 @@ import 'ui/player_page.dart';
 import 'ui/setup_dialog.dart';
 import 'ui/update_dialog.dart';
 import 'ui/theme.dart';
+import 'ui/work_panel.dart';
 import 'l10n/tr.dart';
 import 'app/i18n_controller.dart';
 
@@ -408,6 +409,12 @@ Future<void> runAndroid(String dataDir) async {
   // 연결 프로그램 · 공유로 받은 동영상: 앱이 켜져 있을 때 (MainActivity.onNewIntent)
   const android = MethodChannel('jj_mkvmaker/android');
   android.setMethodCallHandler((call) async {
+    if (call.method == 'showJobs') {
+      // 작업 알림을 눌렀다: 작업 현황 화면으로
+      final nav = navigatorKey.currentState;
+      if (nav != null) unawaited(WorkStatusPage.open(nav, controller, downloads));
+      return null;
+    }
     if (call.method == 'openFiles') {
       await openFromOtherApp(navigatorKey, controller, (call.arguments as List).cast<Map<Object?, Object?>>());
     }
@@ -417,6 +424,10 @@ Future<void> runAndroid(String dataDir) async {
   WidgetsBinding.instance.addPostFrameCallback((_) async {
     // 연결 프로그램 · 공유로 앱을 켠 경우: 그 동영상부터
     try {
+      if (await android.invokeMethod<bool>('takeShowJobs') ?? false) {
+        final nav = navigatorKey.currentState;
+        if (nav != null) unawaited(WorkStatusPage.open(nav, controller, downloads));
+      }
       final opened = await android.invokeMethod<List<Object?>>('takeOpenedFiles') ?? const [];
       if (opened.isNotEmpty) {
         unawaited(openFromOtherApp(navigatorKey, controller, opened.cast<Map<Object?, Object?>>()));

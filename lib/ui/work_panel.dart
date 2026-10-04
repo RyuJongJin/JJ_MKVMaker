@@ -4,9 +4,82 @@ import '../app/app_controller.dart';
 import '../app/download_manager.dart';
 import '../core/models.dart';
 import '../services/downloader.dart';
+import 'app_actions.dart';
 import 'downloads_page.dart';
 import 'theme.dart';
 import '../l10n/tr.dart';
+
+/// "작업 현황" 화면 (전체 화면): Android 작업 알림 · 위쪽 작업 표시를 누르면 연다
+class WorkStatusPage extends StatefulWidget {
+  final AppController c;
+  final DownloadManager? downloads;
+  const WorkStatusPage({super.key, required this.c, this.downloads});
+
+  /// 열려 있는 작업 현황 화면 수
+  static int _open = 0;
+
+  @override
+  State<WorkStatusPage> createState() => _WorkStatusPageState();
+
+  static const routeName = 'jobs';
+
+  /// 작업 현황으로: 이미 열려 있으면 그 화면으로, 없으면 새로
+  static Future<void> open(NavigatorState nav, AppController c, DownloadManager? downloads) async {
+    if (_open > 0) {
+      var found = false;
+      nav.popUntil((r) {
+        if (r.settings.name == routeName) found = true;
+        return found || r.isFirst;
+      });
+      if (found) return;
+    }
+    await nav.push(MaterialPageRoute<void>(
+      settings: const RouteSettings(name: routeName),
+      builder: (_) => WorkStatusPage(c: c, downloads: downloads),
+    ));
+  }
+
+}
+
+class _WorkStatusPageState extends State<WorkStatusPage> {
+  @override
+  void initState() {
+    super.initState();
+    WorkStatusPage._open++;
+  }
+
+  @override
+  void dispose() {
+    WorkStatusPage._open--;
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        body: Column(children: [
+          Container(
+            height: appBarHeight,
+            color: JjColors.panel,
+            padding: const EdgeInsets.only(left: 8, right: appBarRightPadding),
+            child: Row(children: [
+              const AppNavButtons(),
+              const SizedBox(width: 8),
+              Text(tr('작업 현황'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+              const Spacer(),
+              AppActions(c: widget.c),
+            ]),
+          ),
+          Expanded(
+            child: WorkPanel(
+              c: widget.c,
+              downloads: widget.downloads,
+              onClose: () => Navigator.maybePop(context),
+              onOpenHome: () => AppNavButtons.toMkv(context),
+            ),
+          ),
+        ]),
+      );
+}
 
 /// 브라우저 오른쪽 "작업 현황" (화면 분할): 자막 · MKV 작업과 다운로드 진행을 보면서 인터넷을 볼 수 있게.
 class WorkPanel extends StatelessWidget {
@@ -308,7 +381,10 @@ class JobIndicator extends StatelessWidget {
         : running.map((v) => v.progress).reduce((a, b) => a + b) /
               running.length;
     final wait = c.pendingJobs.length;
-    return Tooltip(
+    // 누르면 작업 현황 화면 (어느 화면에서나)
+    final scope = AppScope.maybeOf(context);
+    final nav = Navigator.maybeOf(context);
+    final body = Tooltip(
       message: [
         trf('지금: {0}', [c.currentJob ?? '']),
         for (final v in running)
@@ -327,6 +403,11 @@ class JobIndicator extends StatelessWidget {
               value: p == null || p == 0 ? null : p,
             ),
           ),
+          // 좁아서 아이콘만일 때도 진행률은 보이게
+          if (iconOnly && p != null) ...[
+            const SizedBox(width: 4),
+            Text('${(p * 100).round()}%', style: const TextStyle(fontSize: 12, color: JjColors.accent)),
+          ],
           if (!iconOnly) const SizedBox(width: 6),
           if (!iconOnly)
             ConstrainedBox(
@@ -340,6 +421,12 @@ class JobIndicator extends StatelessWidget {
             ),
         ],
       ),
+    );
+    if (scope == null || nav == null) return body;
+    return InkWell(
+      borderRadius: BorderRadius.circular(6),
+      onTap: () => WorkStatusPage.open(nav, scope.controller, scope.downloads),
+      child: Padding(padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6), child: body),
     );
   }
 }

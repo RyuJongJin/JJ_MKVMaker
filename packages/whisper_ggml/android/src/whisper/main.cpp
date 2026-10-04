@@ -74,6 +74,9 @@ struct whisper_params
     // Address of a Dart NativeCallable<Void Function(Int32)>; 0 = none.
     uint64_t progress_cb_addr = 0;
 
+    // JJ: address of an int32 cancel flag owned by Dart; non-zero = abort. 0 = none.
+    uint64_t abort_flag_addr = 0;
+
     // Park the loaded model in g_model_cache after this request instead of
     // freeing it, so the next request with the same model file skips the
     // multi-second load (issue #26). Off = load-per-request, as always.
@@ -165,6 +168,14 @@ json transcribe(json jsonBody) noexcept
     if (jsonBody.contains("progress_callback") && jsonBody["progress_callback"].is_number_unsigned())
     {
         params.progress_cb_addr = jsonBody["progress_callback"].get<uint64_t>();
+    }
+    // JJ: Android arm64 heap pointers carry a tag in the top byte (0xb4…), so Dart's int
+    // for the address is negative — accept signed numbers too and reinterpret the bits.
+    if (jsonBody.contains("abort_flag") && jsonBody["abort_flag"].is_number_integer())
+    {
+        params.abort_flag_addr = jsonBody["abort_flag"].is_number_unsigned()
+            ? jsonBody["abort_flag"].get<uint64_t>()
+            : (uint64_t)jsonBody["abort_flag"].get<int64_t>();
     }
     if (jsonBody.contains("keep_model_loaded") && jsonBody["keep_model_loaded"].is_boolean())
     {
@@ -349,6 +360,14 @@ json transcribe(json jsonBody) noexcept
                 ((void (*)(int32_t))user_data)((int32_t)progress);
             };
             wparams.progress_callback_user_data = (void *)(uintptr_t)params.progress_cb_addr;
+        }
+
+        if (params.abort_flag_addr) {
+            // JJ: the user cancelled — whisper checks this between encoder/decoder steps
+            wparams.abort_callback = [](void * data) {
+                return *(volatile int32_t *)data != 0;
+            };
+            wparams.abort_callback_user_data = (void *)(uintptr_t)params.abort_flag_addr;
         }
 
         if (whisper_full(ctx, wparams, pcmf32.data(), pcmf32.size()) != 0)

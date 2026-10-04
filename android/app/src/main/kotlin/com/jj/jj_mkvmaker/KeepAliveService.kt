@@ -77,7 +77,10 @@ class KeepAliveService : Service() {
             }
             val open = PendingIntent.getActivity(
                 context, 0,
-                Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
+                // 누르면 앱의 "작업 현황" 화면으로 (지금 하는 작업 · 진행률 · 대기열 · 다운로드)
+                Intent(context, MainActivity::class.java)
+                    .setAction(MainActivity.ACTION_SHOW_JOBS)
+                    .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
             )
             val b = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

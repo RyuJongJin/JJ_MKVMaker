@@ -19,3 +19,8 @@ Windows 에서 음성인식이 끝나는 순간 앱이 종료됨 (예외 코드 
 - pubspec.yaml · lib/src/whisper_audio_convert.dart: `ffmpeg_kit_flutter_new_min` → `ffmpeg_kit_flutter_new_min_gpl`
   (앱이 MKV 만들기에 쓰는 것과 같은 것. 두 가지가 함께 들어가면 같은 이름의 Java 클래스 · 네이티브 라이브러리가 겹쳐 빌드 · 실행이 안 됨)
 - android/build.gradle: compileSdk 34 → 36 (ffmpeg-kit min-gpl 이 35 이상을 요구)
+
+## 음성인식 취소 (JJ_MKVMaker)
+- android/src/whisper/main.cpp: 요청 JSON 의 `abort_flag` (Dart 가 가진 int32 의 주소) 를 `whisper_full_params.abort_callback` 에 연결. 값이 0 이 아니면 whisper 가 다음 계산 단계에서 멈춘다.
+  Android arm64 의 힙 주소는 맨 위 바이트에 태그가 있어 Dart int 로는 음수 → 부호 있는 정수도 받는다.
+- lib/src/whisper.dart: `transcribe(abortFlagAddress:)` → 요청 JSON 에 `abort_flag` 추가.
