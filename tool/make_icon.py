@@ -138,6 +138,17 @@ def main():
     master.save(out / 'app_icon_1024.png')
     master.resize((256, 256), Image.LANCZOS).save(out / 'app_icon_256.png')
 
+    # 앱 안 왼쪽 위 홈 버튼 (26px 정도): 바탕 + 큰 노란 JJ 만 (작아도 또렷하게)
+    button = Image.new('RGBA', (S, S), (0, 0, 0, 0))
+    button.paste(gradient(S), (0, 0), rounded_mask(S, int(S * 0.22)))
+    font = ImageFont.truetype(FONT, int(S * 0.62))
+    d = ImageDraw.Draw(button)
+    stroke = int(S * 0.035)
+    l, t, r, b = d.textbbox((0, 0), 'JJ', font=font, stroke_width=stroke)
+    d.text(((S - (r - l)) / 2 - l, (S - (b - t)) / 2 - t), 'JJ', font=font, fill=YELLOW + (255,),
+           stroke_width=stroke, stroke_fill=OUTLINE + (255,))
+    button.resize((256, 256), Image.LANCZOS).save(out / 'app_button_256.png')
+
     # 작은 크기 (16~32px) 는 단순 버전, 큰 크기는 필름 띠 포함 버전
     simple = make_master(small=True)
     simple.resize((256, 256), Image.LANCZOS).save(out / 'app_icon_small_256.png')

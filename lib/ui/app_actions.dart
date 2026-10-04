@@ -84,7 +84,7 @@ class AppNavButtons extends StatelessWidget {
       width: width,
       child: Row(children: [
         btn(
-          Image.asset('assets/icon/app_icon_256.png', width: 26, height: 26, filterQuality: FilterQuality.medium),
+          Image.asset('assets/icon/app_button_256.png', width: 26, height: 26, filterQuality: FilterQuality.medium),
           trf('홈 화면 ({0}) · 환경 설정에서 바꿈', [homeIsBrowser ? tr('웹 브라우저') : tr('MKV 화면')]),
           scope == null ? null : () => toHome(context),
         ),

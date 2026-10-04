@@ -94,6 +94,7 @@ flutter:
     - assets/tray_icon.ico
     - assets/l10n/
     - assets/icon/app_icon_256.png
+    - assets/icon/app_button_256.png
 
   # To add assets to your application, add an assets section, like this:
   # assets:
