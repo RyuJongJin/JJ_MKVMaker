@@ -57,6 +57,9 @@ class MainActivity : FlutterActivity() {
                 "installApk" -> try {
                     installApk(call.argument<String>("path") ?: "")
                     result.success(null)
+                } catch (e: IllegalStateException) {
+                    // 설치 허용 설정 화면을 열었다: 앱이 받은 파일로 다시 설치하게 따로 알린다
+                    result.error("PERMISSION", e.message ?: e.toString(), null)
                 } catch (e: Exception) {
                     result.error("INSTALL", e.message ?: e.toString(), null)
                 }
@@ -80,7 +83,7 @@ class MainActivity : FlutterActivity() {
     }
 
     /// 받은 업데이트 APK 로 Android 설치 화면을 연다. 앱 전용 폴더의 파일이라 FileProvider 로 넘긴다.
-    /// 처음이면 "이 출처의 앱 설치 허용" 설정 화면을 먼저 연다 (허용한 뒤 다시 [업데이트])
+    /// 처음이면 "이 출처의 앱 설치 허용" 설정 화면을 먼저 연다 (허용하고 돌아와 [설치 계속] - 받은 파일을 그대로 쓴다)
     private fun installApk(path: String) {
         val src = File(path)
         if (!src.isFile) throw IllegalArgumentException("APK 파일이 없습니다: $path")

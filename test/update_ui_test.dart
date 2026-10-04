@@ -27,7 +27,10 @@ Map<String, dynamic> _release(String tag, {String? digest, String body = '', boo
 
 class _FakeUpdater implements Updater {
   @override
-  bool get installsInPlace => false;
+  bool installsInPlace = false;
+
+  /// 설치할 때 "설치 허용 필요" 로 실패할 횟수 (Android)
+  int needPermission = 0;
   ReleaseInfo? next;
   final calls = <String>[];
   @override
@@ -44,7 +47,13 @@ class _FakeUpdater implements Updater {
   }
 
   @override
-  Future<void> scheduleInstall(String dir) async => calls.add('install $dir');
+  Future<void> scheduleInstall(String dir) async {
+    calls.add('install $dir');
+    if (needPermission > 0) {
+      needPermission--;
+      throw const InstallPermissionNeeded('허용 필요');
+    }
+  }
   @override
   Future<void> openPage(ReleaseInfo r) async => calls.add('page');
 }
@@ -95,6 +104,23 @@ void main() {
       await tester.tap(find.text('지금 설치'));
       await tester.pumpAndSettle();
       expect(up.calls, ['download 1.1.0', r'install C:\tmp\new']);
+    });
+
+    testWidgets('Android: 설치 허용이 꺼져 있으면 [설치 계속] → 받은 파일로 다시 설치 (다시 받지 않음)', (tester) async {
+      up
+        ..installsInPlace = true
+        ..needPermission = 1
+        ..next = parseLatestRelease(_release('v1.1.0'));
+      await open(tester);
+      await tester.tap(find.text('업데이트'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('지금 설치'));
+      await tester.pumpAndSettle();
+      expect(find.text('설치 허용 필요'), findsOneWidget);
+      await tester.tap(find.text('설치 계속'));
+      await tester.pumpAndSettle();
+      expect(find.text('설치 허용 필요'), findsNothing);
+      expect(up.calls, ['download 1.1.0', r'install C:\tmp\new', r'install C:\tmp\new']);
     });
 
     testWidgets('이 버전 건너뛰기 → 자동 확인에서 다시 묻지 않음', (tester) async {

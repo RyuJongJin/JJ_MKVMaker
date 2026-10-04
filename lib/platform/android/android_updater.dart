@@ -95,6 +95,7 @@ class AndroidUpdater implements Updater {
     try {
       await _ch.invokeMethod<void>('installApk', {'path': downloaded});
     } on PlatformException catch (e) {
+      if (e.code == 'PERMISSION') throw InstallPermissionNeeded(e.message ?? '$e');
       throw UpdateException(e.message ?? '$e');
     }
   }

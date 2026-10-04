@@ -7,6 +7,11 @@ class UpdateException implements Exception {
   String toString() => message;
 }
 
+/// Android: "이 출처의 앱 설치 허용" 이 꺼져 있어 설정 화면을 열었다. 켜고 돌아오면 받은 파일로 다시 설치하면 된다.
+class InstallPermissionNeeded extends UpdateException {
+  const InstallPermissionNeeded(super.message);
+}
+
 /// 새 버전 확인 · 설치 경계
 /// Windows: platform/windows/github_updater.dart (zip 받아 파일 교체 후 다시 시작)
 /// Android: (이식 시) 스토어 / APK 안내

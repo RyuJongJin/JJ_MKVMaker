@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../app/app_controller.dart';
 import '../core/app_update.dart';
+import '../services/updater.dart' show InstallPermissionNeeded;
 import 'theme.dart';
 import '../l10n/tr.dart';
 
@@ -154,12 +155,31 @@ Future<void> checkForUpdate(BuildContext context, AppController c, {bool manual 
   if (go != true) return;
   // Android: 설치 화면만 연다 (앱을 끝내지 않음, 설치되면 Android 가 앱을 다시 띄움)
   if (up.installsInPlace) {
-    try {
-      await up.scheduleInstall(dir);
-    } catch (e) {
-      snack(trf('설치 화면을 열 수 없습니다: {0}', [e]));
+    while (true) {
+      try {
+        await up.scheduleInstall(dir);
+        return;
+      } on InstallPermissionNeeded {
+        // 설치 허용 설정 화면이 열렸다: 켜고 돌아와 [설치 계속] → 받은 파일로 다시 (처음부터 다시 받지 않게)
+        if (!context.mounted) return;
+        final again = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: Text(tr('설치 허용 필요')),
+            content: Text(tr('설정 화면에서 "이 출처의 앱 설치 허용" 을 켠 뒤 돌아와 [설치 계속] 을 누르세요. '
+                '받은 파일을 그대로 씁니다 (다시 받지 않음).')),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('나중에'))),
+              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('설치 계속'))),
+            ],
+          ),
+        );
+        if (again != true) return;
+      } catch (e) {
+        snack(trf('설치 화면을 열 수 없습니다: {0}', [e]));
+        return;
+      }
     }
-    return;
   }
   // 다운로드 중이면 기존 종료 확인 절차
   final ok = await (c.confirmQuit?.call() ?? Future.value(true));
