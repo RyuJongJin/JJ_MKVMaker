@@ -255,11 +255,11 @@ void WebviewHandler::closeBrowser(int browserId)
     }
 }
 
-void WebviewHandler::createBrowser(std::string url, std::function<void(int)> callback)
+void WebviewHandler::createBrowser(std::string url, bool javascript, std::function<void(int)> callback)
 {
 #ifndef OS_MAC
     if(!CefCurrentlyOn(TID_UI)) {
-		CefPostTask(TID_UI, base::BindOnce(&WebviewHandler::createBrowser, this, url, callback));
+		CefPostTask(TID_UI, base::BindOnce(&WebviewHandler::createBrowser, this, url, javascript, callback));
 		return;
 	}
 #endif
@@ -267,6 +267,7 @@ void WebviewHandler::createBrowser(std::string url, std::function<void(int)> cal
     // Capped at 60 by CEF; ignored entirely when external begin frame drives the
     // frames (GPU path below). Kept for the software fallback path.
     browser_settings.windowless_frame_rate = 60;
+    if (!javascript) browser_settings.javascript = STATE_DISABLED;
     CefWindowInfo window_info;
     window_info.SetAsWindowless(0);
 #ifdef WEBVIEW_CEF_GPU_TEXTURE

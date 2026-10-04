@@ -21,3 +21,7 @@ CEF 실행 파일은 앱이 공식 배포처 (https://cef-builds.spotifycdn.com)
 4. `windows/webview_cef_plugin.cpp`: CEF 실행 파일이 없으면 화면 갱신 스레드 (vsync) 와 IME 가로채기를 켜지 않는다.
    CEF 가 있어도 IME 는 **Chrome 화면 안의 입력칸에 포커스가 있을 때만** 가로챈다.
    원본은 늘 IME 조합 창을 막아서, 앱의 다른 입력칸 (주소창 · 검색 등) 의 한글 입력에 영향을 줄 수 있었다.
+
+5. `common/webview_plugin.cc` · `common/webview_handler.cc` · `lib/src/webview.dart`: JavaScript 끄기.
+   `create` 가 주소 대신 `{url, javascript: false}` 를 받으면 그 브라우저의 `CefBrowserSettings.javascript` 를 `STATE_DISABLED` 로 만든다
+   (Dart: `WebViewController.initialize(url, javaScript: false)`). 이미 만든 브라우저는 바꿀 수 없어 앱이 새로 만든다.

@@ -153,7 +153,8 @@ public:
     void CloseAllBrowsers(bool force_close);
 
     void closeBrowser(int browserId);
-    void createBrowser(std::string url, std::function<void(int)> callback);
+    // javascript: false 면 그 브라우저에서 페이지 스크립트를 실행하지 않는다 (JJ_PATCH.md 5)
+    void createBrowser(std::string url, bool javascript, std::function<void(int)> callback);
 
     // Drives one external BeginFrame for every live browser (GPU path only).
     // Marshals to the CEF UI thread; safe to call from any thread.

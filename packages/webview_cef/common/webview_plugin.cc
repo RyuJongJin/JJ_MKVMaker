@@ -298,8 +298,18 @@ namespace webview_cef {
 			result(1, nullptr);
 		}
 		else if (name.compare("create") == 0) {
-			std::string url = webview_value_get_string(values);
-			m_handler->createBrowser(url, [=, this](int browserId) {
+			// 주소만 오거나, {url, javascript} 묶음 (JJ_PATCH.md 5)
+			std::string url;
+			bool javascript = true;
+			if (webview_value_get_type(values) == Webview_Value_Type_Map) {
+				WValue* u = webview_value_get_by_string(values, "url");
+				if (u != nullptr && webview_value_get_type(u) == Webview_Value_Type_String) url = webview_value_get_string(u);
+				WValue* js = webview_value_get_by_string(values, "javascript");
+				if (js != nullptr && webview_value_get_type(js) == Webview_Value_Type_Bool) javascript = webview_value_get_bool(js);
+			} else {
+				url = webview_value_get_string(values);
+			}
+			m_handler->createBrowser(url, javascript, [=, this](int browserId) {
 				std::shared_ptr<WebviewTexture> renderer = m_createTextureFunc();
 				m_renderers[browserId] = renderer;
 				WValue	*response = webview_value_new_list();

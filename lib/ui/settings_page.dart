@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 
 import '../app/app_controller.dart';
+import '../app/i18n_controller.dart' show I18nController;
 import '../core/download_detect.dart';
 import '../core/playlist.dart';
 import '../core/subtitle_detector.dart';
@@ -475,6 +476,25 @@ class _SettingsPageState extends State<SettingsPage> {
                       onChanged: (v) => c.updateSettings((x) => x.youtubeAdHide = v),
                       title: Text(tr('YouTube 광고 배너 숨기기')),
                       subtitle: Text(tr('목록 · 영상 옆 · 영상 위에 나오는 광고 영역을 감춥니다')),
+                    ),
+                    SwitchListTile(
+                      value: s.webTranslate,
+                      onChanged: (v) => c.updateSettings((x) => x.webTranslate = v),
+                      title: Text(tr('웹 페이지 자동 번역')),
+                      subtitle: Text(trf(
+                          '다른 언어로 된 페이지를 화면 언어 ({0}) 로 번역합니다. 페이지의 글을 Google 번역으로 보냅니다. '
+                          '주소창 옆 번역 버튼으로 원문 · 번역을 바꿀 수 있습니다.',
+                          [I18nController.nativeName(s.uiLanguage)])),
+                    ),
+                    SwitchListTile(
+                      value: s.webJavaScript,
+                      onChanged: (v) => c.updateSettings((x) => x.webJavaScript = v),
+                      title: Text(tr('JavaScript 사용')),
+                      subtitle: Text(desk
+                          ? tr('끄면 페이지의 스크립트를 실행하지 않습니다 (광고 · 추적이 줄지만 YouTube 처럼 스크립트로 만든 사이트는 보이지 않음). '
+                              'Chrome 엔진은 끄면 페이지 번역 · 동영상 찾기도 멈춥니다.')
+                          : tr('끄면 페이지의 스크립트를 실행하지 않습니다 (광고 · 추적이 줄지만 YouTube 처럼 스크립트로 만든 사이트는 보이지 않음). '
+                              '끄면 페이지 번역 · 동영상 찾기도 멈춥니다.')),
                     ),
                     if (desk) ...[
                     ListTile(

@@ -13,6 +13,8 @@ import '../app/download_manager.dart';
 import '../core/bookmarks.dart';
 import '../core/download_detect.dart' show CookieRecord, toNetscapeCookies;
 import '../core/web_address.dart';
+import '../core/web_translate.dart';
+import '../app/i18n_controller.dart' show I18nController;
 import '../core/youtube_ads.dart';
 import '../platform/windows/cef_runtime.dart';
 import '../platform/windows/com_guard.dart';
@@ -40,6 +42,12 @@ abstract class WebNav {
 
   /// 페이지에서 스크립트 실행 (YouTube 광고 건너뛰기 등)
   Future<void> runScript(String js);
+
+  /// 페이지에서 스크립트를 실행하고 결과를 받는다 (페이지 번역). 실패하면 null.
+  Future<Object?> evaluate(String js);
+
+  /// 페이지의 JavaScript 켜기 · 끄기 (바뀌면 지금 페이지를 다시 읽는다)
+  Future<void> setJavaScript(bool on);
 }
 
 /// 페이지의 모든 동영상 · 소리를 멈추는 스크립트
@@ -97,6 +105,10 @@ class BrowserPage extends StatefulWidget {
   /// 마지막으로 보던 주소: MKV 화면으로 갔다가 브라우저를 다시 열면 홈이 아니라 이 주소로
   static String? _lastUrl;
 
+  /// 마지막으로 붙은 웹뷰 (통합 테스트에서 페이지 내용을 읽는다)
+  @visibleForTesting
+  static WebNav? debugNav;
+
   /// 앱 안 웹뷰를 화면이 닫혀도 살려 둔다 (다시 열면 보던 페이지 · 재생 위치 · 뒤로 가기 기록 그대로)
   static final _keepAlive = InAppWebViewKeepAlive();
   static bool _keepAliveUsed = false;
@@ -138,12 +150,18 @@ class _BrowserPageState extends State<BrowserPage> with RouteAware {
     onUrl: (u) {
       if (!mounted || u.isEmpty) return;
       BrowserPage._lastUrl = u;
+      if (u != _url) _trFails = 0; // 다른 페이지: 번역을 다시 시도
       setState(() => _url = u);
       if (!_addressFocus.hasFocus) _address.text = u;
       _applyAdSettings();
+      _translateNow();
     },
     onTitle: (t) => mounted ? setState(() => _title = t) : null,
-    onProgress: (p) => mounted ? setState(() => _progress = p) : null,
+    onProgress: (p) {
+      if (!mounted) return;
+      setState(() => _progress = p);
+      if (p >= 1) _translateNow(); // 다 읽었다: 바로 번역 (2초를 기다리지 않고)
+    },
     onVideo: (v) => mounted ? setState(() => _hasVideo = v) : null,
     onHistory: (b, f) {
       if (!mounted) return;
@@ -152,15 +170,113 @@ class _BrowserPageState extends State<BrowserPage> with RouteAware {
         _canFwd = f;
       });
     },
-    attach: (n) => _nav = n,
+    attach: (n) => _nav = BrowserPage.debugNav = n,
   );
 
   BookmarksController get bm => widget.bookmarks;
+
+  // ───────── 페이지 번역 (환경 설정 > 웹 브라우저 > 웹 페이지 자동 번역) ─────────
+
+  static final _translator = WebPageTranslator();
+
+  /// 이 화면에서 번역 중인지. 처음엔 설정을 따르고, 도구 막대의 [번역] 버튼으로 바꾼다.
+  late bool _trOn = widget.c.settings.webTranslate;
+
+  /// 버튼으로 직접 켰다: 이미 화면 언어로 보이는 페이지도 번역한다
+  bool _trForce = false;
+  bool _trBusy = false;
+  int _trFails = 0;
+  Timer? _trTimer;
+
+  /// 브라우저가 다른 화면에 가려져 있지 않은지
+  bool _visible = true;
+
+  /// 바뀌었는지 비교할 설정 (initState 에서 정한다. late 초기화는 처음 읽을 때 - 이미 바뀐 뒤 - 정해져 안 됨)
+  late bool _lastTranslate, _lastJs;
+  late String _lastLang;
+
+  void _onSettings() {
+    if (!mounted) return;
+    final s = widget.c.settings;
+    if (s.webJavaScript != _lastJs) {
+      _lastJs = s.webJavaScript;
+      _nav?.setJavaScript(_lastJs);
+    }
+    if (s.webTranslate != _lastTranslate) {
+      _lastTranslate = s.webTranslate;
+      _setTranslate(_lastTranslate, force: false);
+    } else if (s.uiLanguage != _lastLang && _trOn) {
+      _translateNow(); // 다른 언어로 다시 번역 (스크립트가 앞의 번역을 되돌린 뒤 번역)
+    }
+    _lastLang = s.uiLanguage;
+  }
+
+  void _setTranslate(bool on, {required bool force}) {
+    setState(() {
+      _trOn = on;
+      _trForce = on && force;
+      _trFails = 0;
+    });
+    if (on) {
+      _translateNow();
+    } else {
+      _trTimer?.cancel();
+      _trTimer = null;
+      _nav?.evaluate(webTranslateRestoreScript);
+    }
+  }
+
+  /// 지금 번역하고, 켜져 있는 동안 2초마다 새로 나온 글자를 번역한다 (YouTube 처럼 글이 계속 바뀌는 페이지)
+  void _translateNow() {
+    if (!_trOn) return;
+    _trTimer ??= Timer.periodic(const Duration(seconds: 2), (_) => _translateTick());
+    _translateTick();
+  }
+
+  Future<void> _translateTick() async {
+    final nav = _nav;
+    if (!_trOn || _trBusy || nav == null || !_visible || !_url.startsWith('http') || _trFails >= 3) return;
+    _trBusy = true;
+    try {
+      final target = googleLang(widget.c.settings.uiLanguage);
+      // 한 번에 300개씩, 페이지가 크면 몇 번 더
+      for (var round = 0; round < 10 && mounted && _trOn; round++) {
+        final got = CollectedText.parse(await nav.evaluate(webTranslateCollectScript(target, force: _trForce)));
+        if (got == null || got.texts.isEmpty) break;
+        final out = await _translator.translate(got.texts, target);
+        // 대부분 이미 화면 언어면 (직접 켠 게 아니면) 이 페이지는 더 번역하지 않는다
+        final chars = got.texts.fold<int>(0, (a, t) => a + t.length);
+        var same = 0;
+        for (var i = 0; i < out.length; i++) {
+          if (out[i] == null) same += got.texts[i].length;
+        }
+        if (!mounted || !_trOn) break;
+        await nav.evaluate(webTranslateApplyScript({for (var i = 0; i < got.ids.length; i++) got.ids[i]: out[i]},
+            same: round == 0 && chars > 0 && same >= chars * 0.8));
+        if (!got.more) break;
+      }
+      _trFails = 0;
+    } catch (e) {
+      // 번역 서버에 닿지 않음 등: 세 번 실패하면 다른 페이지로 갈 때까지 쉰다
+      if (++_trFails == 3 && mounted) {
+        ScaffoldMessenger.maybeOf(context)
+            ?.showSnackBar(SnackBar(content: Text(trf('웹 페이지를 번역하지 못했습니다: {0}', [e]))));
+      }
+    } finally {
+      _trBusy = false;
+    }
+  }
 
   @override
   void initState() {
     super.initState();
     BrowserPage._open++;
+    final s = widget.c.settings;
+    _lastTranslate = s.webTranslate;
+    _lastJs = s.webJavaScript;
+    _lastLang = s.uiLanguage;
+    widget.c.addListener(_onSettings);
+    if (_trOn) _translateNow();
   }
 
   @override
@@ -173,12 +289,17 @@ class _BrowserPageState extends State<BrowserPage> with RouteAware {
   /// 다운로드 목록 · 플레이어 · 설정 등이 위에 올라왔다: 보던 동영상을 멈춘다 (가려진 채 소리만 나지 않게)
   @override
   void didPushNext() {
+    _visible = false;
     _nav?.pauseMedia();
   }
 
   /// 설정 화면 등에서 돌아왔다: 바뀐 광고 설정을 지금 페이지에 적용
   @override
-  void didPopNext() => _applyAdSettings();
+  void didPopNext() {
+    _visible = true;
+    _applyAdSettings();
+    _translateNow();
+  }
 
   /// YouTube 페이지면 광고 건너뛰기 · 숨기기 스크립트를 넣는다 (환경 설정 > 시작 · 웹 브라우저)
   void _applyAdSettings() {
@@ -197,6 +318,8 @@ class _BrowserPageState extends State<BrowserPage> with RouteAware {
   void dispose() {
     browserRouteObserver.unsubscribe(this);
     BrowserPage._open--;
+    widget.c.removeListener(_onSettings);
+    _trTimer?.cancel();
     _address.dispose();
     _addressFocus.dispose();
     super.dispose();
@@ -337,8 +460,18 @@ class _BrowserPageState extends State<BrowserPage> with RouteAware {
                     child: widget.viewBuilder?.call(_host, _url) ??
                         // 환경 설정에서 Chrome 을 고르고 엔진이 이번 실행에 준비되어 있으면 Chrome, 아니면 Edge
                         (widget.c.settings.browserEngine == 'chrome' && CefRuntime.readyThisRun
-                            ? _CefView(host: _host, initialUrl: _url, dataDir: widget.c.settings.webViewDataDir)
-                            : _EdgeView(host: _host, initialUrl: _url, dataDir: widget.c.settings.webViewDataDir)),
+                            // Chrome 엔진은 JavaScript 설정을 만든 뒤에 바꿀 수 없어 바뀌면 새로 만든다
+                            ? _CefView(
+                                key: ValueKey(widget.c.settings.webJavaScript),
+                                host: _host,
+                                initialUrl: _url,
+                                dataDir: widget.c.settings.webViewDataDir,
+                                javaScript: widget.c.settings.webJavaScript)
+                            : _EdgeView(
+                                host: _host,
+                                initialUrl: _url,
+                                dataDir: widget.c.settings.webViewDataDir,
+                                javaScript: widget.c.settings.webJavaScript)),
                   ),
                 ]),
               ),
@@ -413,7 +546,15 @@ class _BrowserPageState extends State<BrowserPage> with RouteAware {
             onSubmitted: _go,
           ),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: 4),
+        btn(
+            Icons.translate,
+            _trOn
+                ? tr('원문 보기 (번역 끄기)')
+                : trf('이 페이지를 {0}(으)로 번역', [I18nController.nativeName(widget.c.settings.uiLanguage)]),
+            () => _setTranslate(!_trOn, force: true),
+            color: _trOn ? JjColors.accent : null),
+        const SizedBox(width: 4),
         FilledButton.icon(
           onPressed: _canDownload ? _download : null,
           icon: const Icon(Icons.download, size: 18),
@@ -463,11 +604,19 @@ class _SplitHandle extends StatelessWidget {
 
 // ───────── 앱 안 Edge 웹뷰 ─────────
 
+/// Edge · Android 웹뷰 설정 (처음 만들 때와 JavaScript 켜기 · 끄기에 같이 쓴다)
+InAppWebViewSettings _webSettings({required bool javaScript}) => InAppWebViewSettings(
+      javaScriptEnabled: javaScript,
+      mediaPlaybackRequiresUserGesture: false,
+      supportMultipleWindows: false,
+    );
+
 class _EdgeView extends StatefulWidget {
   final BrowserHost host;
   final String initialUrl;
   final String dataDir;
-  const _EdgeView({required this.host, required this.initialUrl, required this.dataDir});
+  final bool javaScript;
+  const _EdgeView({required this.host, required this.initialUrl, required this.dataDir, required this.javaScript});
 
   @override
   State<_EdgeView> createState() => _EdgeViewState();
@@ -543,13 +692,12 @@ class _EdgeViewState extends State<_EdgeView> {
             keepAlive: _keepAlive,
             webViewEnvironment: snap.data,
             initialUrlRequest: URLRequest(url: WebUri(normalizeAddress(widget.initialUrl))),
-            initialSettings: InAppWebViewSettings(
-              javaScriptEnabled: true,
-              mediaPlaybackRequiresUserGesture: false,
-              supportMultipleWindows: false,
-            ),
+            initialSettings: _webSettings(javaScript: widget.javaScript),
             onWebViewCreated: (c) async {
-              h.attach(_InAppNav(c, snap.data, widget.dataDir));
+              final nav = _InAppNav(c, snap.data, widget.dataDir);
+              h.attach(nav);
+              // 살려 둔 웹뷰는 처음 설정 그대로이므로 지금 설정에 맞춘다
+              await nav.setJavaScript(widget.javaScript);
               // 살려 둔 웹뷰를 다시 붙였으면 보던 주소 · 제목 · 뒤로 가기 상태를 다시 알린다
               final u = await c.getUrl();
               if (u != null) h.onUrl(u.toString());
@@ -603,6 +751,25 @@ class _InAppNav implements WebNav {
   Future<void> runScript(String js) async {
     try {
       await c.evaluateJavascript(source: js);
+    } catch (_) {}
+  }
+
+  @override
+  Future<Object?> evaluate(String js) async {
+    try {
+      return await c.evaluateJavascript(source: js);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Edge 는 앱이 넣는 스크립트 (번역 · 동영상 찾기) 는 JavaScript 를 꺼도 실행된다. Android 는 꺼지면 안 된다.
+  @override
+  Future<void> setJavaScript(bool on) async {
+    try {
+      if ((await c.getSettings())?.javaScriptEnabled == on) return;
+      await c.setSettings(settings: _webSettings(javaScript: on));
+      await c.reload();
     } catch (_) {}
   }
 
@@ -662,7 +829,9 @@ class _CefView extends StatefulWidget {
   final BrowserHost host;
   final String initialUrl;
   final String dataDir;
-  const _CefView({required this.host, required this.initialUrl, required this.dataDir});
+  final bool javaScript;
+  const _CefView(
+      {super.key, required this.host, required this.initialUrl, required this.dataDir, required this.javaScript});
 
   @override
   State<_CefView> createState() => _CefViewState();
@@ -713,7 +882,7 @@ class _CefViewState extends State<_CefView> {
           }
         },
       ));
-      await _c.initialize(normalizeAddress(widget.initialUrl));
+      await _c.initialize(normalizeAddress(widget.initialUrl), javaScript: widget.javaScript);
       h.attach(_CefNav(_c, widget.dataDir));
       h.onHistory(true, true); // Chrome 엔진은 뒤로 · 앞으로 가능 여부를 알려 주지 않는다
       if (mounted) setState(() {});
@@ -769,6 +938,20 @@ class _CefNav implements WebNav {
       await c.evaluateJavascript(js);
     } catch (_) {}
   }
+
+  /// JavaScript 를 끈 Chrome 엔진에서는 결과를 받지 못한다 (null)
+  @override
+  Future<Object?> evaluate(String js) async {
+    try {
+      return await c.evaluateJavascript(js).timeout(const Duration(seconds: 10));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Chrome 엔진은 만든 뒤에 바꿀 수 없다: 화면이 JavaScript 설정을 열쇠로 웹뷰를 새로 만든다 ([_CefView])
+  @override
+  Future<void> setJavaScript(bool on) async {}
 
   /// YouTube · Google 쿠키를 yt-dlp 용 cookies.txt 로 (Edge 와 같은 파일 - 지금 쓰는 엔진의 로그인이 쓰인다).
   /// Chrome 엔진은 쿠키의 이름 · 값만 알려 주므로 만료 · 보안 표시는 기본값으로 적는다.

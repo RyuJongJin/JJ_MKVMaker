@@ -127,6 +127,12 @@ class AppSettings {
   /// "외부 브라우저로 열기" 에 쓸 브라우저: 'system' · 'chrome' · 'firefox' · 'edge' · 'whale'
   String externalBrowser = 'system';
 
+  /// 앱 안 브라우저: 다른 언어로 된 웹 페이지를 화면 언어 ([uiLanguage]) 로 자동 번역 (Google 번역)
+  bool webTranslate = false;
+
+  /// 앱 안 브라우저: 페이지의 JavaScript 실행 (끄면 스크립트 없이 글 · 그림만)
+  bool webJavaScript = true;
+
   /// 앱 안 브라우저의 데이터 폴더 (로그인 · 쿠키). 실행 중에 정해지며 저장하지 않음
   String webViewDataDir = '';
 
@@ -188,6 +194,8 @@ class AppSettings {
         'homeUrl': homeUrl,
         'browserEngine': browserEngine,
         'externalBrowser': externalBrowser,
+        'webTranslate': webTranslate,
+        'webJavaScript': webJavaScript,
         'autoCheckUpdates': autoCheckUpdates,
         'lastUpdateCheck': lastUpdateCheck,
         'skippedVersion': skippedVersion,
@@ -259,6 +267,8 @@ class AppSettings {
       ..homeUrl = j['homeUrl'] as String? ?? 'https://www.youtube.com/'
       ..browserEngine = j['browserEngine'] as String? ?? 'edge'
       ..externalBrowser = j['externalBrowser'] as String? ?? 'system'
+      ..webTranslate = j['webTranslate'] as bool? ?? false
+      ..webJavaScript = j['webJavaScript'] as bool? ?? true
       ..autoCheckUpdates = j['autoCheckUpdates'] as bool? ?? true
       ..lastUpdateCheck = j['lastUpdateCheck'] as String? ?? ''
       ..skippedVersion = j['skippedVersion'] as String? ?? ''
