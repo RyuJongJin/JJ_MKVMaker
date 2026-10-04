@@ -796,6 +796,10 @@ class _ExplorerPageState extends State<ExplorerPage> {
       ..explorerOrientation = orient
       ..explorerToolbar = bar);
     if (layout == 'single') setState(() => _active = 0);
+    // 배치가 바뀌면 목록을 새로 그리므로 맨 위로 간다: 보던 폴더가 다시 보이게
+    for (final pane in _panes) {
+      _reveal(pane, pane.current);
+    }
   }
 
   Future<void> _buttonsDialog() async {
