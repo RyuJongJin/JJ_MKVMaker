@@ -57,6 +57,10 @@ abstract class AppShell {
   /// 파일이 있는 폴더를 파일 관리자(탐색기)로 열고 그 파일을 선택해 보여 준다
   Future<void> revealFile(String path);
 
+  /// 파일을 다른 프로그램으로 열기 (파일 탐색기). [choose]: 프로그램 고르기 창을 띄움, 아니면 기본 연결 프로그램.
+  /// 열지 못하면 false.
+  Future<bool> openWith(String path, {bool choose = false});
+
   /// 설치된 외부 브라우저 ('chrome', 'firefox', 'edge', 'whale' 중)
   List<String> installedBrowsers();
 
@@ -114,6 +118,8 @@ class NoopShell implements AppShell {
   Future<void> openUrl(String url, {String browser = 'system'}) async {}
   @override
   Future<void> revealFile(String path) async {}
+  @override
+  Future<bool> openWith(String path, {bool choose = false}) async => false;
   @override
   List<String> installedBrowsers() => const [];
   @override

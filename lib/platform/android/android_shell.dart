@@ -45,6 +45,22 @@ class AndroidShell extends NoopShell {
     } catch (_) {}
   }
 
+  /// 다른 앱으로 열기 (MainActivity "openWith"): [choose] 면 늘 앱 고르기 창, 아니면 기본 앱 (없으면 고르기 창)
+  @override
+  Future<bool> openWith(String path, {bool choose = false}) async {
+    try {
+      return await _ch.invokeMethod<bool>('openWith', {'path': path, 'choose': choose}) ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// 환경 설정의 확장자별 재생 프로그램: Android 는 'system' (기본 앱) 만 있다
+  @override
+  Future<void> openExternal(String program, List<String> files) async {
+    if (files.isNotEmpty) await openWith(files.first);
+  }
+
   /// 파일이 있는 폴더 (폴더면 그 폴더) 를 파일 앱으로
   @override
   Future<void> revealFile(String path) async {

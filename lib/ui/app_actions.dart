@@ -8,6 +8,7 @@ import '../services/app_shell.dart' show appIconButtonAsset;
 import '../services/system_usage.dart';
 import 'browser_page.dart';
 import 'downloads_page.dart';
+import 'explorer_page.dart';
 import 'settings_page.dart';
 import 'theme.dart';
 import '../l10n/tr.dart';
@@ -38,28 +39,35 @@ class AppScope extends InheritedWidget {
 }
 
 /// 모든 화면의 위쪽 막대 맨 왼쪽 (같은 자리 · 같은 순서):
-///   [JJ] 홈 화면 (환경 설정의 "홈 화면": MKV 화면 또는 웹 브라우저)
-///   [▤] MKV 화면으로   [←] 뒤로   [⇩] 다운로드 목록
+///   [JJ] 홈 화면 (환경 설정의 "홈 화면": MKV 화면 · 웹 브라우저 · 파일 탐색기)
+///   [▤] MKV 화면으로   [🌐] 웹 브라우저   [📁] 파일 탐색기   [←] 뒤로   [⇩] 다운로드 목록
 class AppNavButtons extends StatelessWidget {
   /// 다운로드 목록 화면 자신 (그 버튼을 "지금 여기" 로 표시)
   final bool onDownloadsPage;
 
   /// 웹 브라우저 화면 자신
   final bool onBrowserPage;
-  const AppNavButtons({super.key, this.onDownloadsPage = false, this.onBrowserPage = false});
 
-  static const double width = 5 * 40;
+  /// 파일 탐색기 화면 자신
+  final bool onExplorerPage;
+  const AppNavButtons({super.key, this.onDownloadsPage = false, this.onBrowserPage = false, this.onExplorerPage = false});
+
+  static const double width = 6 * 40;
 
   /// MKV 화면 (맨 처음 화면) 까지 돌아가기
   static void toMkv(BuildContext context) => Navigator.of(context).popUntil((r) => r.isFirst);
 
-  /// 홈 화면으로: MKV 화면까지 돌아간 뒤, 홈 화면이 웹 브라우저면 브라우저를 연다
+  /// 홈 화면으로: MKV 화면까지 돌아간 뒤, 홈 화면이 웹 브라우저 · 파일 탐색기면 그 화면을 연다
   static void toHome(BuildContext context) {
     final scope = AppScope.maybeOf(context);
     final nav = Navigator.of(context);
     nav.popUntil((r) => r.isFirst);
-    if (scope != null && scope.controller.settings.startScreen == 'browser' && scope.bookmarks != null) {
+    if (scope == null) return;
+    final start = scope.controller.settings.startScreen;
+    if (start == 'browser' && scope.bookmarks != null) {
       BrowserPage.open(nav, c: scope.controller, downloads: scope.downloads, bookmarks: scope.bookmarks!);
+    } else if (start == 'files') {
+      ExplorerPage.open(nav, c: scope.controller);
     }
   }
 
@@ -68,7 +76,12 @@ class AppNavButtons extends StatelessWidget {
     final scope = AppScope.maybeOf(context);
     final nav = Navigator.maybeOf(context);
     final atRoot = !(nav?.canPop() ?? false);
-    final homeIsBrowser = scope?.controller.settings.startScreen == 'browser' && scope?.bookmarks != null;
+    final start = scope?.controller.settings.startScreen;
+    final homeName = start == 'browser' && scope?.bookmarks != null
+        ? tr('웹 브라우저')
+        : start == 'files'
+            ? tr('파일 탐색기')
+            : tr('MKV 화면');
     final downloads = scope?.downloads;
     Widget btn(Widget icon, String tip, VoidCallback? f, {bool here = false}) => SizedBox(
           width: 40,
@@ -87,7 +100,7 @@ class AppNavButtons extends StatelessWidget {
         btn(
           Image.asset(appIconButtonAsset(scope?.controller.settings.appIcon),
               width: 26, height: 26, filterQuality: FilterQuality.medium),
-          trf('홈 화면 ({0}) · 환경 설정에서 바꿈', [homeIsBrowser ? tr('웹 브라우저') : tr('MKV 화면')]),
+          trf('홈 화면 ({0}) · 환경 설정에서 바꿈', [homeName]),
           scope == null ? null : () => toHome(context),
         ),
         btn(
@@ -105,6 +118,13 @@ class AppNavButtons extends StatelessWidget {
               : () => BrowserPage.open(Navigator.of(context),
                   c: scope!.controller, downloads: scope.downloads, bookmarks: scope.bookmarks!),
           here: onBrowserPage,
+        ),
+        // 파일 탐색기: 웹 브라우저 다음
+        btn(
+          Icon(Icons.folder_copy_outlined, color: onExplorerPage ? JjColors.accent : null),
+          onExplorerPage ? tr('파일 탐색기 (지금 여기)') : tr('파일 탐색기'),
+          scope == null || onExplorerPage ? null : () => ExplorerPage.open(Navigator.of(context), c: scope.controller),
+          here: onExplorerPage,
         ),
         btn(const Icon(Icons.arrow_back), tr('뒤로'), atRoot ? null : () => Navigator.maybePop(context)),
         btn(

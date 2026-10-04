@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 업데이트 APK (MainActivity.installApk) -->
+<!-- 업데이트 APK (MainActivity.installApk) · 파일 탐색기에서 다른 앱으로 열기 (MainActivity.openWith, SD 카드 포함) -->
 <paths>
     <cache-path name="updates" path="updates/"/>
+    <root-path name="root" path="."/>
 </paths>

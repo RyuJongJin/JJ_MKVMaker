@@ -91,7 +91,7 @@ class AppSettings {
   /// 메인 화면 아래 작업 기록 창 보이기
   bool showLog = true;
 
-  /// 처음 화면: 'home' = 지금처럼 MKV 화면 (기본), 'browser' = 웹 브라우저 ([homeUrl])
+  /// 처음 화면: 'home' = 지금처럼 MKV 화면 (기본), 'browser' = 웹 브라우저 ([homeUrl]), 'files' = 파일 탐색기
   String startScreen = 'home';
 
   /// 화면 (글자 · 버튼) 크기 배율. [uiScale] 은 지금 크기 (위쪽 막대의 − · + 로 바꿈),
@@ -132,6 +132,30 @@ class AppSettings {
 
   /// 앱 안 브라우저: 페이지의 JavaScript 실행 (끄면 스크립트 없이 글 · 그림만)
   bool webJavaScript = true;
+
+  // ── 파일 탐색기 (X-plore 참고) ──
+  /// 창: 'dual' 두 창 (기본) · 'single' 한 창
+  String explorerLayout = 'dual';
+
+  /// 두 창 배치: 'auto' 화면 모양 따라 (가로로 넓으면 좌우, 세로로 길면 위아래) · 'side' 좌우 · 'stacked' 위아래
+  String explorerOrientation = 'auto';
+
+  /// 기능 버튼 줄: 'middle' 두 창 사이 (기본) · 'edge' 오른쪽 (위아래 배치면 아래) 끝 · 'hidden' 숨김
+  String explorerToolbar = 'middle';
+
+  /// 기능 버튼 줄에 보일 버튼과 순서 (ExplorerButton 이름). 비어 있으면 기본 구성.
+  List<String> explorerButtons = [];
+
+  /// 정렬 · 숨긴 항목
+  String explorerSort = 'name';
+  bool explorerSortDesc = false;
+  bool explorerShowHidden = false;
+
+  /// 마지막으로 연 폴더 (왼쪽 · 오른쪽 창)
+  List<String> explorerPaths = [];
+
+  /// 최근에 연 폴더 (내역, 최신이 앞)
+  List<String> explorerHistory = [];
 
   /// 앱 안 브라우저의 데이터 폴더 (로그인 · 쿠키). 실행 중에 정해지며 저장하지 않음
   String webViewDataDir = '';
@@ -199,6 +223,15 @@ class AppSettings {
         'externalBrowser': externalBrowser,
         'webTranslate': webTranslate,
         'webJavaScript': webJavaScript,
+        'explorerLayout': explorerLayout,
+        'explorerOrientation': explorerOrientation,
+        'explorerToolbar': explorerToolbar,
+        'explorerButtons': explorerButtons,
+        'explorerSort': explorerSort,
+        'explorerSortDesc': explorerSortDesc,
+        'explorerShowHidden': explorerShowHidden,
+        'explorerPaths': explorerPaths,
+        'explorerHistory': explorerHistory,
         'autoCheckUpdates': autoCheckUpdates,
         'lastUpdateCheck': lastUpdateCheck,
         'lastUpdateCheckVersion': lastUpdateCheckVersion,
@@ -273,6 +306,17 @@ class AppSettings {
       ..externalBrowser = j['externalBrowser'] as String? ?? 'system'
       ..webTranslate = j['webTranslate'] as bool? ?? false
       ..webJavaScript = j['webJavaScript'] as bool? ?? true
+      ..explorerLayout = j['explorerLayout'] == 'single' ? 'single' : 'dual'
+      ..explorerOrientation = const ['side', 'stacked'].contains(j['explorerOrientation'])
+          ? j['explorerOrientation'] as String
+          : 'auto'
+      ..explorerToolbar = const ['edge', 'hidden'].contains(j['explorerToolbar']) ? j['explorerToolbar'] as String : 'middle'
+      ..explorerButtons = [for (final x in (j['explorerButtons'] as List?) ?? const []) '$x']
+      ..explorerSort = const ['date', 'size', 'type'].contains(j['explorerSort']) ? j['explorerSort'] as String : 'name'
+      ..explorerSortDesc = j['explorerSortDesc'] as bool? ?? false
+      ..explorerShowHidden = j['explorerShowHidden'] as bool? ?? false
+      ..explorerPaths = [for (final x in (j['explorerPaths'] as List?) ?? const []) '$x']
+      ..explorerHistory = [for (final x in (j['explorerHistory'] as List?) ?? const []) '$x']
       ..autoCheckUpdates = j['autoCheckUpdates'] as bool? ?? true
       ..lastUpdateCheck = j['lastUpdateCheck'] as String? ?? ''
       ..lastUpdateCheckVersion = j['lastUpdateCheckVersion'] as String? ?? ''

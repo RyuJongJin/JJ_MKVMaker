@@ -1,0 +1,178 @@
+import 'dart:io';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:jj_mkvmaker/app/app_controller.dart';
+import 'package:jj_mkvmaker/app/settings.dart';
+import 'package:jj_mkvmaker/platform/windows/desktop_storage_service.dart';
+import 'package:jj_mkvmaker/platform/windows/process_media_tool.dart';
+import 'package:jj_mkvmaker/services/app_shell.dart';
+import 'package:jj_mkvmaker/services/platform_services.dart';
+import 'package:jj_mkvmaker/ui/explorer_page.dart';
+import 'package:path/path.dart' as p;
+
+/// 다른 앱으로 열기를 기록만 하는 셸 (실제로 프로그램을 띄우지 않게)
+class _Shell extends NoopShell {
+  final opened = <(String, bool)>[];
+  @override
+  Future<bool> openWith(String path, {bool choose = false}) async {
+    opened.add((path, choose));
+    return true;
+  }
+}
+
+void main() {
+  late Directory tmp;
+  late String left, right;
+  late _Shell shell;
+  late AppController c;
+
+  setUp(() {
+    tmp = Directory.systemTemp.createTempSync('jj_explorer_');
+    left = p.join(tmp.path, 'left');
+    right = p.join(tmp.path, 'right');
+    File(p.join(left, 'doc.txt'))
+      ..createSync(recursive: true)
+      ..writeAsStringSync('hello');
+    File(p.join(left, 'sub', 'inner.txt'))
+      ..createSync(recursive: true)
+      ..writeAsStringSync('inner');
+    Directory(right).createSync();
+    shell = _Shell();
+    c = AppController(PlatformServices(
+        mediaTool: ProcessMediaTool('x', 'y'), storage: DesktopStorageService(), shell: shell));
+    c.settings.explorerPaths = [left, right];
+  });
+  tearDown(() => tmp.deleteSync(recursive: true));
+
+  Future<void> open(WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1600, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.runAsync(() => tester.pumpWidget(MaterialApp(home: ExplorerPage(c: c))));
+    await settle(tester, () => find.text('doc.txt').evaluate().isNotEmpty);
+  }
+
+  testWidgets('두 창: 폴더 펼치기 · 파일 누르면 기본 앱 · 길게 눌러 다른 앱으로 · 다른 창으로 복사', (tester) async {
+    await open(tester);
+    // 두 창 + 가운데 버튼 줄
+    expect(find.text('상위 폴더'), findsOneWidget);
+    expect(find.text('doc.txt'), findsOneWidget);
+
+    // 폴더를 누르면 그 자리에서 펼친다
+    await act(tester, () => tester.tap(find.text('sub')));
+    await settle(tester, () => find.text('inner.txt').evaluate().isNotEmpty);
+    expect(find.text('inner.txt'), findsOneWidget);
+
+    // 파일 (동영상 아님) 을 누르면 기본 앱으로
+    await act(tester, () => tester.tap(find.text('doc.txt')));
+    await settle(tester, () => shell.opened.isNotEmpty);
+    expect(shell.opened.last, (p.join(left, 'doc.txt'), false));
+
+    // 길게 누르기 → 메뉴 → 다른 앱으로 열기 (고르기 창)
+    await tester.longPress(find.text('doc.txt'));
+    await tester.pumpAndSettle();
+    expect(find.text('다른 창으로 복사'), findsOneWidget);
+    await act(tester, () => tester.tap(find.text('다른 앱으로 열기')));
+    await settle(tester, () => shell.opened.length == 2);
+    expect(shell.opened.last, (p.join(left, 'doc.txt'), true));
+
+    // doc.txt 를 고른 채 [복사] → 확인 → 오른쪽 창 폴더에 생긴다
+    await act(tester, () => tester.tap(find.text('doc.txt')));
+    await tester.pump();
+    await act(tester, () => tester.tap(find.text('복사').first));
+    await tester.pumpAndSettle();
+    await act(tester, () => tester.tap(find.widgetWithText(FilledButton, '복사')));
+    await settle(tester, () => File(p.join(right, 'doc.txt')).existsSync() && find.byType(LinearProgressIndicator).evaluate().isEmpty);
+    expect(File(p.join(right, 'doc.txt')).readAsStringSync(), 'hello');
+    expect(File(p.join(left, 'doc.txt')).existsSync(), isTrue);
+  });
+
+  testWidgets('여러 개 표시 → 삭제 · 새 폴더 · 이름 변경', (tester) async {
+    await open(tester);
+    // 동그라미로 doc.txt · sub 표시 (반드시 이름으로 찾은 줄의 버튼만: 목록에는 시험 폴더 위쪽의 실제 폴더도 보인다)
+    await act(tester, () => tester.tap(markOf('sub')));
+    await act(tester, () => tester.tap(markOf('doc.txt')));
+    expect(find.text('2개 표시함'), findsOneWidget);
+    await act(tester, () => tester.tap(find.text('삭제').first));
+    await tester.pumpAndSettle();
+    // 지울 항목 이름이 확인 창에 보인다
+    expect(find.textContaining('2개 항목을 지울까요?'), findsOneWidget);
+    expect(find.textContaining('· sub'), findsOneWidget);
+    expect(find.textContaining('· doc.txt'), findsOneWidget);
+    await act(tester, () => tester.tap(find.widgetWithText(FilledButton, '삭제')));
+    await settle(tester, () => find.text('doc.txt').evaluate().isEmpty);
+    expect(Directory(left).listSync(), isEmpty);
+
+    // 새 폴더 → 이름 변경
+    await act(tester, () => tester.tap(find.text('새 폴더').first));
+    await tester.pumpAndSettle();
+    await act(tester, () => tester.enterText(find.byType(TextField), 'films'));
+    await act(tester, () => tester.tap(find.widgetWithText(FilledButton, '확인')));
+    await settle(tester, () => find.text('films').evaluate().isNotEmpty);
+    expect(Directory(p.join(left, 'films')).existsSync(), isTrue);
+    await act(tester, () => tester.tap(find.text('이름 변경').first));
+    await tester.pumpAndSettle();
+    await act(tester, () => tester.enterText(find.byType(TextField), 'movies'));
+    await act(tester, () => tester.tap(find.widgetWithText(FilledButton, '확인')));
+    await settle(tester, () => find.text('movies').evaluate().isNotEmpty);
+    expect(Directory(p.join(left, 'movies')).existsSync(), isTrue);
+  });
+
+  testWidgets('창 배치: 한 창 · 버튼 줄 숨김, 버튼 구성: 버튼 빼기 → 설정에 저장', (tester) async {
+    await open(tester);
+    await tester.tap(find.text('창 배치').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ChoiceChip, '한 창'));
+    await tester.pump();
+    await tester.tap(find.widgetWithText(ChoiceChip, '숨김'));
+    await tester.pump();
+    await act(tester, () => tester.tap(find.widgetWithText(FilledButton, '확인')));
+    await tester.pumpAndSettle();
+    expect([c.settings.explorerLayout, c.settings.explorerToolbar], ['single', 'hidden']);
+    expect(find.text('상위 폴더'), findsNothing); // 버튼 줄 숨김
+    expect(find.text('doc.txt'), findsOneWidget); // 한 창 (왼쪽만)
+
+    // ⋮ 메뉴에서 버튼 구성: "찾기" 빼기
+    await c.updateSettings((s) => s.explorerToolbar = 'middle');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('창 배치 · 버튼 구성'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('버튼 구성').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(CheckboxListTile, 'MKV 목록에 추가'));
+    await tester.pump();
+    await tester.tap(find.widgetWithText(FilledButton, '확인'));
+    await tester.pumpAndSettle();
+    expect(c.settings.explorerButtons, isNot(contains('addMkv')));
+    expect(c.settings.explorerButtons, contains('copy'));
+    expect(find.text('MKV 목록에 추가'), findsNothing);
+
+    // 설정 저장 · 읽기
+    final back = AppSettings.fromJson(c.settings.toJson());
+    expect([back.explorerLayout, back.explorerToolbar, back.explorerButtons],
+        [c.settings.explorerLayout, c.settings.explorerToolbar, c.settings.explorerButtons]);
+  });
+}
+
+/// [name] 줄의 "표시" 동그라미 버튼
+Finder markOf(String name) => find.descendant(
+      of: find.ancestor(of: find.text(name), matching: find.byType(InkWell)).first,
+      matching: find.byTooltip('표시 (여러 개 고르기)'),
+    );
+
+/// 누르기 등을 실제 비동기 구역에서 (그 때 시작한 파일 작업이 테스트의 가짜 시간에 묶이지 않게)
+Future<void> act(WidgetTester tester, Future<void> Function() f) async {
+  await tester.runAsync(f);
+  await tester.pump();
+}
+
+/// 실제 파일 작업 (비동기 IO) 이 끝나기를 기다리며 화면을 갱신
+Future<void> settle(WidgetTester tester, bool Function() done) async {
+  for (var i = 0; i < 100; i++) {
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 30)));
+    await tester.pump();
+    if (done()) break;
+  }
+  await tester.pump(const Duration(milliseconds: 300));
+}

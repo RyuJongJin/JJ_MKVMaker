@@ -64,6 +64,9 @@ class MainActivity : FlutterActivity() {
                     result.error("INSTALL", e.message ?: e.toString(), null)
                 }
                 "openFolder" -> result.success(openFolder(call.argument<String>("path") ?: ""))
+                "openWith" -> result.success(
+                    openWith(call.argument<String>("path") ?: "", call.argument<Boolean>("choose") ?: false)
+                )
                 "setAppIcon" -> result.success(setAppIcon(call.argument<String>("id") ?: ""))
                 "keepAlive" -> {
                     keepAlive(call.argument<String>("text") ?: "", call.argument<Int>("progress") ?: -1)
@@ -257,6 +260,36 @@ class MainActivity : FlutterActivity() {
             }
         }
         return true
+    }
+
+    /// 파일 탐색기: 파일을 다른 앱으로 연다. [choose] 면 늘 앱 고르기 창 (이 앱은 뺌), 아니면 기본 앱 (없으면 고르기 창).
+    /// SD 카드 · USB 파일도 넘길 수 있게 FileProvider 의 root 경로를 쓴다 (res/xml/jj_file_paths.xml).
+    private fun openWith(path: String, choose: Boolean): Boolean {
+        val f = File(path)
+        if (!f.isFile) return false
+        val uri = try {
+            androidx.core.content.FileProvider.getUriForFile(this, "$packageName.files", f)
+        } catch (e: Exception) {
+            return false
+        }
+        val mime = android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(f.extension.lowercase()) ?: "*/*"
+        val view = Intent(Intent.ACTION_VIEW)
+            .setDataAndType(uri, mime)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+        fun chooser(): Intent = Intent.createChooser(view, null)
+            .putExtra(Intent.EXTRA_EXCLUDE_COMPONENTS, arrayOf(android.content.ComponentName(this, MainActivity::class.java)))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        return try {
+            startActivity(if (choose) chooser() else view)
+            true
+        } catch (e: Exception) {
+            try {
+                startActivity(chooser())
+                true
+            } catch (e2: Exception) {
+                false
+            }
+        }
     }
 
     private fun openFolder(path: String): Boolean {

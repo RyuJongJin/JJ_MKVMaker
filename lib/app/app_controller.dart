@@ -1114,12 +1114,14 @@ class AppController extends ChangeNotifier {
   /// 재생 준비. 확장자에 외부 프로그램이 지정되어 있으면 그것으로 열고 null,
   /// 아니면 내장 플레이어용 (목록, 시작 위치).
   /// [keepOrder]: 여러 개를 줄 때 이름순으로 다시 정렬하지 않고 준 순서대로 재생
-  Future<(List<String>, int)?> preparePlayback(List<String> files, {bool keepOrder = false}) async {
+  /// [internal]: 외부 프로그램 설정과 상관없이 내장 플레이어로 (파일 탐색기의 "내장 플레이어로 재생")
+  Future<(List<String>, int)?> preparePlayback(List<String> files,
+      {bool keepOrder = false, bool internal = false}) async {
     final videos = files.where(isVideoFile).toList();
     if (videos.isEmpty) return null;
     final ext = p.extension(videos.first).replaceFirst('.', '').toLowerCase();
     final program = settings.externalPlayers[ext];
-    if (program != null && program.isNotEmpty) {
+    if (!internal && program != null && program.isNotEmpty) {
       await services.shell.openExternal(program, videos);
       _log(trf('외부 프로그램으로 재생: {0} ← {1}개', [program == 'system' ? tr('기본 연결 프로그램') : p.basename(program), videos.length]));
       return null;

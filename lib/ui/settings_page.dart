@@ -308,6 +308,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         items: [
                           DropdownMenuItem(value: 'home', child: Text(tr('MKV 화면 (기본)'))),
                           DropdownMenuItem(value: 'browser', child: Text(tr('웹 브라우저 (홈 주소)'))),
+                          DropdownMenuItem(value: 'files', child: Text(tr('파일 탐색기'))),
                         ],
                         onChanged: (v) => c.updateSettings((x) => x.startScreen = v!),
                       ),

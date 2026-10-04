@@ -189,7 +189,7 @@ void main() {
   });
 
   testWidgets('MKV 화면: 체크 → "자막 만들기 (2)" · "MKV 만들기 (2)" 글, 전체 선택', (tester) async {
-    tester.view.physicalSize = const Size(1500, 900);
+    tester.view.physicalSize = const Size(1600, 900); // 위쪽 버튼 글이 다 보이는 너비
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     final c = AppController(PlatformServices(

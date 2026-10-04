@@ -15,11 +15,11 @@ import 'app_actions.dart';
 import 'theme.dart';
 import '../l10n/tr.dart';
 
-/// 파일들을 재생 (외부 프로그램이 지정된 확장자면 그 프로그램으로)
+/// 파일들을 재생 (외부 프로그램이 지정된 확장자면 그 프로그램으로, [internal] 이면 늘 내장 플레이어)
 Future<void> playFiles(BuildContext context, AppController c, List<String> files,
-    {bool keepOrder = false}) async {
+    {bool keepOrder = false, bool internal = false}) async {
   final create = c.services.createMediaPlayer;
-  final plan = await c.preparePlayback(files, keepOrder: keepOrder);
+  final plan = await c.preparePlayback(files, keepOrder: keepOrder, internal: internal);
   if (plan == null || create == null || !context.mounted) return;
   final (list, start) = plan;
   await Navigator.of(context).push(MaterialPageRoute<void>(

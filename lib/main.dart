@@ -32,6 +32,7 @@ import 'ui/app_actions.dart';
 import 'ui/app_drop.dart';
 import 'ui/browser_page.dart';
 import 'ui/downloads_page.dart';
+import 'ui/explorer_page.dart';
 import 'ui/exit_dialog.dart';
 import 'ui/home_page.dart';
 import 'ui/player_page.dart';
@@ -283,10 +284,13 @@ Future<void> main(List<String> args) async {
         content: Text(trf('지난 실행이 정상적으로 끝나지 않았습니다 (마지막 확인 ' '{0}:{1}). ' '작업 기록에 남겨 두었습니다.', [crashed.$2.hour.toString().padLeft(2, '0'), crashed.$2.minute.toString().padLeft(2, '0')])),
       ));
     }
-    // 시작 화면을 "웹 브라우저" 로 정했으면 브라우저를 연다 (MKV 화면은 그 아래에 있음)
+    // 시작 화면을 "웹 브라우저" · "파일 탐색기" 로 정했으면 그 화면을 연다 (MKV 화면은 그 아래에 있음)
     if (controller.settings.startScreen == 'browser') {
       final nav = navigatorKey.currentState;
       if (nav != null) unawaited(BrowserPage.open(nav, c: controller, downloads: downloads, bookmarks: bookmarks));
+    } else if (controller.settings.startScreen == 'files') {
+      final nav = navigatorKey.currentState;
+      if (nav != null) unawaited(ExplorerPage.open(nav, c: controller));
     }
     await checkRequiredTools(ctx, services.shell);
     final ctx2 = navigatorKey.currentContext;
@@ -439,6 +443,9 @@ Future<void> runAndroid(String dataDir) async {
     if (controller.settings.startScreen == 'browser') {
       final nav = navigatorKey.currentState;
       if (nav != null) unawaited(BrowserPage.open(nav, c: controller, downloads: downloads, bookmarks: bookmarks));
+    } else if (controller.settings.startScreen == 'files') {
+      final nav = navigatorKey.currentState;
+      if (nav != null) unawaited(ExplorerPage.open(nav, c: controller));
     }
     // 새 버전 확인 (하루 한 번, 환경 설정에서 끌 수 있음)
     final ctx = navigatorKey.currentContext;
