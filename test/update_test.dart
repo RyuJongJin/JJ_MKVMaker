@@ -85,6 +85,11 @@ void main() {
       expect(updateCheckDue('', now), isTrue);
       expect(updateCheckDue(DateTime(2026, 10, 1, 9).toIso8601String(), now), isFalse);
       expect(updateCheckDue(DateTime(2026, 9, 30, 9).toIso8601String(), now), isTrue);
+      // 방금 확인했어도 다른 버전이 한 확인이면 다시 (같은 설정 파일을 쓰는 새 버전 개발 빌드 등)
+      final recent = DateTime(2026, 10, 1, 9).toIso8601String();
+      expect(updateCheckDue(recent, now, checkedBy: '2026.10.04_012', current: '2026.10.01_003'), isTrue);
+      expect(updateCheckDue(recent, now, checkedBy: '', current: '2026.10.01_003'), isTrue); // 예전 판이 남긴 기록
+      expect(updateCheckDue(recent, now, checkedBy: '2026.10.01_003', current: '2026.10.01_003'), isFalse);
     });
   });
 

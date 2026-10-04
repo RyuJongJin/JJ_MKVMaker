@@ -140,6 +140,9 @@ class AppSettings {
   bool autoCheckUpdates = true;
   String lastUpdateCheck = '';
 
+  /// [lastUpdateCheck] 를 한 버전 (같은 설정 파일을 쓰는 다른 버전이 확인했으면 다시 확인)
+  String lastUpdateCheckVersion = '';
+
   /// "이 버전 건너뛰기" 한 버전
   String skippedVersion = '';
 
@@ -198,6 +201,7 @@ class AppSettings {
         'webJavaScript': webJavaScript,
         'autoCheckUpdates': autoCheckUpdates,
         'lastUpdateCheck': lastUpdateCheck,
+        'lastUpdateCheckVersion': lastUpdateCheckVersion,
         'skippedVersion': skippedVersion,
         'playlistMode': playlistMode.name,
         'externalPlayers': externalPlayers,
@@ -271,6 +275,7 @@ class AppSettings {
       ..webJavaScript = j['webJavaScript'] as bool? ?? true
       ..autoCheckUpdates = j['autoCheckUpdates'] as bool? ?? true
       ..lastUpdateCheck = j['lastUpdateCheck'] as String? ?? ''
+      ..lastUpdateCheckVersion = j['lastUpdateCheckVersion'] as String? ?? ''
       ..skippedVersion = j['skippedVersion'] as String? ?? ''
       ..playlistMode = pick(PlaylistMode.values, j['playlistMode'], PlaylistMode.series)
       ..externalPlayers = ((j['externalPlayers'] as Map?) ?? const {}).cast<String, String>()

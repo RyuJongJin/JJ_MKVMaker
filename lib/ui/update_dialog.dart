@@ -12,22 +12,35 @@ Future<void> checkForUpdate(BuildContext context, AppController c, {bool manual 
   final up = c.services.updater;
   if (up == null) return;
   final s = c.settings;
-  if (!manual && (!s.autoCheckUpdates || !updateCheckDue(s.lastUpdateCheck, DateTime.now()))) return;
+  final String current;
+  try {
+    current = await up.currentVersion();
+  } catch (_) {
+    return;
+  }
+  if (!manual &&
+      (!s.autoCheckUpdates ||
+          !updateCheckDue(s.lastUpdateCheck, DateTime.now(), checkedBy: s.lastUpdateCheckVersion, current: current))) {
+    return;
+  }
 
   void snack(String t) {
     if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(t)));
   }
 
-  final String current;
   final ReleaseInfo? r;
   try {
-    current = await up.currentVersion();
     r = await up.latest();
   } catch (e) {
+    c.note(trf('새 버전을 확인할 수 없습니다: {0}', [e]));
     if (manual) snack(trf('새 버전을 확인할 수 없습니다: {0}', [e]));
     return;
   }
-  await c.updateSettings((x) => x.lastUpdateCheck = DateTime.now().toIso8601String());
+  await c.updateSettings((x) => x
+    ..lastUpdateCheck = DateTime.now().toIso8601String()
+    ..lastUpdateCheckVersion = current);
+  // 작업 기록에 남긴다 (업데이트가 안 될 때 원인을 찾을 수 있게)
+  c.note(trf('새 버전 확인: 지금 v{0} · 최신 v{1}', [current, r?.version ?? '-']));
   if (r == null || !r.isNewerThan(current)) {
     if (manual) snack(trf('최신 버전입니다 (v{0})', [current]));
     return;

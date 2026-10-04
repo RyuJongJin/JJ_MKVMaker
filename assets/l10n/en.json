@@ -426,6 +426,7 @@
  "삭제 (출력에서 제외)": "Delete (exclude from output)",
  "삭제: {0}": "Deleted: {0}",
  "새 버전 v{0}": "New version v{0}",
+ "새 버전 확인: 지금 v{0} · 최신 v{1}": "Update check: current v{0} · latest v{1}",
  "새 버전을 확인할 수 없습니다: {0}": "Cannot check for a new version: {0}",
  "새 즐겨찾기 추가": "Add new bookmark",
  "새 창에서": "In a new window",

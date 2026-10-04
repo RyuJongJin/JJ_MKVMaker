@@ -103,8 +103,10 @@ ReleaseInfo? parseLatestRelease(Map<String, dynamic> j, {String assetPattern = w
   );
 }
 
-/// 자동 확인은 하루에 한 번
-bool updateCheckDue(String lastCheckIso, DateTime now) {
+/// 자동 확인은 하루에 한 번. 단 마지막 확인을 다른 버전이 했으면 ([checkedBy] ≠ [current]) 바로 확인한다:
+/// 같은 PC 에서 새 버전 (개발 빌드 등) 이 확인한 기록 때문에 옛 버전이 확인을 건너뛰지 않도록 (설정 파일을 같이 쓴다).
+bool updateCheckDue(String lastCheckIso, DateTime now, {String checkedBy = '', String current = ''}) {
+  if (current.isNotEmpty && checkedBy != current) return true;
   final last = DateTime.tryParse(lastCheckIso);
   return last == null || now.difference(last) >= const Duration(hours: 20);
 }
