@@ -11,7 +11,7 @@
 """
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 ROOT = Path(__file__).resolve().parent.parent
 S = 1024  # 원본 크기
@@ -19,6 +19,9 @@ S = 1024  # 원본 크기
 RED = (255, 45, 85)      # 왼쪽 위
 ORANGE = (255, 149, 0)   # 오른쪽 아래
 FILM = (25, 10, 30)      # 필름 띠
+YELLOW = (255, 230, 0)   # JJ 글자 (빨강 · 주황 바탕에서 눈에 띄게)
+OUTLINE = (60, 0, 30)    # JJ 테두리
+FONT = 'C:/Windows/Fonts/seguibl.ttf'  # Segoe UI Black
 
 
 def lerp(a, b, t):
@@ -71,6 +74,25 @@ def play(size, scale=1.0, cx=0.5, cy=0.5):
     return layer
 
 
+def jj(size, cx, top, bottom):
+    """왼쪽에 J 를 위 · 아래로 하나씩 (노란 굵은 글자 + 진한 테두리 + 그림자)"""
+    layer = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+    h = (bottom - top) / 2
+    font = ImageFont.truetype(FONT, int(h * 1.18))
+    stroke = max(2, int(h * 0.09))
+    shadow = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+    for i in range(2):
+        d = ImageDraw.Draw(layer)
+        l, t, r, b = d.textbbox((0, 0), 'J', font=font, stroke_width=stroke)
+        x = cx - (l + r) / 2
+        y = top + h * i + (h - (b - t)) / 2 - t
+        ImageDraw.Draw(shadow).text((x + h * 0.04, y + h * 0.07), 'J', font=font, fill=(60, 0, 20, 150),
+                                    stroke_width=stroke, stroke_fill=(60, 0, 20, 150))
+        d.text((x, y), 'J', font=font, fill=YELLOW + (255,), stroke_width=stroke, stroke_fill=OUTLINE + (255,))
+    shadow = shadow.filter(ImageFilter.GaussianBlur(h * 0.05))
+    return Image.alpha_composite(shadow, layer)
+
+
 def film_bands(size, top, band, holes=6):
     """위아래 필름 띠 (어두운 띠 + 흰 구멍)"""
     layer = Image.new('RGBA', (size, size), (0, 0, 0, 0))
@@ -91,17 +113,21 @@ def make_master(small=False):
     """앱 아이콘 (둥근 사각형). small=True: 16~32px 용 (필름 띠 없이 재생 버튼을 크게)"""
     icon = Image.new('RGBA', (S, S), (0, 0, 0, 0))
     icon.paste(gradient(S), (0, 0), rounded_mask(S, int(S * 0.22)))
-    if not small:
-        bands = film_bands(S, top=int(S * 0.055), band=int(S * 0.13))
-        icon = Image.alpha_composite(icon, Image.composite(bands, Image.new('RGBA', (S, S)), rounded_mask(S, int(S * 0.22))))
-    return Image.alpha_composite(icon, play(S, scale=1.25 if small else 1.0))
+    if small:
+        return Image.alpha_composite(icon, play(S, scale=1.25))
+    bands = film_bands(S, top=int(S * 0.055), band=int(S * 0.13))
+    icon = Image.alpha_composite(icon, Image.composite(bands, Image.new('RGBA', (S, S)), rounded_mask(S, int(S * 0.22))))
+    # 왼쪽: J · J (위 · 아래), 재생 버튼은 오른쪽으로
+    icon = Image.alpha_composite(icon, jj(S, cx=S * 0.19, top=S * 0.23, bottom=S * 0.77))
+    return Image.alpha_composite(icon, play(S, scale=0.92, cx=0.6))
 
 
 def make_adaptive():
     """Android 8 이상 (adaptive icon): 108dp 바탕 (그라데이션 + 필름 띠) · 앞 (재생 버튼, 안전 영역 66dp 안)"""
     bg = gradient(S).convert('RGBA')
     bg = Image.alpha_composite(bg, film_bands(S, top=int(S * 0.17), band=int(S * 0.1), holes=7))
-    fg = play(S, scale=0.62)
+    # 안전 영역 (가운데 66/108) 안에: 왼쪽 J · J, 오른쪽 재생 버튼
+    fg = Image.alpha_composite(jj(S, cx=S * 0.335, top=S * 0.31, bottom=S * 0.69), play(S, scale=0.55, cx=0.57))
     return bg, fg
 
 
