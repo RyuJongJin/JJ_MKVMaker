@@ -1,6 +1,6 @@
 """JJ_MKVMaker 아이콘 만들기 (1024px 원본 → .ico / .png)
 
-눈에 띄게: 빨강 → 주황 그라데이션 바탕에 큰 흰 재생(▶) 버튼, 위아래 필름 구멍 띠.
+검은 바탕 (짙은 회색 → 검정) 에 노란 J · J 와 큰 흰 재생(▶) 버튼, 위아래 필름 구멍 띠.
 (JJ 로 시작하는 다른 프로그램과 헷갈리지 않게 글자 대신 재생 버튼이 주인공)
 
 사용법: python tool/make_icon.py
@@ -16,11 +16,11 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 ROOT = Path(__file__).resolve().parent.parent
 S = 1024  # 원본 크기
 
-RED = (255, 45, 85)      # 왼쪽 위
-ORANGE = (255, 149, 0)   # 오른쪽 아래
-FILM = (25, 10, 30)      # 필름 띠
-YELLOW = (255, 230, 0)   # JJ 글자 (빨강 · 주황 바탕에서 눈에 띄게)
-OUTLINE = (60, 0, 30)    # JJ 테두리
+TOP = (58, 58, 66)       # 바탕 왼쪽 위 (짙은 회색)
+BOTTOM = (6, 6, 8)       # 바탕 오른쪽 아래 (검정)
+FILM = (0, 0, 0)         # 필름 띠 (바탕보다 더 검게)
+YELLOW = (255, 214, 0)   # JJ 글자 (검은 바탕에서 눈에 띄게)
+OUTLINE = (0, 0, 0)      # JJ 테두리
 FONT = 'C:/Windows/Fonts/seguibl.ttf'  # Segoe UI Black
 
 
@@ -35,14 +35,14 @@ def rounded_mask(size, radius):
 
 
 def gradient(size):
-    """대각선 그라데이션 (왼쪽 위 빨강 → 오른쪽 아래 주황) + 왼쪽 위의 은은한 빛"""
+    """대각선 그라데이션 (왼쪽 위 짙은 회색 → 오른쪽 아래 검정) + 왼쪽 위의 은은한 빛"""
     g = Image.new('RGB', (size, size))
     px = g.load()
     for y in range(size):
         for x in range(size):
-            px[x, y] = lerp(RED, ORANGE, (x + y) / (2 * (size - 1)))
+            px[x, y] = lerp(TOP, BOTTOM, (x + y) / (2 * (size - 1)))
     glow = Image.new('L', (size, size), 0)
-    ImageDraw.Draw(glow).ellipse((-size * 0.4, -size * 0.5, size * 0.8, size * 0.45), fill=45)
+    ImageDraw.Draw(glow).ellipse((-size * 0.4, -size * 0.5, size * 0.8, size * 0.45), fill=22)
     glow = glow.filter(ImageFilter.GaussianBlur(size * 0.15))
     return Image.composite(Image.new('RGB', (size, size), (255, 255, 255)), g, glow)
 
@@ -67,7 +67,7 @@ def play(size, scale=1.0, cx=0.5, cy=0.5):
             d.ellipse((x - r, y - r, x + r, y + r), fill=fill)
 
     shadow = Image.new('RGBA', (size, size), (0, 0, 0, 0))
-    draw(shadow, (90, 0, 20, 140), off=(size * 0.012 * scale, size * 0.028 * scale))
+    draw(shadow, (0, 0, 0, 200), off=(size * 0.012 * scale, size * 0.028 * scale))
     shadow = shadow.filter(ImageFilter.GaussianBlur(size * 0.025 * scale))
     layer = Image.alpha_composite(layer, shadow)
     draw(layer, (255, 255, 255, 255))
@@ -86,8 +86,8 @@ def jj(size, cx, top, bottom):
         l, t, r, b = d.textbbox((0, 0), 'J', font=font, stroke_width=stroke)
         x = cx - (l + r) / 2
         y = top + h * i + (h - (b - t)) / 2 - t
-        ImageDraw.Draw(shadow).text((x + h * 0.04, y + h * 0.07), 'J', font=font, fill=(60, 0, 20, 150),
-                                    stroke_width=stroke, stroke_fill=(60, 0, 20, 150))
+        ImageDraw.Draw(shadow).text((x + h * 0.04, y + h * 0.07), 'J', font=font, fill=(0, 0, 0, 200),
+                                    stroke_width=stroke, stroke_fill=(0, 0, 0, 200))
         d.text((x, y), 'J', font=font, fill=YELLOW + (255,), stroke_width=stroke, stroke_fill=OUTLINE + (255,))
     shadow = shadow.filter(ImageFilter.GaussianBlur(h * 0.05))
     return Image.alpha_composite(shadow, layer)
@@ -98,14 +98,14 @@ def film_bands(size, top, band, holes=6):
     layer = Image.new('RGBA', (size, size), (0, 0, 0, 0))
     d = ImageDraw.Draw(layer)
     for y0 in (top, size - top - band):
-        d.rectangle((0, y0, size, y0 + band), fill=FILM + (235,))
+        d.rectangle((0, y0, size, y0 + band), fill=FILM + (255,))
         hw, hh = size / (holes * 2.2), band * 0.46
         gap = size / holes
         for i in range(holes):
             cx = gap * (i + 0.5)
             cy = y0 + band / 2
             d.rounded_rectangle((cx - hw / 2, cy - hh / 2, cx + hw / 2, cy + hh / 2), radius=hh * 0.3,
-                                fill=(255, 255, 255, 230))
+                                fill=(235, 235, 240, 255))
     return layer
 
 
