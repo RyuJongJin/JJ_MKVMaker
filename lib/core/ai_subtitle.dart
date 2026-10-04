@@ -72,16 +72,136 @@ Language detectLanguage(String text) {
 
 final _nonSpeech = RegExp(r'^\s*[\[\(（【♪*].*[\]\)）】♪*]\s*$');
 
+/// 자주 나오는 짧은 말 (맞장구 · 감탄) 의 번역: 원어 → (정리한 말 → 대상 언어 → 번역).
+/// 번역 모델은 짧은 말을 엉뚱하게 옮기는 일이 많아서 (はい → "I know.", はーい → "What?") 이 표를 먼저 쓴다.
+const _fillers = <String, Map<String, Map<String, String>>>{
+  'ja': {
+    'はい': {'en': 'Yes.', 'ko': '네.'},
+    'はーい': {'en': 'Okay!', 'ko': '네~'},
+    'はいはい': {'en': 'Yes, yes.', 'ko': '네, 네.'},
+    'うん': {'en': 'Yeah.', 'ko': '응.'},
+    'うんうん': {'en': 'Yeah, yeah.', 'ko': '응응.'},
+    'ええ': {'en': 'Yes.', 'ko': '네.'},
+    'えー': {'en': 'Um...', 'ko': '음...'},
+    'えっと': {'en': 'Um...', 'ko': '음...'},
+    'えーと': {'en': 'Um...', 'ko': '음...'},
+    'あー': {'en': 'Ah...', 'ko': '아...'},
+    'あ': {'en': 'Oh.', 'ko': '아.'},
+    'あっ': {'en': 'Oh!', 'ko': '앗.'},
+    'うーん': {'en': 'Hmm...', 'ko': '음...'},
+    'そう': {'en': 'Right.', 'ko': '맞아.'},
+    'そうそう': {'en': 'Right, right.', 'ko': '맞아 맞아.'},
+    'そうそうそう': {'en': 'Right, right.', 'ko': '맞아 맞아.'},
+    'そうですね': {'en': "That's right.", 'ko': '그렇네요.'},
+    'そうなんです': {'en': "That's right.", 'ko': '그렇거든요.'},
+    'そうなんだ': {'en': 'I see.', 'ko': '그렇구나.'},
+    'なるほど': {'en': 'I see.', 'ko': '그렇구나.'},
+    'ね': {'en': 'Right?', 'ko': '그치?'},
+    'ねえ': {'en': 'Hey.', 'ko': '있잖아.'},
+    'へえ': {'en': 'Huh.', 'ko': '오~'},
+    'へー': {'en': 'Huh.', 'ko': '오~'},
+    'ほんとに': {'en': 'Really?', 'ko': '정말?'},
+    'ありがとうございます': {'en': 'Thank you.', 'ko': '감사합니다.'},
+    'ありがとう': {'en': 'Thanks.', 'ko': '고마워.'},
+    'さようなら': {'en': 'Goodbye.', 'ko': '안녕히 계세요.'},
+    'バイバイ': {'en': 'Bye-bye.', 'ko': '바이바이.'},
+    'おはようございます': {'en': 'Good morning.', 'ko': '안녕하세요.'},
+    'こんにちは': {'en': 'Hello.', 'ko': '안녕하세요.'},
+  },
+  'ko': {
+    '네': {'en': 'Yes.', 'ja': 'はい。'},
+    '예': {'en': 'Yes.', 'ja': 'はい。'},
+    '응': {'en': 'Yeah.', 'ja': 'うん。'},
+    '음': {'en': 'Hmm.', 'ja': 'うーん。'},
+    '어': {'en': 'Uh.', 'ja': 'あ。'},
+    '아': {'en': 'Oh.', 'ja': 'あ。'},
+    '그래': {'en': 'Okay.', 'ja': 'そう。'},
+    '맞아': {'en': 'Right.', 'ja': 'そうそう。'},
+    '감사합니다': {'en': 'Thank you.', 'ja': 'ありがとうございます。'},
+    '안녕하세요': {'en': 'Hello.', 'ja': 'こんにちは。'},
+  },
+  'en': {
+    'yes': {'ko': '네.', 'ja': 'はい。'},
+    'yeah': {'ko': '응.', 'ja': 'うん。'},
+    'okay': {'ko': '좋아.', 'ja': 'オーケー。'},
+    'ok': {'ko': '좋아.', 'ja': 'オーケー。'},
+    'um': {'ko': '음...', 'ja': 'えーと。'},
+    'uh': {'ko': '어...', 'ja': 'えー。'},
+    'oh': {'ko': '아.', 'ja': 'あ。'},
+    'right': {'ko': '맞아.', 'ja': 'そうそう。'},
+    'thank you': {'ko': '감사합니다.', 'ja': 'ありがとうございます。'},
+  },
+};
+
+/// 짧은 말 표에 있으면 그 번역 ([src] · [tgt] 는 언어 코드 ja · ko · en). 없으면 null.
+String? fillerTranslation(String text, String src, String tgt) {
+  final table = _fillers[src];
+  if (table == null) return null;
+  var key = text
+      .toLowerCase()
+      .replaceAll(RegExp(r'[\s\p{P}~〜!！?？]', unicode: true), ' ')
+      .trim()
+      .replaceAll(RegExp(r' +'), src == 'en' ? ' ' : '')
+      .replaceAll(RegExp(r'ー+'), 'ー');
+  return table[key]?[tgt];
+}
+
+/// 여러 줄 번역: 짧은 말 표에 있는 줄은 표의 번역을 쓰고, 나머지만 [translate] (번역 모델) 에 넘긴다.
+Future<List<String>> translateKeepingFillers(
+  List<String> lines,
+  Future<List<String>> Function(List<String> rest) translate, {
+  required String src,
+  required String tgt,
+}) async {
+  final out = List<String?>.filled(lines.length, null);
+  final rest = <int>[];
+  for (var i = 0; i < lines.length; i++) {
+    final f = fillerTranslation(lines[i], src, tgt);
+    if (f != null) {
+      out[i] = f;
+    } else {
+      rest.add(i);
+    }
+  }
+  if (rest.isNotEmpty) {
+    final got = await translate([for (final i in rest) lines[i]]);
+    for (var k = 0; k < rest.length && k < got.length; k++) {
+      out[rest[k]] = got[k];
+    }
+  }
+  return [for (var i = 0; i < lines.length; i++) out[i] ?? lines[i]];
+}
+
 /// 음성인식 구간 → 자막 줄 정리
 /// - 빈 줄, "[BLANK_AUDIO]" · "(음악)" 같은 비음성 표시 제거
+/// - 말이 없는 곳 (끝 음악 등) 에서 음성인식이 지어낸 같은 말 되풀이 정리:
+///   같은 줄이 [repeatRun] 번 넘게 이어지면 첫 줄만 남기고, 아주 짧은 말 ("ん" · "う" 등) 이면 모두 뺀다
 /// - 긴 줄은 두 줄로 나눔 (한 줄 약 [maxLine] 글자)
-List<Cue> cleanRecognized(List<Cue> raw, {int maxLine = 42}) {
-  final out = <Cue>[];
+List<Cue> cleanRecognized(List<Cue> raw, {int maxLine = 42, int repeatRun = 3}) {
+  final kept = <Cue>[];
   for (final c in raw) {
     final t = c.text.replaceAll(RegExp(r'\s+'), ' ').trim();
     if (t.isEmpty || _nonSpeech.hasMatch(t)) continue;
     if (c.end <= c.start) continue;
-    out.add(Cue(c.start, c.end, _wrap(t, maxLine)));
+    kept.add(Cue(c.start, c.end, t));
+  }
+  final out = <Cue>[];
+  for (var i = 0; i < kept.length;) {
+    var j = i + 1;
+    while (j < kept.length && kept[j].text == kept[i].text) {
+      j++;
+    }
+    final run = j - i;
+    if (run > repeatRun) {
+      // 되풀이: 짧은 소리 ("ん" 등) 면 모두 빼고, 아니면 첫 줄만
+      final core = kept[i].text.replaceAll(RegExp(r'[\s\p{P}]', unicode: true), '');
+      if (core.length > 2) out.add(Cue(kept[i].start, kept[i].end, _wrap(kept[i].text, maxLine)));
+    } else {
+      for (var k = i; k < j; k++) {
+        out.add(Cue(kept[k].start, kept[k].end, _wrap(kept[k].text, maxLine)));
+      }
+    }
+    i = j;
   }
   return out;
 }

@@ -83,6 +83,39 @@ void main() {
         'This sentence is definitely much longer than forty two characters in total');
   });
 
+  test('인식 결과 정리: 말 없는 곳에서 지어낸 되풀이 (ん · ん · ん …) 는 빼고, 진짜 대화의 짧은 반복은 둔다', () {
+    Cue cue(int s, String t) => Cue(Duration(seconds: s), Duration(seconds: s + 1), t);
+    final out = cleanRecognized([
+      cue(0, 'はい'),
+      cue(1, 'はい'),
+      cue(2, 'それでは'),
+      for (var i = 0; i < 5; i++) cue(10 + i, 'ん'),
+      for (var i = 0; i < 6; i++) cue(20 + i, 'ご視聴ありがとうございました'),
+    ]);
+    expect([for (final c in out) c.text], ['はい', 'はい', 'それでは', 'ご視聴ありがとうございました']);
+  });
+
+  test('짧은 말 (はい · えー · そうそう …) 은 표의 번역, 나머지만 번역 모델로', () async {
+    expect(fillerTranslation('はい。', 'ja', 'en'), 'Yes.');
+    expect(fillerTranslation('はーーい！', 'ja', 'ko'), '네~');
+    expect(fillerTranslation('えー、', 'ja', 'en'), 'Um...');
+    expect(fillerTranslation('Thank you!', 'en', 'ja'), 'ありがとうございます。');
+    expect(fillerTranslation('はい、皆さんこんにちは', 'ja', 'en'), isNull);
+    expect(fillerTranslation('はい', 'ja', 'fr'), isNull); // 표에 없는 언어는 모델로
+    final sent = <String>[];
+    final out = await translateKeepingFillers(
+      ['はい。', '大学はどこに行けばいいですかね', 'そうそう', '頭がいい人が好きなんだ'],
+      (rest) async {
+        sent.addAll(rest);
+        return [for (final r in rest) 'EN($r)'];
+      },
+      src: 'ja',
+      tgt: 'en',
+    );
+    expect(sent, ['大学はどこに行けばいいですかね', '頭がいい人が好きなんだ']);
+    expect(out, ['Yes.', 'EN(大学はどこに行けばいいですかね)', 'Right, right.', 'EN(頭がいい人が好きなんだ)']);
+  });
+
   test('흐름: 영어 영상 → _AI.srt + _ko/_en/_ja.srt, MKV 목록에 추가', () async {
     final tool = ProcessMediaTool('ffmpeg', 'ffprobe');
     if (await tool.version() == null) return markTestSkipped('FFmpeg 없음');

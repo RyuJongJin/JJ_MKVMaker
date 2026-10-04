@@ -845,11 +845,16 @@ class AppController extends ChangeNotifier {
             await _translator!.load(await services.models.folderOf(nllbModel));
           }
           phase(trf('{0} 번역 중', [tgt.name]), base);
-          final texts = await _translator!.translate(
+          final texts = await translateKeepingFillers(
             [for (final c in cues) c.text.replaceAll('\n', ' ')],
-            source: src.nllb,
-            target: tgt.nllb,
-            onProgress: (x) => phase(trf('{0} 번역 중 {1}%', [tgt.name, (x * 100).round()]), base + span * x),
+            (rest) => _translator!.translate(
+              rest,
+              source: src.nllb,
+              target: tgt.nllb,
+              onProgress: (x) => phase(trf('{0} 번역 중 {1}%', [tgt.name, (x * 100).round()]), base + span * x),
+            ),
+            src: src.code,
+            tgt: tgt.code,
           );
           out = [
             for (var k = 0; k < cues.length; k++)
@@ -1035,11 +1040,16 @@ class AppController extends ChangeNotifier {
         final tgt = langs[i];
         final base = 0.25 + 0.75 * i / langs.length;
         final span = 0.75 / langs.length;
-        final texts = await translator.translate(
+        final texts = await translateKeepingFillers(
           [for (final c in cues) c.text.replaceAll('\n', ' ')],
-          source: src.nllb,
-          target: tgt.nllb,
-          onProgress: (x) => phase(trf('{0} → {1} 번역 {2}%', [src.name, tgt.name, (x * 100).round()]), base + span * x),
+          (rest) => translator!.translate(
+            rest,
+            source: src.nllb,
+            target: tgt.nllb,
+            onProgress: (x) => phase(trf('{0} → {1} 번역 {2}%', [src.name, tgt.name, (x * 100).round()]), base + span * x),
+          ),
+          src: src.code,
+          tgt: tgt.code,
         );
         final out = [
           for (var k = 0; k < cues.length; k++)
