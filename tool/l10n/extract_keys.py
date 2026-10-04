@@ -94,8 +94,18 @@ for root, _, files in os.walk('lib'):
             continue
         path = os.path.join(root, f).replace('\\', '/')
         src = open(path, encoding='utf-8').read()
-        for start, lits in literal_groups(src):
-            before = src[max(0, start - 8):start]
+        # (그 글이 들어 있는 소스, 위치, 문자열 묶음). 문자열 안의 ${...} 식에 든 문자열도
+        # (예: '${n}%${x ? tr(' (보통)') : ''}') 다시 찾는다.
+        todo = [(src, st, lits) for st, lits in literal_groups(src)]
+        k = 0
+        while k < len(todo):
+            for l in todo[k][2]:
+                for part in l.parts:
+                    if part[0] == 'expr':
+                        todo.extend((part[1], st, ls) for st, ls in literal_groups(part[1]))
+            k += 1
+        for text_src, start, lits in todo:
+            before = text_src[max(0, start - 8):start]
             wrapped = re.search(r'\btrf?\(\s*$', before) is not None
             text = group_text(lits)
             if not HANGUL.search(text):
