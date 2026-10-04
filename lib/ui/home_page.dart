@@ -454,13 +454,17 @@ class _VideoList extends StatelessWidget {
               Expanded(
                 child: InkWell(
                   onTap: c.videos.isEmpty ? null : c.toggleAllChecked,
-                  child: Text(
-                      c.checked.isEmpty
-                          ? trf('동영상 {0}개 · 전체 선택', [c.videos.length])
-                          : trf('선택 {0} / {1}개', [c.checked.length, c.videos.length]),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: JjColors.textDim, fontSize: 12)),
+                  // 좁으면 글자를 줄여서 한 줄에 다 보이게
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                        c.checked.isEmpty
+                            ? trf('동영상 {0}개 · 전체 선택', [c.videos.length])
+                            : trf('선택 {0} / {1}개', [c.checked.length, c.videos.length]),
+                        maxLines: 1,
+                        style: const TextStyle(color: JjColors.textDim, fontSize: 12)),
+                  ),
                 ),
               ),
               // 정렬: 같은 것을 다시 누르면 반대 순서
@@ -907,7 +911,7 @@ class _SubtitleRow extends StatelessWidget {
           ),
           if (c.services.createTranslator != null)
             IconButton(
-              tooltip: c.canEdit(s) ? trf('다른 언어로 번역 (AI · 이 {0} 에서)', [Platform.isAndroid ? tr('기기') : 'PC']) : tr('이미지 자막은 번역할 수 없습니다'),
+              tooltip: c.canEdit(s) ? trf('다른 언어로 번역 (AI · 이 {0}에서)', [Platform.isAndroid ? tr('기기') : 'PC']) : tr('이미지 자막은 번역할 수 없습니다'),
               iconSize: 18,
               onPressed: locked || off || !c.canEdit(s) ? null : () => showTranslateDialog(context, c, v, s),
               icon: const Icon(Icons.translate, color: JjColors.accent),

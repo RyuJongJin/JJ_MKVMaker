@@ -17,6 +17,10 @@
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:requestLegacyExternalStorage="true">
+        <!-- Android 16: 큰 화면 (태블릿) 에서도 환경 설정 > 화면 방향 (가로 고정 · 세로 고정) 을 따르게 -->
+        <property
+            android:name="android.window.PROPERTY_COMPAT_ALLOW_RESTRICTED_RESIZABILITY"
+            android:value="true" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

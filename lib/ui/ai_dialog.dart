@@ -79,7 +79,7 @@ class _AiDialogState extends State<_AiDialog> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(trf('영상의 음성을 인식하고 선택한 언어로 번역합니다. 모든 처리는 이 {0} 에서 이루어집니다.', [Platform.isAndroid ? tr('기기') : 'PC']),
+              Text(trf('영상의 음성을 인식하고 선택한 언어로 번역합니다. 모든 처리는 이 {0}에서 이루어집니다.', [Platform.isAndroid ? tr('기기') : 'PC']),
                   style: const TextStyle(fontSize: 12, color: JjColors.textDim)),
               const SizedBox(height: 16),
               _label(tr('원어 (영상 속 언어)')),

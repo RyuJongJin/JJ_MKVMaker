@@ -340,9 +340,26 @@ class AppController extends ChangeNotifier {
     for (final d in siblings) {
       await _addExternal(v, d.path, d.language);
     }
+    // 전에 만든 자막 (jj_mkv 의 파일명_ko.srt 등: AI 자막 · 번역 · 인터넷 자막) 도 다시 연결
+    // (앱을 다시 켜거나 목록에 다시 넣어도 MKV 에 빠지지 않게). 음성인식 원본 파일명_AI.srt 는 언어별 파일과 같아서 뺀다.
+    var made = 0;
+    final out = outputDirFor(v.path);
+    if (!p.equals(out, v.directory)) {
+      List<String> files = const [];
+      try {
+        files = await services.storage.listFiles(out);
+      } catch (_) {}
+      for (final d in findSiblingSubtitles(v.path, files)) {
+        if (d.isAi || d.language == undetermined) continue;
+        if (v.subtitles.any((s) => s.path != null && p.equals(s.path!, d.path))) continue;
+        await _addExternal(v, d.path, d.language);
+        made++;
+      }
+    }
     final embeddedCount =
         v.subtitles.where((s) => s.kind == SubtitleKind.embedded).length;
-    _log(trf('추가: {0} (내장 자막 {1}개, 같은 폴더 자막 {2}개)', [v.fileName, embeddedCount, siblings.length]));
+    _log(trf('추가: {0} (내장 자막 {1}개, 같은 폴더 자막 {2}개)', [v.fileName, embeddedCount, siblings.length]) +
+        (made > 0 ? trf(' · 전에 만든 자막 {0}개 (jj_mkv)', [made]) : ''));
     notifyListeners();
   }
 

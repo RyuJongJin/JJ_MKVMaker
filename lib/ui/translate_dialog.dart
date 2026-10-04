@@ -87,7 +87,7 @@ class _TranslateDialogState extends State<_TranslateDialog> {
             ]),
             const SizedBox(height: 16),
             Row(children: [
-              Text(trf('번역 모델: NLLB-200 (이 {0} 에서만)  ', [Platform.isAndroid ? tr('기기') : 'PC']), style: const TextStyle(fontSize: 13)),
+              Text(trf('번역 모델: NLLB-200 (이 {0}에서만)  ', [Platform.isAndroid ? tr('기기') : 'PC']), style: const TextStyle(fontSize: 13)),
               if (_installed != null)
                 Text(_installed! ? tr('설치됨') : trf('처음 사용 시 내려받기 {0}', [nllbModel.sizeLabel]),
                     style: TextStyle(fontSize: 11, color: _installed! ? JjColors.success : JjColors.textDim)),

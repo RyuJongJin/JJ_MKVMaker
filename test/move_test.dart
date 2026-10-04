@@ -62,6 +62,20 @@ void main() {
     expect(c.selected, busy);
   });
 
+  test('목록에 다시 넣으면 (앱을 다시 켜도) 전에 만든 자막 (jj_mkv 의 파일명_ko.srt 등) 이 다시 붙는다', () async {
+    final c = _controller();
+    final video = make('강의.mp4').path;
+    make(p.join('jj_mkv', '강의_AI.srt'));
+    make(p.join('jj_mkv', '강의_ko.srt'));
+    make(p.join('jj_mkv', '강의_en.srt'));
+    make(p.join('jj_mkv', '다른영상_ko.srt'));
+    make('강의.ja.srt'); // 같은 폴더 자막
+    await c.addVideos([video]);
+    final v = c.videos.single;
+    expect([for (final s in v.subtitles) p.basename(s.path!)]..sort(), ['강의.ja.srt', '강의_en.srt', '강의_ko.srt']);
+    expect(v.subtitles.firstWhere((s) => s.path!.endsWith('_ko.srt')).language.code, 'ko');
+  });
+
   test('이동 폴더를 안 정했으면 옮기지 않는다', () async {
     final c = _controller();
     final a = VideoItem(make('a.mp4').path);
