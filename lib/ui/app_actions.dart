@@ -126,7 +126,9 @@ class AppNavButtons extends StatelessWidget {
           scope == null || onExplorerPage ? null : () => ExplorerPage.open(Navigator.of(context), c: scope.controller),
           here: onExplorerPage,
         ),
-        btn(const Icon(Icons.arrow_back), tr('뒤로'), atRoot ? null : () => Navigator.maybePop(context)),
+        btn(const Icon(Icons.arrow_back), tr('뒤로'),
+            // 브라우저 화면: 뒤로 키는 웹 페이지 뒤로 (PopScope) 이지만 이 버튼은 화면 이동이라 바로 닫는다
+            atRoot ? null : () => onBrowserPage ? Navigator.pop(context) : Navigator.maybePop(context)),
         btn(
           Icon(Icons.download_for_offline_outlined, color: onDownloadsPage ? JjColors.accent : null),
           onDownloadsPage ? tr('다운로드 목록 (지금 여기)') : tr('다운로드 목록'),

@@ -417,7 +417,8 @@ Future<void> runAndroid(String dataDir) async {
   downloads.log = controller.note;
   // 진행 중인 일이 있으면 화면에서 내려가도 계속 (알림에 진행 상황)
   AndroidKeepAlive(controller, downloads);
-  // 백그라운드로 실행: 화면을 닫았다가 다시 열면 새 화면 (Activity) 이 살아 있던 엔진에 붙는다 → 화면 방향을 다시 적용
+  // 백그라운드로 실행: 화면 (Activity) 을 닫아도 엔진은 살아 있다가 다시 열면 새 화면에 붙는다 → 화면 방향을 다시 적용
+  // (웹뷰는 텍스처로 그려 새 화면에 붙어도 그대로 보인다: browser_page _webSettings)
   AppLifecycleListener(onResume: () => applyScreenOrientation(controller.settings.screenOrientation));
   // 동영상 목록 기억 (앱을 껐다 켜도 그대로, 없어진 파일은 뺀다) - Windows 와 같은 파일
   unawaited(controller.shareVideoList(p.join(dataDir, 'videos.json')));
@@ -468,6 +469,7 @@ Future<void> runAndroid(String dataDir) async {
       messengerKey.currentState?.showSnackBar(SnackBar(
         duration: const Duration(seconds: 20),
         content: Text(tr('동영상을 고르고 MKV 를 만들려면 "모든 파일에 대한 접근" 권한이 필요합니다.')),
+        persist: false, // Flutter 3.47+: [action] 이 있으면 기본은 안 사라짐 → duration 대로 닫기
         action: SnackBarAction(label: tr('허용'), onPressed: AndroidAccess.request),
       ));
     }

@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jj_mkvmaker/app/app_controller.dart';
@@ -50,8 +51,9 @@ class _Nav implements WebNav {
   final loads = <String>[];
   @override
   Future<void> load(String url) async => loads.add(url);
+  int backs = 0;
   @override
-  Future<void> back() async {}
+  Future<void> back() async => backs++;
   @override
   Future<void> forward() async {}
   @override
@@ -290,6 +292,60 @@ void main() {
     d.dispose();
   });
 
+  testWidgets('Android 뒤로 키: 앞 웹 페이지가 있으면 웹 뒤로, 없으면 화면 닫기 · 위쪽 ← 는 늘 닫기', (tester) async {
+    tester.view.physicalSize = const Size(1500, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    final dir = Directory.systemTemp.createTempSync('jj_back_');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final c = AppController(PlatformServices(mediaTool: ProcessMediaTool('x', 'y'), storage: DesktopStorageService()));
+    final bm = BookmarksController(p.join(dir.path, 'bookmarks.json'));
+    final navKey = GlobalKey<NavigatorState>();
+    late BrowserHost host;
+    final nav = _Nav();
+    Future<void> open() async {
+      navKey.currentState!.push(MaterialPageRoute<void>(
+        builder: (_) => BrowserPage(
+          c: c,
+          bookmarks: bm,
+          initialUrl: 'https://example.com/',
+          viewBuilder: (h, url) {
+            host = h;
+            h.attach(nav);
+            return const ColoredBox(color: Colors.white);
+          },
+        ),
+      ));
+      await tester.pumpAndSettle();
+    }
+
+    await tester.pumpWidget(MaterialApp(navigatorKey: navKey, home: const Scaffold(body: Text('MKV 화면'))));
+    await open();
+    host.onHistory(true, false);
+    await tester.pump();
+    await tester.binding.handlePopRoute(); // 기기의 뒤로 키
+    await tester.pumpAndSettle();
+    expect(nav.backs, 1);
+    expect(find.byType(BrowserPage), findsOneWidget);
+    host.onHistory(false, true);
+    await tester.pump();
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(nav.backs, 1);
+    expect(find.byType(BrowserPage), findsNothing);
+
+    // 위쪽 ← (화면 이동) 은 웹 기록이 있어도 브라우저 화면을 닫는다
+    await open();
+    host.onHistory(true, false);
+    await tester.pump();
+    await tester.tap(find.byTooltip('뒤로'));
+    await tester.pumpAndSettle();
+    expect(nav.backs, 1);
+    expect(find.byType(BrowserPage), findsNothing);
+    debugDefaultTargetPlatformOverride = null; // 끝나기 전에 되돌려야 한다 (테스트 검사)
+  });
+
   testWidgets('브라우저: ☆ 추가 · 표시줄 · 다운로드 버튼 · 관리 패널 (삭제 · 실행 취소)', (tester) async {
     tester.view.physicalSize = const Size(1500, 900);
     tester.view.devicePixelRatio = 1;
@@ -362,6 +418,18 @@ void main() {
     await tester.pumpAndSettle();
     expect(bm.tree.findByUrl('https://www.youtube.com/watch?v=abc'), isNull);
     await tester.tap(find.text('실행 취소'));
+    await tester.pumpAndSettle();
+    expect(bm.tree.findByUrl('https://www.youtube.com/watch?v=abc'), isNotNull);
+    // 실행 취소 알림은 누르지 않으면 몇 초 뒤 저절로 사라진다 (Flutter 3.47+ 는 action 이 있으면 기본이 안 사라짐)
+    await tester.tap(find.byTooltip('더 보기').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('삭제').last);
+    await tester.pumpAndSettle();
+    expect(find.text('실행 취소'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+    expect(find.text('실행 취소'), findsNothing);
+    bm.undoRemove();
     await tester.pumpAndSettle();
     expect(bm.tree.findByUrl('https://www.youtube.com/watch?v=abc'), isNotNull);
 

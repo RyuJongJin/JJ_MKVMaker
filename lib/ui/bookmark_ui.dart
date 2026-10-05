@@ -239,6 +239,7 @@ void removeBookmarkWithUndo(BuildContext context, BookmarksController bm, Bookma
     ..clearSnackBars()
     ..showSnackBar(SnackBar(
       content: Text(n.isFolder ? trf('폴더 삭제: {0} (안의 {1}개 포함)', [n.title, bm.tree.countLinks(n)]) : trf('삭제: {0}', [n.title])),
+      persist: false, // Flutter 3.47+: [action] 이 있으면 기본은 안 사라짐 → duration 대로 닫기
       action: SnackBarAction(label: tr('실행 취소'), onPressed: bm.undoRemove),
     ));
 }

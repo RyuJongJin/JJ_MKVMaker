@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
@@ -355,6 +356,7 @@ class _BrowserPageState extends State<BrowserPage> with RouteAware {
       content: Text(trf('다운로드 추가: {0}', [_title.isEmpty ? _url : _title])),
       duration: const Duration(minutes: 10),
       showCloseIcon: true, // [✕] 로 바로 닫기
+      persist: false, // Flutter 3.47+: [action] 이 있으면 기본은 안 사라짐 → duration 대로 닫기
       action: SnackBarAction(label: tr('목록 보기'), onPressed: () => DownloadsPage.open(nav, d)),
     ));
     // 받기 준비가 끝나면 (진행률이 나오거나 · 끝 · 실패 · 취소 · 목록에서 지움) 알림을 닫는다
@@ -420,7 +422,14 @@ class _BrowserPageState extends State<BrowserPage> with RouteAware {
         const SingleActivator(LogicalKeyboardKey.arrowLeft, alt: true): () => _nav?.back(),
         const SingleActivator(LogicalKeyboardKey.arrowRight, alt: true): () => _nav?.forward(),
       },
-      child: Focus(
+      // Android 뒤로 키: 앞 웹 페이지가 있으면 웹 페이지 뒤로 (없으면 브라우저 화면을 닫는다).
+      // 앱 위쪽의 ← (화면 이동) 은 이것과 상관없이 브라우저 화면을 닫는다 (AppNavButtons.onBrowserPage).
+      child: PopScope(
+        canPop: !(defaultTargetPlatform == TargetPlatform.android && _canBack),
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) _nav?.back();
+        },
+        child: Focus(
         autofocus: true,
         child: Scaffold(
           body: ListenableBuilder(
@@ -494,6 +503,7 @@ class _BrowserPageState extends State<BrowserPage> with RouteAware {
             ]),
           ),
         ),
+      ),
       ),
     );
   }
@@ -609,6 +619,9 @@ InAppWebViewSettings _webSettings({required bool javaScript}) => InAppWebViewSet
       javaScriptEnabled: javaScript,
       mediaPlaybackRequiresUserGesture: false,
       supportMultipleWindows: false,
+      // Android: 텍스처로 그린다. 기본 hybrid composition 은 백그라운드로 실행 중 화면 (Activity) 이 새로 붙을 때
+      // Impeller 가 "EGL Bad Access" 로 그리지 못해 앱 화면이 비어 버린다.
+      useHybridComposition: false,
     );
 
 class _EdgeView extends StatefulWidget {
