@@ -59,6 +59,9 @@ void main() {
     expect(find.text('상위 폴더'), findsOneWidget);
     expect(find.text('doc.txt'), findsOneWidget);
     expect(find.byTooltip('표시 (여러 개 고르기)'), findsNothing);
+    // 모니터링 · rsync 는 Rsync 화면에만
+    expect(find.text('모니터링'), findsNothing);
+    expect(find.text('좌 → 우'), findsNothing);
 
     // 폴더를 한 번 누르면 바로 펼치고, 다시 누르면 접는다
     await act(tester, () => tester.tap(find.text('sub')));
@@ -277,6 +280,69 @@ void main() {
     final back = AppSettings.fromJson(c.settings.toJson());
     expect([back.explorerLayout, back.explorerToolbar, back.explorerButtons],
         [c.settings.explorerLayout, c.settings.explorerToolbar, c.settings.explorerButtons]);
+  });
+
+  testWidgets('Rsync 화면: 늘 좌우 두 창 · 폴더만 · 창마다 하나만 고르기 · → ← ⇄ · 모니터링', (tester) async {
+    Directory(p.join(left, 'sub2')).createSync();
+    Directory(p.join(right, 'rsub')).createSync();
+    File(p.join(right, 'r.txt')).writeAsStringSync('r');
+    c.settings
+      ..explorerLayout = 'single' // 파일 탐색기 배치와 상관없이 두 창
+      ..rsyncPaths = [left, right];
+    tester.view.physicalSize = const Size(1600, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.runAsync(() => tester.pumpWidget(MaterialApp(home: ExplorerPage(c: c, rsync: true))));
+    await settle(tester, () => find.text('sub').evaluate().isNotEmpty && find.text('rsub').evaluate().isNotEmpty);
+    expect(find.text('Rsync'), findsWidgets);
+    // 폴더만 (파일은 안 보임) · 버튼은 → ← ⇄ 모니터링 (파일 기능 · 선택 없음)
+    expect(find.text('doc.txt'), findsNothing);
+    expect(find.text('r.txt'), findsNothing);
+    for (final t in ['좌 → 우', '좌 ← 우', '좌 ⇄ 우', '모니터링']) {
+      expect(find.text(t), findsOneWidget);
+    }
+    expect(find.text('선택'), findsNothing);
+    expect(find.text('삭제'), findsNothing);
+
+    // 고르지 않고 → : 알림
+    await act(tester, () => tester.tap(find.text('좌 → 우')));
+    expect(find.text('왼쪽 · 오른쪽 창에서 폴더를 하나씩 고르세요.'), findsOneWidget);
+
+    // 창마다 하나만: sub → sub2 로 바꾸면 sub 는 풀림, 다시 누르면 취소
+    await act(tester, () => tester.tap(find.text('sub')));
+    await act(tester, () => tester.tap(find.text('sub2')));
+    await settle(tester, () => false, rounds: 5);
+    expect(find.byTooltip('고르기 취소'), findsOneWidget);
+    await act(tester, () => tester.tap(find.text('sub2')));
+    await settle(tester, () => false, rounds: 5);
+    expect(find.byTooltip('고르기 취소'), findsNothing);
+    await act(tester, () => tester.tap(find.text('sub')));
+    await act(tester, () => tester.tap(find.text('rsub')));
+    await settle(tester, () => false, rounds: 5);
+    expect(find.byTooltip('고르기 취소'), findsNWidgets(2)); // 왼쪽 하나 · 오른쪽 하나
+
+    // ⇄ : 두 방향을 보여 주고 -u, 취소하면 모니터링에 남지 않는다
+    await act(tester, () => tester.tap(find.text('좌 ⇄ 우')));
+    await tester.pumpAndSettle();
+    expect(find.text('rsync 양쪽 (⇄)'), findsOneWidget);
+    expect(find.text('${p.join(left, 'sub')}/'), findsOneWidget);
+    expect(find.text('→  ${p.join(right, 'rsub')}/'), findsOneWidget);
+    expect(find.text('${p.join(right, 'rsub')}/'), findsOneWidget);
+    expect(find.text('→  ${p.join(left, 'sub')}/'), findsOneWidget);
+    expect(find.textContaining('-avPog -u'), findsNWidgets(2));
+    await tester.tap(find.text('취소'));
+    await tester.pumpAndSettle();
+    expect(c.settings.copyTasks, isEmpty);
+    // → 는 한 방향 · -u 없이
+    await act(tester, () => tester.tap(find.text('좌 → 우')));
+    await tester.pumpAndSettle();
+    expect(find.text('→  ${p.join(right, 'rsub')}/'), findsOneWidget);
+    expect(find.text('→  ${p.join(left, 'sub')}/'), findsNothing);
+    expect(find.textContaining('-u'), findsNothing);
+    await tester.tap(find.text('취소'));
+    await tester.pumpAndSettle();
+    // 고른 폴더는 기억 (다음에 열 때 그 폴더부터)
+    expect(c.settings.rsyncPaths, [p.join(left, 'sub'), p.join(right, 'rsub')]);
   });
 }
 

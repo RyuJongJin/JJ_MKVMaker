@@ -15,11 +15,13 @@ import 'rsync_setup.dart';
 import 'schedule_editor.dart';
 import 'theme.dart';
 
-/// 환경 설정 > 파일 탐색기 의 복사 · 이동 · 동기화 부분:
-/// 파일 / 폴더 복사 방법 (현재 방식 · rsync · robocopy), 옵션, 여러 개 실행 방식, 속도 제한, rsync 가져오기, 실시간 동기화.
+/// 환경 설정의 복사 · 동기화 부분.
+/// - 파일 탐색기 ([rsync] false): 파일 / 폴더 복사 방법 (현재 방식 · robocopy), robocopy 옵션, 속도 제한
+/// - Rsync ([rsync] true): rsync 옵션, rsync 가져오기, 실시간 동기화 (lsync) · 백그라운드로 실행
 class CopySyncSettings extends StatefulWidget {
   final AppController c;
-  const CopySyncSettings({super.key, required this.c});
+  final bool rsync;
+  const CopySyncSettings({super.key, required this.c, this.rsync = false});
 
   @override
   State<CopySyncSettings> createState() => _CopySyncSettingsState();
@@ -46,12 +48,14 @@ class _CopySyncSettingsState extends State<CopySyncSettings> {
     }
   }
 
+  /// 파일 탐색기의 방법 (rsync 는 Rsync 화면에서)
   List<DropdownMenuItem<String>> _methods() => [
         for (final m in CopyMethod.values)
-          if (copyMethodAvailable(m, c.settings)) DropdownMenuItem(value: m.name, child: Text(tr(m.label))),
+          if (m != CopyMethod.rsync && copyMethodAvailable(m, c.settings))
+            DropdownMenuItem(value: m.name, child: Text(tr(m.label))),
       ];
 
-  String _valid(String v) => copyMethodAvailable(CopyMethod.of(v), c.settings) ? v : 'builtin';
+  String _valid(String v) => v == 'robocopy' && Platform.isWindows ? v : 'builtin';
 
   /// 옵션 입력칸 (바꾸면 바로 저장, ↺ 로 기본값)
   Widget _options(String title, String hint, String value, String def, void Function(AppSettings, String) set) => ListTile(
@@ -82,48 +86,36 @@ class _CopySyncSettingsState extends State<CopySyncSettings> {
       );
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => widget.rsync ? _rsyncPart() : _explorerPart();
+
+  /// 파일 탐색기: 복사 · 이동 방법 (현재 방식 · robocopy) · 옵션 · 속도 제한
+  Widget _explorerPart() {
     final s = c.settings;
     final desk = Platform.isWindows;
-    final rsyncUsable = copyMethodAvailable(CopyMethod.rsync, s);
     return Column(children: [
       const Divider(height: 1),
-      ListTile(
-        title: Text(tr('파일 복사 · 이동 방법')),
-        subtitle: Text(tr('파일만 골랐을 때')),
-        trailing: DropdownButton<String>(
-          value: _valid(s.copyMethodFile),
-          items: _methods(),
-          onChanged: (v) => c.updateSettings((x) => x.copyMethodFile = v!),
+      if (desk) ...[
+        ListTile(
+          title: Text(tr('파일 복사 · 이동 방법')),
+          subtitle: Text(tr('파일만 골랐을 때')),
+          trailing: DropdownButton<String>(
+            value: _valid(s.copyMethodFile),
+            items: _methods(),
+            onChanged: (v) => c.updateSettings((x) => x.copyMethodFile = v!),
+          ),
         ),
-      ),
-      ListTile(
-        title: Text(tr('폴더 복사 · 이동 방법')),
-        subtitle: Text(tr('폴더가 들어 있을 때')),
-        trailing: DropdownButton<String>(
-          value: _valid(s.copyMethodFolder),
-          items: _methods(),
-          onChanged: (v) => c.updateSettings((x) => x.copyMethodFolder = v!),
+        ListTile(
+          title: Text(tr('폴더 복사 · 이동 방법')),
+          subtitle: Text(tr('폴더가 들어 있을 때')),
+          trailing: DropdownButton<String>(
+            value: _valid(s.copyMethodFolder),
+            items: _methods(),
+            onChanged: (v) => c.updateSettings((x) => x.copyMethodFolder = v!),
+          ),
         ),
-      ),
-      if (rsyncUsable)
-        _options(tr('rsync 옵션'), tr('예: -avPog (보관 · 자세히 · 진행 · 소유자 · 그룹). 이동은 --remove-source-files 를 자동으로 붙임'),
-            s.rsyncOptions, defaultRsyncOptions, (x, v) => x.rsyncOptions = v),
-      if (desk)
         _options(tr('robocopy 옵션'), tr('예: /E /COPY:DAT /DCOPY:T /R:2 /W:2. 이동은 /MOVE 를 자동으로 붙임'), s.robocopyOptions,
             defaultRobocopyOptions, (x, v) => x.robocopyOptions = v),
-      ListTile(
-        title: Text(tr('여러 개를 골랐을 때')),
-        subtitle: Text(tr('rsync 를 항목마다 따로 실행하거나, 한 번에 실행 (robocopy 는 늘 폴더마다)')),
-        trailing: DropdownButton<String>(
-          value: s.copyRunMode,
-          items: [
-            DropdownMenuItem(value: 'each', child: Text(tr('항목마다 따로 (기본)'))),
-            DropdownMenuItem(value: 'once', child: Text(tr('한 번에'))),
-          ],
-          onChanged: (v) => c.updateSettings((x) => x.copyRunMode = v!),
-        ),
-      ),
+      ],
       ListTile(
         title: Text(tr('속도 제한 (KB/s)')),
         subtitle: Text(tr('0 = 제한 없음. 모든 방법에 적용: rsync --bwlimit, 현재 방식은 앱이 조절, robocopy 는 /IPG 로 비슷하게. '
@@ -140,6 +132,16 @@ class _CopySyncSettingsState extends State<CopySyncSettings> {
           ),
         ),
       ),
+    ]);
+  }
+
+  /// Rsync 화면: rsync 옵션 · rsync 가져오기 · 실시간 동기화 (lsync)
+  Widget _rsyncPart() {
+    final s = c.settings;
+    final desk = Platform.isWindows;
+    return Column(children: [
+      _options(tr('rsync 옵션'), tr('예: -avPog (보관 · 자세히 · 진행 · 소유자 · 그룹). 속도 제한은 파일 탐색기의 속도 제한을 함께 씀'),
+          s.rsyncOptions, defaultRsyncOptions, (x, v) => x.rsyncOptions = v),
       ListTile(
         title: Text(tr('rsync 가져오기')),
         subtitle: Text(_checking
@@ -199,13 +201,6 @@ class _CopySyncSettingsState extends State<CopySyncSettings> {
             child: Text(tr('고르기')),
           ),
         ),
-      SwitchListTile(
-        value: s.copyMonitor,
-        onChanged: (v) => c.updateSettings((x) => x.copyMonitor = v),
-        title: Text(tr('복사 모니터링')),
-        subtitle: Text(tr('파일 탐색기 가운데에 [모니터링] 버튼: 복사 · 이동을 기억해 진행 · 대상 디스크 용량 · 옵션을 보여 주고, '
-            '옵션을 고쳐 다시 실행 · 재개하거나 lsync 로 옮깁니다 (복사 · rsync 와 lsync 를 따로).')),
-      ),
       _LiveSyncTile(c: c),
     ]);
   }

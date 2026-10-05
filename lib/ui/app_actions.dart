@@ -50,9 +50,17 @@ class AppNavButtons extends StatelessWidget {
 
   /// 파일 탐색기 화면 자신
   final bool onExplorerPage;
-  const AppNavButtons({super.key, this.onDownloadsPage = false, this.onBrowserPage = false, this.onExplorerPage = false});
 
-  static const double width = 6 * 40;
+  /// Rsync 화면 자신
+  final bool onRsyncPage;
+  const AppNavButtons(
+      {super.key,
+      this.onDownloadsPage = false,
+      this.onBrowserPage = false,
+      this.onExplorerPage = false,
+      this.onRsyncPage = false});
+
+  static const double width = 7 * 40;
 
   /// MKV 화면 (맨 처음 화면) 까지 돌아가기
   static void toMkv(BuildContext context) => Navigator.of(context).popUntil((r) => r.isFirst);
@@ -125,6 +133,13 @@ class AppNavButtons extends StatelessWidget {
           onExplorerPage ? tr('파일 탐색기 (지금 여기)') : tr('파일 탐색기'),
           scope == null || onExplorerPage ? null : () => ExplorerPage.open(Navigator.of(context), c: scope.controller),
           here: onExplorerPage,
+        ),
+        // Rsync: 파일 탐색기 다음 (좌우 두 창 · 폴더 하나씩 골라 → ← ↔)
+        btn(
+          Icon(Icons.sync_alt, color: onRsyncPage ? JjColors.accent : null),
+          onRsyncPage ? tr('Rsync (지금 여기)') : 'Rsync',
+          scope == null || onRsyncPage ? null : () => ExplorerPage.openRsync(Navigator.of(context), c: scope.controller),
+          here: onRsyncPage,
         ),
         btn(const Icon(Icons.arrow_back), tr('뒤로'),
             // 브라우저 화면: 뒤로 키는 웹 페이지 뒤로 (PopScope) 이지만 이 버튼은 화면 이동이라 바로 닫는다

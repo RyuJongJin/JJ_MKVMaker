@@ -295,11 +295,11 @@ class AppSettings {
   bool explorerSortDesc = false;
   bool explorerShowHidden = false;
 
-  // ── 복사 · 이동 · 동기화 (파일 탐색기) ──
-  /// 방법: 'builtin' 현재 방식 (기본) · 'rsync' · 'robocopy' (Windows). 파일만 고를 때 / 폴더가 들어 있을 때
+  // ── 복사 · 이동 (파일 탐색기) · rsync · lsync (Rsync 화면) ──
+  /// 파일 탐색기의 복사 · 이동 방법: 'builtin' 현재 방식 (기본) · 'robocopy' (Windows). 파일만 고를 때 / 폴더가 들어 있을 때.
+  /// rsync 는 Rsync 화면에서 따로 (파일 탐색기에서는 쓰지 않음)
   String copyMethodFile = 'builtin';
-  /// 폴더 복사 · 이동 기본: rsync (앱에 들어 있음. 이 기기에서 못 쓰면 현재 방식으로)
-  String copyMethodFolder = 'rsync';
+  String copyMethodFolder = 'builtin';
   String rsyncOptions = '-avPog';
   String robocopyOptions = '/E /COPY:DAT /DCOPY:T /R:2 /W:2';
 
@@ -316,9 +316,11 @@ class AppSettings {
   /// 실시간 동기화 (lsyncd 처럼)
   List<LiveSyncPair> liveSyncPairs = [];
 
-  /// 복사 모니터링: 파일 탐색기 가운데 [모니터링] 버튼, 복사 · 이동을 기억해 다시 실행 · 옵션 고치기
-  bool copyMonitor = false;
+  /// 모니터링 (Rsync 화면 가운데 [모니터링]): 실행한 rsync 를 기억해 다시 실행 · 옵션 고치기 · lsync 로 옮기기
   List<CopyTask> copyTasks = [];
+
+  /// Rsync 화면에서 마지막으로 연 폴더 (왼쪽 · 오른쪽)
+  List<String> rsyncPaths = [];
 
   /// 실시간 동기화 확인 간격 (초). Windows 는 바뀌면 바로, 그 밖은 이 간격으로 살핀다.
   int liveSyncIntervalSec = 30;
@@ -424,7 +426,7 @@ class AppSettings {
         'explorerPaths': explorerPaths,
         'copyMethodFile': copyMethodFile,
         'copyMethodFolder': copyMethodFolder,
-        'copyDefaults': 2,
+        'rsyncPaths': rsyncPaths,
         'rsyncOptions': rsyncOptions,
         'robocopyOptions': robocopyOptions,
         'copyRunMode': copyRunMode,
@@ -435,7 +437,6 @@ class AppSettings {
         'liveSyncIntervalSec': liveSyncIntervalSec,
         'runInBackground': runInBackground,
         'liveSyncOnStart': liveSyncOnStart,
-        'copyMonitor': copyMonitor,
         'copyTasks': [for (final x in copyTasks) x.toJson()],
         'explorerHistory': explorerHistory,
         'autoCheckUpdates': autoCheckUpdates,
@@ -461,7 +462,8 @@ class AppSettings {
         'aiWhisper': aiWhisper,
       };
 
-  static String _method(Object? v) => const ['rsync', 'robocopy'].contains(v) ? v as String : 'builtin';
+  /// 파일 탐색기의 복사 방법 (rsync 는 Rsync 화면으로 옮겨 예전 값 rsync 도 현재 방식으로)
+  static String _method(Object? v) => v == 'robocopy' ? 'robocopy' : 'builtin';
 
   /// 색 보정 값 (-100 ~ 100)
   static int _adj(Object? v) => ((v as num?)?.round() ?? 0).clamp(-100, 100);
@@ -527,10 +529,8 @@ class AppSettings {
       ..explorerShowHidden = j['explorerShowHidden'] as bool? ?? false
       ..explorerPaths = [for (final x in (j['explorerPaths'] as List?) ?? const []) '$x']
       ..copyMethodFile = _method(j['copyMethodFile'])
-      // rsync 를 앱에 넣기 전 (copyDefaults 없음) 의 기본 '현재 방식' 은 새 기본 rsync 로
-      ..copyMethodFolder = j['copyDefaults'] == null && (j['copyMethodFolder'] ?? 'builtin') == 'builtin'
-          ? 'rsync'
-          : _method(j['copyMethodFolder'])
+      ..copyMethodFolder = _method(j['copyMethodFolder'])
+      ..rsyncPaths = [for (final x in (j['rsyncPaths'] as List?) ?? const []) '$x']
       ..rsyncOptions = j['rsyncOptions'] as String? ?? '-avPog'
       ..robocopyOptions = j['robocopyOptions'] as String? ?? '/E /COPY:DAT /DCOPY:T /R:2 /W:2'
       ..copyRunMode = j['copyRunMode'] == 'once' ? 'once' : 'each'
@@ -542,7 +542,6 @@ class AppSettings {
           if (x is Map && x['source'] is String && x['target'] is String) LiveSyncPair.fromJson(x),
       ]
       ..liveSyncIntervalSec = ((j['liveSyncIntervalSec'] as num?)?.toInt() ?? 30).clamp(5, 3600)
-      ..copyMonitor = j['copyMonitor'] == true
       ..runInBackground = j['runInBackground'] == true
       ..liveSyncOnStart = const ['auto', 'ask', 'off'].contains(j['liveSyncOnStart']) ? j['liveSyncOnStart'] as String : 'auto'
       ..copyTasks = [

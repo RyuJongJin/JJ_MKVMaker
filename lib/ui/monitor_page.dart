@@ -166,7 +166,7 @@ class _CopyTab extends StatelessWidget {
         final tasks = center.tasks;
         if (tasks.isEmpty) {
           return Center(
-            child: Text(tr('기억한 복사가 없습니다. 파일 탐색기에서 복사 · 이동하면 여기에 자동으로 등록됩니다.'),
+            child: Text(tr('실행한 rsync 가 없습니다. Rsync 화면에서 → · ← · ⇄ 로 실행하면 여기에 자동으로 등록됩니다.'),
                 style: const TextStyle(color: JjColors.textDim)),
           );
         }

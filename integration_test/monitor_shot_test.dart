@@ -30,9 +30,7 @@ void main() {
     }
     Directory(dst).createSync();
     final c = AppController(PlatformServices.create());
-    c.settings
-      ..copyMonitor = true
-      ..liveSyncPairs = [
+    c.settings.liveSyncPairs = [
         LiveSyncPair(src, p.join(dst, 'mirror'), schedule: const ['0 9-17 * * 1-5', '0 22-23 * * 0,6'], delete: true),
       ];
     final live = LiveSync(c)..start();

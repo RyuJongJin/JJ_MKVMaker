@@ -596,8 +596,12 @@ class _SettingsPageState extends State<SettingsPage> {
                         onChanged: (v) => c.updateSettings((x) => x.explorerLayout = v!),
                       ),
                     ),
-                    // 복사 · 이동 방법 (현재 방식 · rsync · robocopy) · 속도 제한 · 실시간 동기화
+                    // 복사 · 이동 방법 (현재 방식 · robocopy) · 속도 제한
                     CopySyncSettings(c: c),
+                  ]),
+                  // Rsync 화면: rsync 옵션 · 가져오기 · 실시간 동기화 (lsync) · 백그라운드로 실행
+                  _group('rsync', Icons.sync_alt, 'Rsync', [
+                    CopySyncSettings(c: c, rsync: true),
                   ]),
                   _group('download', Icons.download_outlined, tr('다운로드'), [
                     if (desk)
@@ -836,7 +840,7 @@ class _SettingsPageState extends State<SettingsPage> {
   final _groupKeys = <String, GlobalKey>{};
 
   static const _groupIds = [
-    'general', 'display', 'mkv', 'subtitle', 'play', 'browser', 'files', 'download', 'run', 'cleanup', 'about', //
+    'general', 'display', 'mkv', 'subtitle', 'play', 'browser', 'files', 'rsync', 'download', 'run', 'cleanup', 'about', //
   ];
 
   String _groupTitle(String id) => switch (id) {
@@ -847,6 +851,7 @@ class _SettingsPageState extends State<SettingsPage> {
         'play' => tr('재생'),
         'browser' => tr('웹 브라우저'),
         'files' => tr('파일 탐색기'),
+        'rsync' => 'Rsync',
         'download' => tr('다운로드'),
         'run' => tr('실행 · 종료'),
         'cleanup' => tr('저장 공간 정리'),

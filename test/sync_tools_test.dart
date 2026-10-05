@@ -36,15 +36,20 @@ void main() {
           ['-a', '--bwlimit=10', '-8', '/x', '/y/']); // Android: 한글 이름을 그대로 출력 (-8)
     });
 
-    test('기본값: 폴더 복사는 rsync (앱에 들어 있음), 예전 설정의 기본값 현재 방식도 rsync 로', () {
-      expect(AppSettings().copyMethodFolder, 'rsync');
-      expect(AppSettings().copyMethodFile, 'builtin');
-      expect(AppSettings.fromJson({}).copyMethodFolder, 'rsync');
-      expect(AppSettings.fromJson({'copyMethodFolder': 'builtin'}).copyMethodFolder, 'rsync'); // 예전 저장값
-      // 새 버전에서 직접 고른 현재 방식은 그대로
-      final s = AppSettings()..copyMethodFolder = 'builtin';
-      expect(AppSettings.fromJson(s.toJson()).copyMethodFolder, 'builtin');
+    test('파일 탐색기 복사 방법: 현재 방식 (기본) · robocopy, 예전 값 rsync 는 현재 방식으로 (rsync 는 Rsync 화면)', () {
+      expect([AppSettings().copyMethodFile, AppSettings().copyMethodFolder], ['builtin', 'builtin']);
+      expect(AppSettings.fromJson({'copyMethodFolder': 'rsync', 'copyMethodFile': 'rsync'}).copyMethodFolder, 'builtin');
       expect(AppSettings.fromJson({'copyMethodFolder': 'robocopy'}).copyMethodFolder, 'robocopy');
+      final s = AppSettings()..rsyncPaths = ['/a', '/b'];
+      expect(AppSettings.fromJson(s.toJson()).rsyncPaths, ['/a', '/b']);
+    });
+
+    test('양쪽 (⇄) rsync 는 -u 를 더한다 (이미 있으면 그대로)', () {
+      expect(withUpdateOption('-avPog'), '-avPog -u');
+      expect(withUpdateOption('-avuP'), '-avuP');
+      expect(withUpdateOption('-a --update'), '-a --update');
+      expect(withUpdateOption('-a --bwlimit=10'), '-a --bwlimit=10 -u');
+      expect(withUpdateOption(''), '-u');
     });
 
     test('robocopy: 폴더마다 · 같은 폴더 파일은 한 번에 · /IPG · 이동', () {
@@ -207,7 +212,7 @@ void main() {
       final back = AppSettings.fromJson(c.settings.toJson());
       expect(back.liveSyncPairs.single.target, p.join(src, 'in'));
       expect([back.copyMethodFolder, back.rsyncOptions, back.copyRunMode, back.rsyncSource],
-          ['rsync', '-avPog', 'each', 'download']);
+          ['builtin', '-avPog', 'each', 'download']);
     });
   });
 }

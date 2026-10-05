@@ -57,6 +57,13 @@ String toCygwinPath(String path, {bool windows = true}) {
   return s; // //server/share 는 그대로 읽는다
 }
 
+/// rsync 옵션에 -u (--update: 받는 쪽이 더 새 파일은 건너뜀) 를 더한다. 이미 있으면 그대로 (-avu 처럼 묶인 것도).
+/// 양쪽 (⇄) 으로 함께 맞출 때 서로의 새 파일을 옛 파일로 덮어쓰지 않게.
+String withUpdateOption(String options) {
+  final has = splitOptions(options).any((o) => o == '--update' || (o.startsWith('-') && !o.startsWith('--') && o.contains('u')));
+  return has ? options : '${options.trim()} -u'.trim();
+}
+
 /// rsync 인수: [options] + (대역폭 · 이동) + 원본들 + 대상 폴더/
 /// 원본 폴더는 끝에 / 를 붙이지 않는다 (폴더째 대상 안으로 - 앱의 복사와 같은 결과).
 List<String> rsyncArgs({

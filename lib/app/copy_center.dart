@@ -51,9 +51,16 @@ class CopyCenter extends ChangeNotifier {
     );
   }
 
+  /// 같은 복사를 기억해 두었으면 그것, 없으면 새 작업 (기억하지는 않음 - 확인 창에 보여 줄 때)
+  CopyTask peek(List<String> sources, String dest, {bool move = false, bool contents = false, String? method}) {
+    final t = fresh(sources, dest, move: move, contents: contents, method: method);
+    return tasks.where((x) => x.key == t.key).firstOrNull ?? t;
+  }
+
   /// 같은 복사를 기억해 두었으면 그것 (그 옵션을 쓴다), 없으면 새로 기억
-  Future<CopyTask> remember(List<String> sources, String dest, {bool move = false}) async {
-    final t = fresh(sources, dest, move: move);
+  Future<CopyTask> remember(List<String> sources, String dest,
+      {bool move = false, bool contents = false, String? method}) async {
+    final t = fresh(sources, dest, move: move, contents: contents, method: method);
     final old = tasks.where((x) => x.key == t.key).firstOrNull;
     if (old != null) return old;
     await c.updateSettings((x) => x.copyTasks = [t, ...x.copyTasks]);

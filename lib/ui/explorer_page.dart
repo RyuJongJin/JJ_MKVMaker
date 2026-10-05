@@ -11,6 +11,7 @@ import 'package:path/path.dart' as p;
 import '../app/app_controller.dart';
 import '../app/copy_center.dart';
 import '../app/live_sync.dart';
+import '../app/settings.dart' show CopyTask;
 import '../app/transfer_job.dart';
 import '../core/sync_tools.dart';
 import '../core/file_ops.dart';
@@ -31,26 +32,37 @@ import '../l10n/tr.dart';
 ///   길게 누르거나 오른쪽 클릭하면 메뉴 (내장 플레이어 · 다른 앱으로 열기 · MKV 목록에 추가 · 이름 바꾸기 …).
 /// - 오른쪽 동그라미로 여러 개를 표시해 복사 · 이동 · 삭제 · 재생한다. 복사 · 이동은 다른 창의 지금 폴더로.
 /// - 창 배치 (두 창 / 한 창, 좌우 / 위아래, 버튼 줄 위치) 와 버튼 구성은 바꿀 수 있다 (위쪽 ⋮ 메뉴).
+///
+/// [rsync] 면 Rsync 화면: 같은 모양이지만 늘 좌우 두 창 · 폴더만 · 창마다 폴더 하나만 고른다.
+/// 가운데 → (왼쪽 → 오른쪽) · ← (오른쪽 → 왼쪽) · ⇄ (둘 다 함께) 로 rsync, [모니터링] 에 실행한 것이 남는다.
 class ExplorerPage extends StatefulWidget {
   final AppController c;
-  const ExplorerPage({super.key, required this.c});
+  final bool rsync;
+  const ExplorerPage({super.key, required this.c, this.rsync = false});
 
   static const routeName = 'explorer';
-  static int _open = 0;
+  static const rsyncRouteName = 'rsync';
+  static int _open = 0, _openRsync = 0;
 
   /// 파일 탐색기로: 이미 열려 있으면 그 화면으로 돌아간다 (보던 폴더 그대로)
-  static Future<void> open(NavigatorState nav, {required AppController c}) async {
-    if (_open > 0) {
+  static Future<void> open(NavigatorState nav, {required AppController c}) => _show(nav, c, rsync: false);
+
+  /// Rsync 화면으로 (이미 열려 있으면 그 화면으로)
+  static Future<void> openRsync(NavigatorState nav, {required AppController c}) => _show(nav, c, rsync: true);
+
+  static Future<void> _show(NavigatorState nav, AppController c, {required bool rsync}) async {
+    final name = rsync ? rsyncRouteName : routeName;
+    if ((rsync ? _openRsync : _open) > 0) {
       var found = false;
       nav.popUntil((r) {
-        if (r.settings.name == routeName) found = true;
+        if (r.settings.name == name) found = true;
         return found || r.isFirst;
       });
       if (found) return;
     }
     await nav.push(MaterialPageRoute<void>(
-      settings: const RouteSettings(name: routeName),
-      builder: (_) => ExplorerPage(c: c),
+      settings: RouteSettings(name: name),
+      builder: (_) => ExplorerPage(c: c, rsync: rsync),
     ));
   }
 
@@ -63,7 +75,12 @@ enum ExplorerButton {
   up(Icons.arrow_upward, '상위 폴더'),
   refresh(Icons.refresh, '새로 고침'),
   select(Icons.checklist, '선택'),
+  // ── Rsync 화면에만 ──
+  toRight(Icons.arrow_forward, '좌 → 우'),
+  toLeft(Icons.arrow_back, '좌 ← 우'),
+  both(Icons.compare_arrows, '좌 ⇄ 우'),
   monitor(Icons.monitor_heart_outlined, '모니터링'),
+  // ──
   play(Icons.play_circle_outline, '재생'),
   addMkv(Icons.playlist_add, 'MKV 목록에 추가'),
   newFolder(Icons.create_new_folder_outlined, '새 폴더'),
@@ -83,13 +100,22 @@ enum ExplorerButton {
   final String label;
   const ExplorerButton(this.icon, this.label);
 
+  /// Rsync 화면에만 있는 버튼 (파일 탐색기 버튼 구성에서는 빼기)
+  bool get rsyncOnly => this == toRight || this == toLeft || this == both || this == monitor;
+
+  /// 파일 탐색기에서 고를 수 있는 버튼
+  static List<ExplorerButton> get explorerValues => [for (final b in values) if (!b.rsyncOnly) b];
+
+  /// Rsync 화면의 버튼 (늘 이대로, 두 창 사이)
+  static const rsyncButtons = [up, refresh, newFolder, toRight, toLeft, both, monitor];
+
   static List<ExplorerButton> fromSettings(List<String> names) {
     final out = [
       for (final n in names)
-        for (final b in values)
+        for (final b in explorerValues)
           if (b.name == n) b,
     ];
-    return out.isEmpty ? values.toList() : out;
+    return out.isEmpty ? explorerValues : out;
   }
 }
 
@@ -151,7 +177,11 @@ class _ExplorerPageState extends State<ExplorerPage> {
   @override
   void initState() {
     super.initState();
-    ExplorerPage._open++;
+    if (widget.rsync) {
+      ExplorerPage._openRsync++;
+    } else {
+      ExplorerPage._open++;
+    }
     for (final pane in _panes) {
       pane.addListener(_onPane);
     }
@@ -160,7 +190,11 @@ class _ExplorerPageState extends State<ExplorerPage> {
 
   @override
   void dispose() {
-    ExplorerPage._open--;
+    if (widget.rsync) {
+      ExplorerPage._openRsync--;
+    } else {
+      ExplorerPage._open--;
+    }
     for (final pane in _panes) {
       pane.dispose();
     }
@@ -174,7 +208,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
   Future<void> _init() async {
     _volumes = await _loadVolumes();
     if (_volumes.isEmpty) _volumes = [(Platform.isWindows ? r'C:\' : '/', Platform.isWindows ? 'C:' : '/')];
-    final saved = c.settings.explorerPaths;
+    final saved = widget.rsync ? c.settings.rsyncPaths : c.settings.explorerPaths;
     for (var i = 0; i < 2; i++) {
       final want = i < saved.length && Directory(saved[i]).existsSync() ? saved[i] : _volumes[0].$1;
       await _goTo(_panes[i], want, remember: false);
@@ -272,10 +306,14 @@ class _ExplorerPageState extends State<ExplorerPage> {
   void _remember(_Pane pane, String dir) {
     final i = _panes.indexOf(pane);
     final paths = [..._panes.map((x) => x.current)];
-    final hist = [dir, ...c.settings.explorerHistory.where((h) => !samePath(h, dir))].take(30).toList();
-    unawaited(c.updateSettings((s) => s
-      ..explorerPaths = paths
-      ..explorerHistory = hist));
+    if (widget.rsync) {
+      unawaited(c.updateSettings((s) => s.rsyncPaths = paths));
+    } else {
+      final hist = [dir, ...c.settings.explorerHistory.where((h) => !samePath(h, dir))].take(30).toList();
+      unawaited(c.updateSettings((s) => s
+        ..explorerPaths = paths
+        ..explorerHistory = hist));
+    }
     if (i >= 0) _active = i;
   }
 
@@ -283,7 +321,10 @@ class _ExplorerPageState extends State<ExplorerPage> {
   ExplorerStyle get _look => ExplorerStyle.of(c.settings.explorerStyle);
 
   /// 왼쪽 폴더 트리 + 오른쪽 파일 목록 배치
-  bool get _split => c.settings.explorerLayout == 'split';
+  bool get _split => !widget.rsync && c.settings.explorerLayout == 'split';
+
+  /// 좌우 두 창 (Rsync 화면은 늘)
+  bool get _dual => widget.rsync || c.settings.explorerLayout == 'dual';
 
   /// 한 번 누르면 선택 · 두 번 누르면 열기 (아니면 한 번에 바로 열기)
   bool get _selectMode => c.settings.explorerClick != 'open';
@@ -332,6 +373,10 @@ class _ExplorerPageState extends State<ExplorerPage> {
       await _goTo(pane, e.path);
       return;
     }
+    if (widget.rsync) {
+      await _pick(pane, e);
+      return;
+    }
     if (!row.isRoot && (_selecting || HardwareKeyboard.instance.isControlPressed)) {
       if (!_selecting) setState(() => _selecting = true);
       await _toggleMark(pane, e);
@@ -343,8 +388,30 @@ class _ExplorerPageState extends State<ExplorerPage> {
     pane.changed();
   }
 
-  /// 표시되었는지: 자기 자신, 또는 위 폴더가 표시되었으면 (폴더를 고르면 안의 것도 모두 고른 것)
-  bool _isMarked(_Pane pane, String path) => pane.marked.any((m) => isSameOrInside(path, m));
+  /// 표시되었는지: 자기 자신, 또는 위 폴더가 표시되었으면 (폴더를 고르면 안의 것도 모두 고른 것).
+  /// Rsync 화면은 고른 그 폴더만.
+  bool _isMarked(_Pane pane, String path) =>
+      pane.marked.any((m) => widget.rsync ? samePath(path, m) : isSameOrInside(path, m));
+
+  /// Rsync 화면: 창마다 폴더 하나만 고른다 (다시 누르면 취소). 고르면 펼쳐서 안의 폴더가 보이게.
+  Future<void> _pick(_Pane pane, FileEntry e) async {
+    if (!e.isDir) return;
+    if (pane.marked.length == 1 && samePath(pane.marked.first, e.path)) {
+      setState(pane.marked.clear);
+      return;
+    }
+    setState(() => pane.marked
+      ..clear()
+      ..add(e.path));
+    if (!pane.expanded.contains(e.path)) {
+      await _toggle(pane, e);
+    } else {
+      pane
+        ..current = e.path
+        ..focused = e.path
+        ..changed();
+    }
+  }
 
   /// 다른 표시 안에 든 표시는 뺀다 (폴더 하나로 안의 것까지 고른 것이므로)
   void _normalizeMarks(_Pane pane) {
@@ -447,7 +514,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
     pane.focused = e.path;
     pane.changed();
     final video = !e.isDir && isVideoFile(e.path);
-    final dual = c.settings.explorerLayout == 'dual';
+    final dual = _dual;
     final items = <(String, IconData, String)>[
       if (e.isDir) ('open', Icons.folder_open, tr('열기')),
       if (e.isDir && dual) ('openOther', Icons.vertical_split_outlined, tr('다른 창에서 열기')),
@@ -526,7 +593,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
   // ───────── 기능 ─────────
 
   _Pane get _pane => _panes[_active];
-  _Pane? get _other => c.settings.explorerLayout == 'dual' ? _panes[1 - _active] : null;
+  _Pane? get _other => _dual ? _panes[1 - _active] : null;
 
   /// 기능의 대상: 표시한 항목, 없으면 마지막으로 누른 항목 (저장 장치 맨 위는 빼고)
   List<String> _targets(_Pane pane) {
@@ -566,6 +633,12 @@ class _ExplorerPageState extends State<ExplorerPage> {
         _setSelecting(!_selecting);
       case ExplorerButton.monitor:
         await MonitorPage.open(context, c);
+      case ExplorerButton.toRight:
+        await _runRsync(right: true, left: false);
+      case ExplorerButton.toLeft:
+        await _runRsync(right: false, left: true);
+      case ExplorerButton.both:
+        await _runRsync(right: true, left: true);
       case ExplorerButton.refresh:
         pane.cache.clear();
         for (final d in pane.expanded.toList()) {
@@ -756,7 +829,8 @@ class _ExplorerPageState extends State<ExplorerPage> {
   }
 
   /// 지금 도는 복사 · 이동 (아래에서 올라오는 진행 막대)
-  TransferJob? _job;
+  /// (Rsync 화면의 ⇄ 는 둘이 함께)
+  List<TransferJob> _jobs = const [];
 
   /// rsync 가 없으면 (Windows · 내려받기 설정) 지금 내려받을지 묻는다. 쓸 수 있는 rsync 경로 (없으면 null)
   Future<String?> _ensureRsync() async {
@@ -777,7 +851,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
       _snack(tr('복사 · 이동할 항목을 고르세요 (누르거나 오른쪽 동그라미로 표시).'));
       return false;
     }
-    if (_job != null && !_job!.finished) {
+    if (_jobs.any((j) => !j.finished)) {
       _snack(tr('앞의 복사 · 이동이 끝난 뒤에 하세요.'));
       return false;
     }
@@ -792,11 +866,9 @@ class _ExplorerPageState extends State<ExplorerPage> {
       }
       return false;
     }
-    // 복사 모니터링을 켜면 기억한 같은 복사의 옵션을 쓰고, 처음이면 기억한다
+    // 파일 탐색기: 현재 방식 · robocopy (rsync 는 Rsync 화면 - 그쪽만 모니터링에 남는다)
     final center = CopyCenter.of(c);
-    final task = c.settings.copyMonitor
-        ? await center.remember(sources, dest, move: move)
-        : center.fresh(sources, dest, move: move);
+    final task = center.fresh(sources, dest, move: move);
     final method = CopyMethod.of(task.method);
     if (!mounted) return false;
     final go = await showDialog<bool>(
@@ -821,7 +893,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
     }
     final job = await center.start(task, rsyncExe: rsync);
     if (job == null || !mounted) return false;
-    setState(() => _job = job);
+    setState(() => _jobs = [job]);
     await job.done;
     final error = job.error;
     if (!mounted) return false;
@@ -843,92 +915,187 @@ class _ExplorerPageState extends State<ExplorerPage> {
             : trf('{0}개 항목을 {1}', [job.made.length, move ? tr('옮겼습니다.') : tr('복사했습니다.')]));
     // 다 되면 진행 막대가 잠깐 100% 를 보인 뒤 내려간다
     await Future<void>.delayed(const Duration(milliseconds: 1200));
-    if (mounted && _job == job) setState(() => _job = null);
+    if (mounted && _jobs.contains(job)) setState(() => _jobs = const []);
     return error == null;
+  }
+
+  /// Rsync 화면: 고른 왼쪽 · 오른쪽 폴더로 rsync. [right] 왼쪽 → 오른쪽, [left] 오른쪽 → 왼쪽 (둘 다면 함께).
+  /// 폴더 "안의 것" 을 맞춘다 (원본/ → 대상/). 함께 할 때는 받는 쪽이 더 새 파일은 건너뛴다 (-u).
+  /// 실행한 것은 모니터링에 남는다 (같은 것을 다시 하면 기억한 옵션으로).
+  Future<void> _runRsync({required bool right, required bool left}) async {
+    final l = _panes[0].marked.firstOrNull, r = _panes[1].marked.firstOrNull;
+    if (l == null || r == null) {
+      _snack(tr('왼쪽 · 오른쪽 창에서 폴더를 하나씩 고르세요.'));
+      return;
+    }
+    if (isSameOrInside(l, r) || isSameOrInside(r, l)) {
+      _snack(tr('같은 폴더이거나 한쪽이 다른 쪽 안에 있습니다. 다른 폴더를 고르세요.'));
+      return;
+    }
+    if (_jobs.any((j) => !j.finished)) {
+      _snack(tr('앞의 rsync 가 끝난 뒤에 하세요.'));
+      return;
+    }
+    final runs = [if (right) (l, r), if (left) (r, l)];
+    for (final (src, dst) in runs) {
+      final problem = transferProblem([src], dst, move: false);
+      if (problem != null) {
+        _snack(problem);
+        for (final x in _panes) {
+          x.marked.removeWhere((m) => FileSystemEntity.typeSync(m) == FileSystemEntityType.notFound);
+        }
+        await _refreshAll([p.dirname(l), p.dirname(r)]);
+        return;
+      }
+    }
+    final both = right && left;
+    final center = CopyCenter.of(c);
+    // 확인 창에는 기억한 옵션 (없으면 지금 설정) 을 보여 주고, 실행할 때 모니터링에 기억한다
+    var tasks = [for (final (src, dst) in runs) center.peek([src], dst, contents: true, method: 'rsync')];
+    String opts(CopyTask t) => both ? withUpdateOption(t.options) : t.options;
+    if (!mounted) return;
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(both ? tr('rsync 양쪽 (⇄)') : 'rsync'),
+        content: SizedBox(
+          width: 560,
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            for (final t in tasks) ...[
+              Text('${t.sources.first}/', style: const TextStyle(fontWeight: FontWeight.w600)),
+              Text('→  ${t.dest}/', style: const TextStyle(fontWeight: FontWeight.w600)),
+              Text('rsync ${opts(t)}${t.bandwidthKBps > 0 ? ' · ${trf('속도 제한 {0} KB/s', [t.bandwidthKBps])}' : ''}',
+                  style: const TextStyle(fontSize: 12, fontFamily: 'monospace', color: JjColors.textDim)),
+              const SizedBox(height: 10),
+            ],
+            Text(tr('폴더 안의 것을 맞춥니다 (대상에 같은 이름의 폴더를 새로 만들지 않음).'),
+                style: const TextStyle(fontSize: 12, color: JjColors.textDim)),
+            if (both)
+              Text(tr('양쪽을 함께: 받는 쪽이 더 새 파일은 덮어쓰지 않습니다 (-u).'),
+                  style: const TextStyle(fontSize: 12, color: JjColors.textDim)),
+          ]),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('취소'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('실행'))),
+        ],
+      ),
+    );
+    if (go != true || !mounted) return;
+    final exe = await _ensureRsync();
+    if (exe == null || !mounted) return;
+    tasks = [for (final (src, dst) in runs) await center.remember([src], dst, contents: true, method: 'rsync')];
+    final jobs = <TransferJob>[];
+    for (final t in tasks) {
+      final j = await center.start(t.copyWith(options: opts(t)), rsyncExe: exe);
+      if (j != null) jobs.add(j);
+    }
+    if (jobs.isEmpty || !mounted) return;
+    setState(() => _jobs = jobs);
+    await Future.wait(jobs.map((j) => j.done));
+    if (!mounted) return;
+    await _refreshAll([l, r]);
+    for (final x in _panes) {
+      x.changed();
+    }
+    final error = jobs.map((j) => j.error).whereType<Object>().firstOrNull;
+    _snack(error is FileOpCancelled
+        ? tr('취소했습니다.')
+        : error != null
+            ? trf('끝나지 못했습니다: {0}', [error])
+            : trf('rsync 끝: {0}', [jobs.map((j) => '${p.basename(j.sources.first)} → ${p.basename(j.dest)}').join(' · ')]));
+    await Future<void>.delayed(const Duration(milliseconds: 1200));
+    if (mounted && identical(_jobs, jobs)) setState(() => _jobs = const []);
   }
 
   /// 아래에서 올라오는 진행 막대 (위: 전체 항목 중 · 아래: 지금 폴더의 파일 중)
   Widget _transferPanel() {
-    final job = _job;
+    final jobs = _jobs;
     return AnimatedSlide(
-      offset: job == null ? const Offset(0, 1.2) : Offset.zero,
+      offset: jobs.isEmpty ? const Offset(0, 1.2) : Offset.zero,
       duration: const Duration(milliseconds: 250),
       curve: Curves.easeOut,
-      child: job == null
+      child: jobs.isEmpty
           ? const SizedBox(height: 0)
-          : ListenableBuilder(
-              listenable: job,
-              builder: (context, _) {
-                String pct(double v) => '${(v * 100).round()}%';
-                final cur = job.index < job.total ? job.index : job.total - 1;
-                final curFiles = job.total == 0 ? 0 : job.filesTotal[cur.clamp(0, job.total - 1)];
-                final curDone = job.total == 0 ? 0 : job.filesDone[cur.clamp(0, job.total - 1)];
-                final title = job.finished
-                    ? (job.error == null ? tr('완료') : tr('멈춤'))
-                    : job.move
-                        ? tr('옮기는 중')
-                        : tr('복사하는 중');
-                Widget line(String label, double value, String right) => Padding(
-                      padding: const EdgeInsets.only(top: 6),
-                      child: Row(children: [
-                        SizedBox(
-                          width: 300,
-                          child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12.5)),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(3),
-                            child: LinearProgressIndicator(
-                              minHeight: 8,
-                              value: job.counting ? null : value,
-                              // 빈 곳과 찬 곳이 분명히 다르게
-                              color: JjColors.accent,
-                              backgroundColor: JjColors.border,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        SizedBox(
-                          width: 150,
-                          child: Text(right, textAlign: TextAlign.end, style: const TextStyle(fontSize: 12, color: JjColors.textDim)),
-                        ),
-                      ]),
-                    );
-                return Material(
-                  elevation: 12,
-                  color: JjColors.panel,
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 10, 12, 12),
-                    child: Column(mainAxisSize: MainAxisSize.min, children: [
-                      Row(children: [
-                        Icon(job.move ? Icons.drive_file_move_outline : Icons.copy_outlined, size: 18, color: JjColors.accent),
-                        const SizedBox(width: 8),
-                        Text('$title · ${tr(job.method.label)}', style: const TextStyle(fontWeight: FontWeight.w600)),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(job.dest,
-                              maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: JjColors.textDim)),
-                        ),
-                        if (!job.finished) TextButton(onPressed: job.cancel, child: Text(tr('취소'))),
-                      ]),
-                      line(
-                        trf('전체 {0}개 중 {1}번째', [job.total, (cur + 1).clamp(1, job.total)]),
-                        job.overall,
-                        '${pct(job.overall)} · ${trf('파일 {0}/{1}', [job.allDone, job.allFiles])}',
-                      ),
-                      line(
-                        job.counting ? tr('파일 세는 중…') : trf('{0} 안의 파일', [job.currentName]),
-                        job.current,
-                        '${pct(job.current)} · ${trf('파일 {0}/{1}', [curDone, curFiles])}',
-                      ),
-                    ]),
-                  ),
-                );
-              },
+          : Material(
+              elevation: 12,
+              color: JjColors.panel,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 12, 12),
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  for (final (k, job) in jobs.indexed) ...[
+                    if (k > 0) const Divider(height: 18),
+                    ListenableBuilder(listenable: job, builder: (context, _) => _jobView(job)),
+                  ],
+                ]),
+              ),
             ),
     );
+  }
+
+  /// 진행 막대 하나 (위: 전체 항목 중 · 아래: 지금 폴더의 파일 중)
+  Widget _jobView(TransferJob job) {
+    String pct(double v) => '${(v * 100).round()}%';
+    final cur = job.index < job.total ? job.index : job.total - 1;
+    final curFiles = job.total == 0 ? 0 : job.filesTotal[cur.clamp(0, job.total - 1)];
+    final curDone = job.total == 0 ? 0 : job.filesDone[cur.clamp(0, job.total - 1)];
+    final title = job.finished
+        ? (job.error == null ? tr('완료') : tr('멈춤'))
+        : job.move
+            ? tr('옮기는 중')
+            : tr('복사하는 중');
+    Widget line(String label, double value, String right) => Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Row(children: [
+            SizedBox(
+              width: 300,
+              child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12.5)),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(3),
+                child: LinearProgressIndicator(
+                  minHeight: 8,
+                  value: job.counting ? null : value,
+                  // 빈 곳과 찬 곳이 분명히 다르게
+                  color: JjColors.accent,
+                  backgroundColor: JjColors.border,
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            SizedBox(
+              width: 150,
+              child: Text(right, textAlign: TextAlign.end, style: const TextStyle(fontSize: 12, color: JjColors.textDim)),
+            ),
+          ]),
+        );
+    return Column(mainAxisSize: MainAxisSize.min, children: [
+      Row(children: [
+        Icon(job.move ? Icons.drive_file_move_outline : Icons.copy_outlined, size: 18, color: JjColors.accent),
+        const SizedBox(width: 8),
+        Text('$title · ${tr(job.method.label)}', style: const TextStyle(fontWeight: FontWeight.w600)),
+        const SizedBox(width: 12),
+        Expanded(
+          // Rsync 화면: 원본 → 대상 (⇄ 는 두 줄)
+          child: Text(widget.rsync ? '${job.sources.join(', ')}/  →  ${job.dest}/' : job.dest,
+              maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: JjColors.textDim)),
+        ),
+        if (!job.finished) TextButton(onPressed: job.cancel, child: Text(tr('취소'))),
+      ]),
+      line(
+        trf('전체 {0}개 중 {1}번째', [job.total, (cur + 1).clamp(1, job.total)]),
+        job.overall,
+        '${pct(job.overall)} · ${trf('파일 {0}/{1}', [job.allDone, job.allFiles])}',
+      ),
+      line(
+        job.counting ? tr('파일 세는 중…') : trf('{0} 안의 파일', [job.currentName]),
+        job.current,
+        '${pct(job.current)} · ${trf('파일 {0}/{1}', [curDone, curFiles])}',
+      ),
+    ]);
   }
 
   Future<String?> _askName(String title, String initial) {
@@ -1121,7 +1288,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
 
   Future<void> _buttonsDialog() async {
     final current = ExplorerButton.fromSettings(c.settings.explorerButtons);
-    final order = [...current, ...ExplorerButton.values.where((b) => !current.contains(b))];
+    final order = [...current, ...ExplorerButton.explorerValues.where((b) => !current.contains(b))];
     final on = {...current};
     final ok = await showDialog<bool>(
       context: context,
@@ -1160,10 +1327,10 @@ class _ExplorerPageState extends State<ExplorerPage> {
               onPressed: () => set(() {
                 order
                   ..clear()
-                  ..addAll(ExplorerButton.values);
+                  ..addAll(ExplorerButton.explorerValues);
                 on
                   ..clear()
-                  ..addAll(ExplorerButton.values);
+                  ..addAll(ExplorerButton.explorerValues);
               }),
               child: Text(tr('기본값')),
             ),
@@ -1189,7 +1356,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
         const SingleActivator(LogicalKeyboardKey.f2): () => _button(ExplorerButton.rename),
         const SingleActivator(LogicalKeyboardKey.backspace): () => _button(ExplorerButton.up),
         const SingleActivator(LogicalKeyboardKey.tab): () =>
-            setState(() => _active = c.settings.explorerLayout == 'dual' ? 1 - _active : 0),
+            setState(() => _active = _dual ? 1 - _active : 0),
       },
       child: Focus(
         autofocus: true,
@@ -1217,9 +1384,9 @@ class _ExplorerPageState extends State<ExplorerPage> {
         color: JjColors.panel,
         padding: const EdgeInsets.only(left: 8, right: appBarRightPadding),
         child: Row(children: [
-          const AppNavButtons(onExplorerPage: true),
+          AppNavButtons(onExplorerPage: !widget.rsync, onRsyncPage: widget.rsync),
           const SizedBox(width: 8),
-          Text(tr('파일 탐색기'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+          Text(widget.rsync ? 'Rsync' : tr('파일 탐색기'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
           const SizedBox(width: 12),
           Expanded(
             child: Text(_ready ? _pane.current : '',
@@ -1230,7 +1397,11 @@ class _ExplorerPageState extends State<ExplorerPage> {
             icon: const Icon(Icons.more_vert),
             onSelected: _button,
             itemBuilder: (_) => [
-              for (final b in [ExplorerButton.layout, ExplorerButton.buttons, ExplorerButton.sort, ExplorerButton.hidden])
+              for (final b in [
+                if (!widget.rsync) ...[ExplorerButton.layout, ExplorerButton.buttons],
+                ExplorerButton.sort,
+                ExplorerButton.hidden,
+              ])
                 PopupMenuItem(
                   value: b,
                   child: Row(children: [Icon(b.icon, size: 18), const SizedBox(width: 12), Text(tr(b.label))]),
@@ -1255,7 +1426,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
       }
       _shape = shape;
     }
-    final dual = s.explorerLayout == 'dual';
+    final dual = _dual;
     final split = _split;
     return LayoutBuilder(builder: (context, box) {
       final side = !(dual || split) ||
@@ -1264,14 +1435,11 @@ class _ExplorerPageState extends State<ExplorerPage> {
             'stacked' => false,
             _ => box.maxWidth >= box.maxHeight,
           };
-      final bar = s.explorerToolbar == 'hidden'
+      final bar = s.explorerToolbar == 'hidden' && !widget.rsync
           ? null
           : _Toolbar(
-              // [모니터링] 은 환경 설정 > 복사 모니터링 을 켰을 때만
-              buttons: [
-                for (final b in ExplorerButton.fromSettings(s.explorerButtons))
-                  if (b != ExplorerButton.monitor || s.copyMonitor) b,
-              ],
+              // Rsync 화면: 늘 같은 버튼 (→ ← ⇄ 모니터링) 을 두 창 사이에
+              buttons: widget.rsync ? ExplorerButton.rsyncButtons : ExplorerButton.fromSettings(s.explorerButtons),
               vertical: side,
               onPressed: _button,
               enabled: (b) => switch (b) {
@@ -1281,13 +1449,13 @@ class _ExplorerPageState extends State<ExplorerPage> {
               selected: (b) =>
                   (b == ExplorerButton.hidden && s.explorerShowHidden) || (b == ExplorerButton.select && _selecting),
             );
-      final middle = bar != null && s.explorerToolbar == 'middle';
-      final edge = bar != null && s.explorerToolbar == 'edge';
+      final middle = bar != null && (widget.rsync || s.explorerToolbar == 'middle');
+      final edge = bar != null && !widget.rsync && s.explorerToolbar == 'edge';
       final children = <Widget>[
         if (dual) ...[
-          Expanded(child: _paneView(0)),
+          Expanded(child: _paneView(0, foldersOnly: widget.rsync)),
           if (middle) bar,
-          Expanded(child: _paneView(1)),
+          Expanded(child: _paneView(1, foldersOnly: widget.rsync)),
           if (edge) bar,
         ] else if (split) ...[
           // 왼쪽 폴더 트리 (좁게) · 오른쪽 그 폴더의 파일 목록
@@ -1528,8 +1696,9 @@ class _ExplorerPageState extends State<ExplorerPage> {
               ];
 
     return GestureDetector(
-      onSecondaryTapUp: real ? (d) => _menu(pane, e, d.globalPosition) : null,
-      onLongPressStart: real ? (d) => _menu(pane, e, d.globalPosition) : null,
+      // Rsync 화면은 고르기만 (파일 기능 메뉴 없음)
+      onSecondaryTapUp: real && !widget.rsync ? (d) => _menu(pane, e, d.globalPosition) : null,
+      onLongPressStart: real && !widget.rsync ? (d) => _menu(pane, e, d.globalPosition) : null,
       child: Material(
         color: marked
             ? JjColors.accent.withValues(alpha: 0.18)
@@ -1552,11 +1721,15 @@ class _ExplorerPageState extends State<ExplorerPage> {
             ),
           ),
           // 표시 동그라미는 두 번 누르기 영역 밖 (기다리지 않고 바로)
-          if (real && _selecting)
+          if ((real || (widget.rsync && row.isRoot)) && (_selecting || widget.rsync))
             SizedBox(
               width: 36,
               child: IconButton(
-                tooltip: marked ? tr('표시 지우기') : tr('표시 (여러 개 고르기)'),
+                tooltip: widget.rsync
+                    ? (marked ? tr('고르기 취소') : tr('이 폴더를 rsync 원본 · 대상으로 고르기'))
+                    : marked
+                        ? tr('표시 지우기')
+                        : tr('표시 (여러 개 고르기)'),
                 visualDensity: VisualDensity.compact,
                 padding: EdgeInsets.zero,
                 // ✔ 모양: 고르지 않은 것은 흐리게, 고른 것은 진하게
@@ -1565,11 +1738,11 @@ class _ExplorerPageState extends State<ExplorerPage> {
                     color: marked ? JjColors.accent : JjColors.textDim.withValues(alpha: 0.35)),
                 onPressed: () {
                   setState(() => _active = _panes.indexOf(pane));
-                  _toggleMark(pane, e);
+                  widget.rsync ? _pick(pane, e) : _toggleMark(pane, e);
                 },
               ),
             )
-          else if (_selecting)
+          else if (_selecting || widget.rsync)
             const SizedBox(width: 36),
         ]),
       ),

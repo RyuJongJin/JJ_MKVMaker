@@ -190,7 +190,6 @@ void main() {
     addTearDown(() => tmp.deleteSync(recursive: true));
     final c = AppController(PlatformServices(mediaTool: ProcessMediaTool('x', 'y'), storage: DesktopStorageService()));
     c.settings
-      ..copyMonitor = true
       ..copyTasks = [CopyTask(id: '1', sources: [tmp.path], dest: p.join(tmp.path, '..'), method: 'builtin')]
       ..liveSyncPairs = [LiveSyncPair(tmp.path, p.join(tmp.path, 'x'), schedule: const ['0 9-17 * * 1-5'])];
     tester.view.physicalSize = const Size(1500, 1000);
