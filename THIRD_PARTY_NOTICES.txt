@@ -48,6 +48,10 @@ JJ_MKVMaker - 포함된 오픈 소스 구성 요소 및 라이선스 고지
   원문: tools\YT-DLP_LICENSE.txt
 - Deno (tools\deno.exe)                MIT                   https://github.com/denoland/deno
   원문: tools\DENO_LICENSE.txt
+- rsync (rsyncsync.exe)              GPL-3.0-or-later      https://rsync.samba.org
+  MSYS2 공식 패키지 rsync 3.5.1 과 실행에 필요한 DLL (msys2-runtime: GPL-3.0 + 예외, OpenSSL: Apache-2.0,
+  popt · lz4 · xxhash · zstd: BSD/MIT 계열, libiconv · libintl · libidn2 · libunistring: LGPL)
+  소스: https://packages.msys2.org/base/rsync (각 패키지의 소스 패키지)
 
 위 GPL 프로그램은 수정하지 않은 공식 배포 파일이며, 해당 소스는 위 주소에서 받을 수 있습니다.
 
@@ -65,6 +69,9 @@ JJ_MKVMaker - 포함된 오픈 소스 구성 요소 및 라이선스 고지
   · aria2                              GPL-2.0-or-later      https://github.com/aria2/aria2
   수정하지 않은 공식 배포본 (Maven Central io.github.junkfood02.youtubedl-android 0.18.1) 이며,
   소스는 위 주소에서 받을 수 있습니다.
+- rsync (librsync.so 라는 이름의 실행 파일) GPL-3.0-or-later  https://rsync.samba.org
+  rsync 3.4.1 공식 소스 (https://download.samba.org/pub/rsync/src/rsync-3.4.1.tar.gz) 를 고치지 않고
+  Android NDK 로 빌드 (들어 있는 zlib · popt 사용, 선택 기능 끔). 빌드 방법: app	ooluild_rsync_android.sh
 - libmpv (media_kit_libs_android_video) LGPL-2.1+             https://github.com/media-kit/libmpv-android-video-build
 
 [처음 사용할 때 내려받는 AI 모델]

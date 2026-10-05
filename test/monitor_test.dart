@@ -68,6 +68,7 @@ void main() {
     tearDown(() => tmp.deleteSync(recursive: true));
 
     test('같은 복사는 기억한 옵션 · 실행 결과 기록 · lsync 로 이동 · 다시 복사 목록으로', () async {
+      c.settings.copyMethodFolder = 'builtin'; // rsync 실행은 sync_tools_test (시험 환경에서는 path_provider 없음)
       final center = CopyCenter(c);
       final t = await center.remember([src], dst);
       await center.update(t.copyWith(options: '-a --custom', bandwidthKBps: 77));

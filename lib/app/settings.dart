@@ -298,7 +298,8 @@ class AppSettings {
   // ── 복사 · 이동 · 동기화 (파일 탐색기) ──
   /// 방법: 'builtin' 현재 방식 (기본) · 'rsync' · 'robocopy' (Windows). 파일만 고를 때 / 폴더가 들어 있을 때
   String copyMethodFile = 'builtin';
-  String copyMethodFolder = 'builtin';
+  /// 폴더 복사 · 이동 기본: rsync (앱에 들어 있음. 이 기기에서 못 쓰면 현재 방식으로)
+  String copyMethodFolder = 'rsync';
   String rsyncOptions = '-avPog';
   String robocopyOptions = '/E /COPY:DAT /DCOPY:T /R:2 /W:2';
 
@@ -308,7 +309,7 @@ class AppSettings {
   /// 속도 제한 KB/s (0 = 제한 없음). 모든 방법에 (rsync --bwlimit, 현재 방식은 앱이 조절, robocopy 는 /IPG 로 비슷하게)
   int copyBandwidthKBps = 0;
 
-  /// rsync 가져오기: 'download' 처음 쓸 때 내려받기 (Windows 기본) · 'custom' 직접 지정한 실행 파일 ([rsyncPath])
+  /// rsync 가져오기: 'download' 앱에 들어 있는 것 (기본, Windows 는 없으면 내려받기) · 'custom' 직접 지정한 실행 파일 ([rsyncPath])
   String rsyncSource = 'download';
   String rsyncPath = '';
 
@@ -423,6 +424,7 @@ class AppSettings {
         'explorerPaths': explorerPaths,
         'copyMethodFile': copyMethodFile,
         'copyMethodFolder': copyMethodFolder,
+        'copyDefaults': 2,
         'rsyncOptions': rsyncOptions,
         'robocopyOptions': robocopyOptions,
         'copyRunMode': copyRunMode,
@@ -525,7 +527,10 @@ class AppSettings {
       ..explorerShowHidden = j['explorerShowHidden'] as bool? ?? false
       ..explorerPaths = [for (final x in (j['explorerPaths'] as List?) ?? const []) '$x']
       ..copyMethodFile = _method(j['copyMethodFile'])
-      ..copyMethodFolder = _method(j['copyMethodFolder'])
+      // rsync 를 앱에 넣기 전 (copyDefaults 없음) 의 기본 '현재 방식' 은 새 기본 rsync 로
+      ..copyMethodFolder = j['copyDefaults'] == null && (j['copyMethodFolder'] ?? 'builtin') == 'builtin'
+          ? 'rsync'
+          : _method(j['copyMethodFolder'])
       ..rsyncOptions = j['rsyncOptions'] as String? ?? '-avPog'
       ..robocopyOptions = j['robocopyOptions'] as String? ?? '/E /COPY:DAT /DCOPY:T /R:2 /W:2'
       ..copyRunMode = j['copyRunMode'] == 'once' ? 'once' : 'each'

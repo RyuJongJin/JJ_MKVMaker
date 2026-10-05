@@ -110,6 +110,8 @@ class MainActivity : FlutterActivity() {
                     result.success(null)
                 }
                 "storageRoot" -> result.success(Environment.getExternalStorageDirectory().path)
+                // 앱에 들어 있는 rsync (librsync.so) 가 풀리는 곳
+                "nativeLibDir" -> result.success(applicationInfo.nativeLibraryDir)
                 "storageVolumes" -> result.success(storageVolumes())
                 "openUrl" -> result.success(openUrl(call.argument<String>("url") ?: ""))
                 "installApk" -> try {

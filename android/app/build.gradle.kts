@@ -58,6 +58,10 @@ android {
         }
     }
 
+    // rsync (librsync.so 라는 이름의 실행 파일): tool/build_rsync_android.sh 로 third_party/rsync/android 에 준비.
+    // 네이티브 라이브러리 폴더에 풀려 실행할 수 있다 (앱 데이터 폴더의 파일은 Android 10+ 에서 실행 불가)
+    sourceSets["main"].jniLibs.srcDir("../../third_party/rsync/android")
+
     // ffmpeg · whisper 등 네이티브 라이브러리를 압축하지 않고 그대로 (설치 후 바로 로드)
     packaging {
         jniLibs {

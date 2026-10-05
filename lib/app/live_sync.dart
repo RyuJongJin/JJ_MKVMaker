@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 
 import 'package:path/path.dart' as p;
 
@@ -14,13 +15,33 @@ import '../platform/windows/rsync_installer.dart';
 import 'app_controller.dart';
 import 'settings.dart';
 
+/// 앱에 들어 있는 rsync (없으면 null). 시작할 때 [findBundledRsync] 로 정한다.
+/// - Windows: 실행 파일 옆 rsync/rsync.exe (tool/fetch_rsync.ps1 로 준비해 빌드에 넣음)
+/// - Android: 네이티브 라이브러리 폴더의 librsync.so (tool/build_rsync_android.sh, APK 의 jniLibs)
+String? bundledRsync;
+
+Future<void> findBundledRsync() async {
+  String? path;
+  if (Platform.isWindows) {
+    path = p.join(p.dirname(Platform.resolvedExecutable), 'rsync', 'rsync.exe');
+  } else if (Platform.isAndroid) {
+    try {
+      final dir = await const MethodChannel('jj_mkvmaker/android').invokeMethod<String>('nativeLibDir');
+      if (dir != null) path = p.join(dir, 'librsync.so');
+    } catch (_) {}
+  }
+  bundledRsync = path != null && File(path).existsSync() ? path : null;
+}
+
 /// 지금 설정으로 쓸 rsync 실행 파일 (없으면 null).
 /// - 직접 지정: 그 파일
-/// - 처음 쓸 때 내려받기 (Windows): 내려받아 둔 것
+/// - 기본: 앱에 들어 있는 것, 없으면 (Windows) 내려받아 둔 것
 Future<String?> rsyncExecutable(AppSettings s) async {
   if (s.rsyncSource == 'custom') {
     return s.rsyncPath.isNotEmpty && File(s.rsyncPath).existsSync() ? s.rsyncPath : null;
   }
+  final b = bundledRsync;
+  if (b != null && File(b).existsSync()) return b;
   if (!Platform.isWindows) return null;
   return RsyncInstaller.installedPath();
 }
@@ -29,7 +50,7 @@ Future<String?> rsyncExecutable(AppSettings s) async {
 bool copyMethodAvailable(CopyMethod m, AppSettings s) => switch (m) {
       CopyMethod.builtin => true,
       CopyMethod.robocopy => Platform.isWindows,
-      CopyMethod.rsync => Platform.isWindows || s.rsyncSource == 'custom',
+      CopyMethod.rsync => Platform.isWindows || s.rsyncSource == 'custom' || bundledRsync != null,
     };
 
 /// 실시간 동기화 (lsyncd 처럼): 설정의 폴더 쌍마다 원본을 지켜보다가 바뀌면 대상에 맞춘다.
@@ -258,6 +279,7 @@ class LiveSync extends ChangeNotifier {
     final win = Platform.isWindows;
     final args = [
       ...splitOptions(s.rsyncOptions).where((o) => o != '-P' && o != '--progress'),
+      if (!win) '-8', // 한글 등 이름을 \#355… 로 바꾸지 않고 그대로 (Android 빌드는 iconv 없음)
       if (s.copyBandwidthKBps > 0) '--bwlimit=${s.copyBandwidthKBps}',
       if (x.delete) '--delete',
       '${toCygwinPath(x.source, windows: win)}/',

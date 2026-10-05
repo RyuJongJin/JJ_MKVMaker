@@ -136,3 +136,12 @@ if(JJ_TOOL_FILES)
   install(FILES ${JJ_TOOL_FILES}
     DESTINATION "${CMAKE_INSTALL_PREFIX}/tools" COMPONENT Runtime)
 endif()
+
+# JJ_MKVMaker: rsync 동봉 (내려받기 없이 바로). 실행 파일 옆 rsync\ 폴더로 복사.
+# 파일은 tool\fetch_rsync.ps1 로 third_party\rsync\windows 에 준비한다.
+set(JJ_RSYNC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/rsync/windows")
+file(GLOB JJ_RSYNC_FILES "${JJ_RSYNC_DIR}/*.exe" "${JJ_RSYNC_DIR}/*.dll")
+if(JJ_RSYNC_FILES)
+  install(FILES ${JJ_RSYNC_FILES}
+    DESTINATION "${CMAKE_INSTALL_PREFIX}/rsync" COMPONENT Runtime)
+endif()

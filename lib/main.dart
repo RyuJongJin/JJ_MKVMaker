@@ -93,6 +93,7 @@ Future<void> main(List<String> args) async {
   }
   await controller.init();
   // 실시간 동기화 (환경 설정 > 파일 탐색기): 앱이 켜져 있는 동안. 다시 켤 때 바로 / 골라서 / 시작 안 함
+  await findBundledRsync(); // 앱에 들어 있는 rsync
   final live = LiveSync(controller)..start(hold: controller.settings.liveSyncOnStart != 'auto');
   // 화면 언어 (환경 설정 > 화면 언어)
   i18n.init(controller, dataDir);
@@ -378,6 +379,7 @@ Future<void> runAndroid(String dataDir) async {
   controller.note(trf('── 시작 {0} (Android) ──', [appTitle]));
   await controller.init();
   // 실시간 동기화 (환경 설정 > 파일 탐색기): 앱이 켜져 있는 동안. 다시 켤 때 바로 / 골라서 / 시작 안 함
+  await findBundledRsync(); // 앱에 들어 있는 rsync
   final live = LiveSync(controller)..start(hold: controller.settings.liveSyncOnStart != 'auto');
   // 화면 언어 (환경 설정 > 화면 언어)
   i18n.init(controller, dataDir);

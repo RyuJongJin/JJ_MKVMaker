@@ -33,7 +33,18 @@ void main() {
           ['-avPog', '--bwlimit=500', '--remove-source-files', '/cygdrive/c/a/src', '/cygdrive/c/a/f.mkv', '/cygdrive/e/dst/']);
       // 옵션 칸에 직접 넣은 속도 제한이 우선
       expect(rsyncArgs(options: '-a --bwlimit=10', sources: ['/x'], dest: '/y', bandwidthKBps: 500, windows: false),
-          ['-a', '--bwlimit=10', '/x', '/y/']);
+          ['-a', '--bwlimit=10', '-8', '/x', '/y/']); // Android: 한글 이름을 그대로 출력 (-8)
+    });
+
+    test('기본값: 폴더 복사는 rsync (앱에 들어 있음), 예전 설정의 기본값 현재 방식도 rsync 로', () {
+      expect(AppSettings().copyMethodFolder, 'rsync');
+      expect(AppSettings().copyMethodFile, 'builtin');
+      expect(AppSettings.fromJson({}).copyMethodFolder, 'rsync');
+      expect(AppSettings.fromJson({'copyMethodFolder': 'builtin'}).copyMethodFolder, 'rsync'); // 예전 저장값
+      // 새 버전에서 직접 고른 현재 방식은 그대로
+      final s = AppSettings()..copyMethodFolder = 'builtin';
+      expect(AppSettings.fromJson(s.toJson()).copyMethodFolder, 'builtin');
+      expect(AppSettings.fromJson({'copyMethodFolder': 'robocopy'}).copyMethodFolder, 'robocopy');
     });
 
     test('robocopy: 폴더마다 · 같은 폴더 파일은 한 번에 · /IPG · 이동', () {
@@ -196,7 +207,7 @@ void main() {
       final back = AppSettings.fromJson(c.settings.toJson());
       expect(back.liveSyncPairs.single.target, p.join(src, 'in'));
       expect([back.copyMethodFolder, back.rsyncOptions, back.copyRunMode, back.rsyncSource],
-          ['builtin', '-avPog', 'each', 'download']);
+          ['rsync', '-avPog', 'each', 'download']);
     });
   });
 }

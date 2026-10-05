@@ -343,20 +343,54 @@ class _ExplorerPageState extends State<ExplorerPage> {
     pane.changed();
   }
 
-  /// 선택 모드에서 누르기: 파일은 고르기 · 풀기.
-  /// 폴더는 처음엔 고르기, 고른 폴더를 다시 누르면 폴더는 풀고 펼쳐서 그 안의 파일 · 폴더를 모두 고른다.
+  /// 표시되었는지: 자기 자신, 또는 위 폴더가 표시되었으면 (폴더를 고르면 안의 것도 모두 고른 것)
+  bool _isMarked(_Pane pane, String path) => pane.marked.any((m) => isSameOrInside(path, m));
+
+  /// 다른 표시 안에 든 표시는 뺀다 (폴더 하나로 안의 것까지 고른 것이므로)
+  void _normalizeMarks(_Pane pane) {
+    final all = pane.marked.toList();
+    pane.marked.removeWhere((m) => all.any((o) => !identical(o, m) && !samePath(o, m) && isSameOrInside(m, o)));
+  }
+
+  /// 선택 모드에서 누르기. 폴더는 자기 자신과 안의 파일 · 폴더 전체가 한 묶음이다.
+  /// - 고르지 않은 것을 누르면 고른다 (폴더는 펼쳐서 안의 것도 모두 고른 모양으로 보여 줌)
+  /// - 고른 것을 다시 누르면 자기 자신과 안의 것을 모두 푼다.
+  ///   위 폴더를 골라서 함께 골라진 것이면 그것만 빼고, 같은 폴더의 나머지는 고른 채로 둔다.
   Future<void> _toggleMark(_Pane pane, FileEntry e) async {
     pane.focused = e.path;
-    if (!pane.marked.contains(e.path)) {
-      setState(() => pane.marked.add(e.path));
+    if (!_isMarked(pane, e.path)) {
+      setState(() {
+        pane.marked.removeWhere((m) => isSameOrInside(m, e.path)); // 안에 따로 고른 것은 이 폴더 하나로
+        pane.marked.add(e.path);
+      });
+      if (e.isDir) {
+        await _load(pane, e.path);
+        setState(() => pane.expanded.add(e.path));
+      }
       return;
     }
-    setState(() => pane.marked.remove(e.path));
-    if (!e.isDir) return;
-    await _load(pane, e.path);
+    final owner = pane.marked.firstWhere((m) => isSameOrInside(e.path, m));
+    setState(() => pane.marked.removeWhere((m) => isSameOrInside(m, e.path)));
+    if (samePath(owner, e.path)) return;
+    // 위 폴더 [owner] 를 골라 둔 상태: owner 표시를 풀고, e 까지 내려가는 길의 다른 항목은 고른 채로
+    final keep = <String>[];
+    var dir = owner;
+    while (!samePath(dir, e.path)) {
+      await _load(pane, dir);
+      String? next;
+      for (final x in pane.cache[dir] ?? const <FileEntry>[]) {
+        if (isSameOrInside(e.path, x.path)) {
+          next = x.path;
+        } else {
+          keep.add(x.path);
+        }
+      }
+      if (next == null) break;
+      dir = next;
+    }
     setState(() {
-      pane.expanded.add(e.path);
-      pane.marked.addAll([for (final x in pane.cache[e.path] ?? const <FileEntry>[]) x.path]);
+      pane.marked.remove(owner);
+      pane.marked.addAll(keep);
     });
   }
 
@@ -467,7 +501,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
         await _addMkv([e.path]);
       case 'select':
         setState(() => _selecting = true);
-        if (!pane.marked.contains(e.path)) await _toggleMark(pane, e);
+        if (!_isMarked(pane, e.path)) await _toggleMark(pane, e);
       case 'rename':
         await _rename(pane, e.path);
       case 'copy':
@@ -475,9 +509,9 @@ class _ExplorerPageState extends State<ExplorerPage> {
       case 'move':
         await _transfer(pane, [e.path], move: true);
       case 'clipCopy':
-        _toClipboard(pane.marked.contains(e.path) ? pane.marked.toList() : [e.path], move: false);
+        _toClipboard(_isMarked(pane, e.path) ? pane.marked.toList() : [e.path], move: false);
       case 'clipMove':
-        _toClipboard(pane.marked.contains(e.path) ? pane.marked.toList() : [e.path], move: true);
+        _toClipboard(_isMarked(pane, e.path) ? pane.marked.toList() : [e.path], move: true);
       case 'paste':
         await _paste(pane, e.isDir ? e.path : p.dirname(e.path));
       case 'delete':
@@ -1291,6 +1325,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
             onPressed: () => setState(() {
               final dir = listDir ?? pane.current;
               pane.marked.addAll([for (final x in pane.cache[dir] ?? const <FileEntry>[]) x.path]);
+              _normalizeMarks(pane);
             }),
             child: Text(tr('모두 선택')),
           ),
@@ -1390,7 +1425,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
     final look = _look;
     final isCurrent = e.isDir && !list && !row.isUp && samePath(pane.current, e.path);
     final isFocused = !row.isUp && pane.focused != null && samePath(pane.focused!, e.path);
-    final marked = pane.marked.contains(e.path);
+    final marked = _isMarked(pane, e.path);
     final open = e.isDir && !list && pane.expanded.contains(e.path);
     final loading = pane.loading.contains(e.path);
     final name = row.isUp

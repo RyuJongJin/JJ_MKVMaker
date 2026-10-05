@@ -147,10 +147,13 @@ class _CopySyncSettingsState extends State<CopySyncSettings> {
             : _rsync != null
                 ? trf('사용: {0}', [_rsync!])
                 : s.rsyncSource == 'download'
-                    ? (desk ? tr('아직 없음 (rsync 로 복사할 때 · 아래 [내려받기] 로 받습니다)') : tr('Android 는 rsync 를 내려받을 수 없습니다. 직접 지정하세요.'))
+                    ? (desk
+                        ? tr('이 설치본에는 rsync 가 들어 있지 않습니다 (rsync 로 복사할 때 · 오른쪽 [내려받기] 로 받습니다)')
+                        : tr('이 설치본에는 rsync 가 들어 있지 않습니다. 직접 지정하세요.'))
                     : tr('지정한 파일이 없습니다')),
         trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-          if (desk && s.rsyncSource == 'download' && !_checking)
+          // 내려받기 · 내려받은 것 지우기 (앱에 들어 있는 것을 쓰면 보이지 않음)
+          if (desk && s.rsyncSource == 'download' && !_checking && (_rsync == null || _rsync != bundledRsync))
             _rsync == null
                 ? TextButton(
                     onPressed: () async {
@@ -171,7 +174,7 @@ class _CopySyncSettingsState extends State<CopySyncSettings> {
           DropdownButton<String>(
             value: s.rsyncSource,
             items: [
-              DropdownMenuItem(value: 'download', child: Text(desk ? tr('처음 쓸 때 내려받기 (기본)') : tr('내려받기 (Windows 만)'))),
+              DropdownMenuItem(value: 'download', child: Text(tr('앱에 들어 있는 것 (기본)'))),
               DropdownMenuItem(value: 'custom', child: Text(tr('직접 지정'))),
             ],
             onChanged: (v) async {

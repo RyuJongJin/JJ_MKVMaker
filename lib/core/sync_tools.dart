@@ -72,6 +72,8 @@ List<String> rsyncArgs({
   return [
     ...opts,
     if (bandwidthKBps > 0 && !opts.any((o) => o.startsWith('--bwlimit'))) '--bwlimit=$bandwidthKBps',
+    // 한글 등 이름을 \#355… 로 바꾸지 않고 그대로 출력 (Android 빌드는 iconv 없음 · 진행 표시에 쓰는 이름)
+    if (!windows && !opts.contains('-8') && !opts.contains('--8-bit-output')) '-8',
     if (move && !opts.contains('--remove-source-files')) '--remove-source-files',
     // [contents]: 폴더 "안의 것" 을 대상에 (rsync 의 끝 / - 동기화 · lsync 와 같은 모양)
     for (final s in sources) '${toCygwinPath(_noTrailingSlash(s), windows: windows)}${contents ? '/' : ''}',
