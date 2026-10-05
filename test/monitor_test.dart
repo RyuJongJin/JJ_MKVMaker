@@ -102,6 +102,18 @@ void main() {
       expect(Directory(p.join(dst, 'src', 'src')).existsSync(), isFalse);
     });
 
+    test('기억한 복사의 원본이 없어졌거나 자기 안으로면 시작하지 않고 실패로 남긴다', () async {
+      c.settings.copyMethodFolder = 'rsync';
+      final center = CopyCenter(c);
+      final t = await center.remember([src], src); // 자기 안으로
+      expect(await center.start(t), isNull);
+      expect([center.tasks.single.lastResult, center.tasks.single.lastMessage], ['failed', contains('자기 자신 안으로')]);
+      final t2 = await center.remember([p.join(tmp.path, 'gone')], dst);
+      expect(await center.start(t2), isNull);
+      expect(center.tasks.firstWhere((x) => x.id == t2.id).lastMessage, contains('원본이 없습니다'));
+      expect(center.jobs, isEmpty);
+    });
+
     test('lsync: 맞출 것 자동으로 세기 · 일정 밖이면 맞추지 않음', () async {
       final target = p.join(dst, 'mirror');
       // 일정: 지금이 아닌 시간 (지금 시 + 2)

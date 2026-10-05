@@ -222,7 +222,9 @@ class _CopyCardState extends State<_CopyCard> {
         return;
       }
     }
+    final problem = transferProblem(t.sources, t.dest, move: t.move);
     await center.start(t, rsyncExe: exe);
+    if (problem != null && mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(problem)));
   }
 
   /// 옵션 저장 → 지금 실행할지 묻기 (현재 유지 / 반영 후 실행)

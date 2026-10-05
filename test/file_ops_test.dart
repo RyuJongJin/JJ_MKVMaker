@@ -76,6 +76,21 @@ void main() {
     expect(b.existsSync(), isFalse);
   });
 
+  test('시작 전 확인: 없는 원본 · 없는 대상 · 자기 안으로 · 같은 폴더로 이동', () {
+    final a = Directory(p.join(tmp.path, 'a'))..createSync();
+    final inner = Directory(p.join(a.path, 'inner'))..createSync();
+    final f = File(p.join(tmp.path, 'f.txt'))..writeAsStringSync('f');
+    final other = Directory(p.join(tmp.path, 'other'))..createSync();
+    expect(transferProblem([a.path, f.path], other.path, move: false), isNull);
+    expect(transferProblem([a.path], other.path, move: true), isNull);
+    expect(transferProblem([p.join(tmp.path, 'gone')], other.path, move: false), contains('원본이 없습니다'));
+    expect(transferProblem([a.path], p.join(tmp.path, 'nowhere'), move: false), contains('대상 폴더가 없습니다'));
+    expect(transferProblem([a.path], a.path, move: false), contains('자기 자신 안으로'));
+    expect(transferProblem([a.path], inner.path, move: true), contains('자기 자신 안으로'));
+    expect(transferProblem([f.path], tmp.path, move: true), contains('이미 이 폴더에'));
+    expect(transferProblem([f.path], tmp.path, move: false), isNull); // 같은 폴더에 복사는 "이름 (2)"
+  });
+
   test('복사 취소: 만들던 파일을 지우고 FileOpCancelled', () async {
     final big = file('big.bin', 'x' * (2 * 1024 * 1024));
     final dst = Directory(p.join(tmp.path, 'dst'))..createSync();

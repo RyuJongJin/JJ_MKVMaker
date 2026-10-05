@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
+import '../l10n/tr.dart';
 import 'playlist.dart' show naturalCompare;
 
 /// 파일 탐색기 (X-plore 참고) 의 화면과 상관없는 부분: 폴더 읽기 · 정렬 · 복사 / 이동 / 삭제 · 찾기.
@@ -83,6 +84,26 @@ bool samePath(String a, String b) {
 bool isSameOrInside(String a, String b) {
   final x = p.normalize(p.absolute(a)), y = p.normalize(p.absolute(b));
   return samePath(a, b) || p.isWithin(y, x) || (Platform.isWindows && p.isWithin(y.toLowerCase(), x.toLowerCase()));
+}
+
+/// 복사 · 이동을 시작하기 전 확인 (모든 방법 공통 - rsync · robocopy 는 스스로 막지 않는다).
+/// 문제가 있으면 알릴 글, 없으면 null.
+/// - 원본이 없음 (다른 곳에서 지워졌거나 옮겨짐) · 대상 폴더가 없음
+/// - 폴더를 자기 자신 (또는 그 안) 으로 복사 · 이동
+/// - 이미 그 폴더에 있는 것을 같은 폴더로 이동
+String? transferProblem(List<String> sources, String dest, {required bool move}) {
+  final missing = [for (final s in sources) if (FileSystemEntity.typeSync(s) == FileSystemEntityType.notFound) s];
+  if (missing.isNotEmpty) {
+    return trf('원본이 없습니다 (다른 곳에서 지워졌거나 옮겨졌습니다): {0}', [missing.map(p.basename).join(', ')]);
+  }
+  if (!Directory(dest).existsSync()) return trf('대상 폴더가 없습니다: {0}', [dest]);
+  for (final s in sources) {
+    if (FileSystemEntity.isDirectorySync(s) && isSameOrInside(dest, s)) {
+      return trf('폴더를 자기 자신 안으로 {0} 수 없습니다: {1}', [move ? tr('옮길') : tr('복사할'), p.basename(s)]);
+    }
+    if (move && samePath(p.dirname(s), dest)) return trf('이미 이 폴더에 있습니다: {0}', [p.basename(s)]);
+  }
+  return null;
 }
 
 /// 복사 · 이동 중 알림 (지금 파일, 지금까지 바이트, 전체 바이트)

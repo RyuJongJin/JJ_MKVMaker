@@ -76,8 +76,16 @@ class CopyCenter extends ChangeNotifier {
   void cancel(String id) => jobs[id]?.cancel();
 
   /// 실행을 시작하고 그 작업을 바로 돌려준다 (rsync 가 없으면 null). 끝나면 결과를 기억한다 ([TransferJob.done]).
+  /// 실행 · 재개. 원본 · 대상이 없거나 폴더를 자기 안으로 넣는 것이면 시작하지 않고 실패로 남긴다 (null).
   Future<TransferJob?> start(CopyTask t, {String? rsyncExe}) async {
     if (isRunning(t.id)) return jobs[t.id];
+    final problem = transferProblem(t.sources, t.dest, move: t.move);
+    if (problem != null) {
+      if (tasks.any((x) => x.id == t.id)) {
+        await update(t.copyWith(lastRun: DateTime.now().toIso8601String(), lastResult: 'failed', lastMessage: problem));
+      }
+      return null;
+    }
     final method = CopyMethod.of(t.method);
     final exe = method == CopyMethod.rsync ? (rsyncExe ?? await rsyncExecutable(c.settings)) : null;
     if (method == CopyMethod.rsync && exe == null) return null;

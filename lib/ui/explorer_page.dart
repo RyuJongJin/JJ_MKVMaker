@@ -781,6 +781,17 @@ class _ExplorerPageState extends State<ExplorerPage> {
       _snack(tr('앞의 복사 · 이동이 끝난 뒤에 하세요.'));
       return false;
     }
+    // 원본 · 대상이 없거나 (다른 곳에서 지움 - 목록을 새로 고침) 폴더를 자기 안으로 넣으려 하면 시작하지 않는다
+    final problem = transferProblem(sources, dest, move: move);
+    if (problem != null) {
+      _snack(problem);
+      pane.marked.removeWhere((m) => FileSystemEntity.typeSync(m) == FileSystemEntityType.notFound);
+      await _refreshAll([dest, ...sources.map(p.dirname)]);
+      for (final x in _panes) {
+        x.changed();
+      }
+      return false;
+    }
     // 복사 모니터링을 켜면 기억한 같은 복사의 옵션을 쓰고, 처음이면 기억한다
     final center = CopyCenter.of(c);
     final task = c.settings.copyMonitor
