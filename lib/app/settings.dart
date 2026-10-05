@@ -322,6 +322,23 @@ class AppSettings {
   /// 실시간 동기화 확인 간격 (초). Windows 는 바뀌면 바로, 그 밖은 이 간격으로 살핀다.
   int liveSyncIntervalSec = 30;
 
+  /// 백그라운드로 실행 (Android): 켜면 ← 로 닫거나 최근 앱에서 밀어도 동기화 · MKV 만들기 · 다운로드를 계속한다 (알림에 표시).
+  /// 끄면 지금처럼 닫을 때 끝난다. Windows 는 [closeAction] 'background' 가 같은 뜻 ([backgroundRun]).
+  bool runInBackground = false;
+
+  /// 앱을 다시 켤 때 실시간 동기화: 'auto' 바로 시작 / 'ask' 골라서 시작 / 'off' 시작 안 함 (모니터링에서 시작)
+  String liveSyncOnStart = 'auto';
+
+  /// 백그라운드로 실행 (설정 화면의 체크 하나). Windows: 창 ✕ 를 누르면 트레이로 (끄면 종료), Android: [runInBackground]
+  bool get backgroundRun => Platform.isWindows ? closeAction == 'background' : runInBackground;
+  set backgroundRun(bool v) {
+    if (Platform.isWindows) {
+      closeAction = v ? 'background' : 'quit';
+    } else {
+      runInBackground = v;
+    }
+  }
+
   /// 마지막으로 연 폴더 (왼쪽 · 오른쪽 창)
   List<String> explorerPaths = [];
 
@@ -414,6 +431,8 @@ class AppSettings {
         'rsyncPath': rsyncPath,
         'liveSyncPairs': [for (final x in liveSyncPairs) x.toJson()],
         'liveSyncIntervalSec': liveSyncIntervalSec,
+        'runInBackground': runInBackground,
+        'liveSyncOnStart': liveSyncOnStart,
         'copyMonitor': copyMonitor,
         'copyTasks': [for (final x in copyTasks) x.toJson()],
         'explorerHistory': explorerHistory,
@@ -519,6 +538,8 @@ class AppSettings {
       ]
       ..liveSyncIntervalSec = ((j['liveSyncIntervalSec'] as num?)?.toInt() ?? 30).clamp(5, 3600)
       ..copyMonitor = j['copyMonitor'] == true
+      ..runInBackground = j['runInBackground'] == true
+      ..liveSyncOnStart = const ['auto', 'ask', 'off'].contains(j['liveSyncOnStart']) ? j['liveSyncOnStart'] as String : 'auto'
       ..copyTasks = [
         for (final x in (j['copyTasks'] as List?) ?? const [])
           if (x is Map && x['dest'] is String) CopyTask.fromJson(x),

@@ -9,6 +9,7 @@
     <!-- 앱이 화면에서 내려가도 다운로드 · MKV 만들기 · AI 자막을 계속하고 진행 알림을 보여 주기 위해 -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <!-- 환경 설정 > 최신 버전 확인: 받은 새 APK 로 설치 화면 열기 -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
@@ -132,7 +133,11 @@
         <service
             android:name=".KeepAliveService"
             android:exported="false"
-            android:foregroundServiceType="dataSync"/>
+            android:foregroundServiceType="dataSync|specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Keeps folder live sync, video conversion and downloads running while the app is closed (user setting: run in background)"/>
+        </service>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

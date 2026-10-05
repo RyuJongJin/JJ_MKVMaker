@@ -11,5 +11,8 @@ void main() {
     // 작업 (MKV · AI) 이 있으면 글만
     expect(AndroidKeepAlive.status('MKV 만들기', true, 0, null), ('MKV 만들기', -1));
     expect(AndroidKeepAlive.status('AI 자막', true, 1, 0.5), ('AI 자막 · 다운로드 1개 · 50%', -1));
+    // 백그라운드로 실행: 실시간 동기화를 지켜보는 동안에도
+    expect(AndroidKeepAlive.status(null, false, 0, null, syncs: 2), ('동기화 2개 지켜보는 중', -1));
+    expect(AndroidKeepAlive.status('MKV 만들기', true, 0, null, syncs: 1, syncing: true), ('MKV 만들기 · 동기화 1개 · 맞추는 중', -1));
   });
 }

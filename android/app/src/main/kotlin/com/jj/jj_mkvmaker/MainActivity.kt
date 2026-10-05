@@ -1,6 +1,7 @@
 package com.jj.jj_mkvmaker
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -12,6 +13,7 @@ import com.yausername.ffmpeg.FFmpeg
 import com.yausername.youtubedl_android.YoutubeDL
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.embedding.engine.FlutterEngineCache
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
 
@@ -20,6 +22,40 @@ class MainActivity : FlutterActivity() {
     companion object {
         /// 작업 알림을 눌렀을 때: 작업 현황 화면을 연다
         const val ACTION_SHOW_JOBS = "com.jj.jj_mkvmaker.SHOW_JOBS"
+
+        private const val ENGINE_ID = "main"
+
+        /// 백그라운드로 실행 (환경 설정, Dart 가 알려 준다): 켜져 있으면 화면을 닫아도 (← · 최근 앱에서 밀기)
+        /// Dart 엔진을 없애지 않아 동기화 · MKV 만들기 · 다운로드가 계속된다 (작업 알림 서비스가 프로세스를 살려 둠).
+        @Volatile
+        var background = false
+    }
+
+    /// 앞 화면이 닫힌 뒤 살아 있던 엔진을 다시 붙였는지 (Dart 는 이미 돌고 있다)
+    private var reusedEngine = false
+
+    /// 엔진은 앱 (프로세스) 이 갖는다: 화면이 닫혀도 [background] 면 살려 두고, 다시 열면 그 엔진을 붙인다
+    override fun provideFlutterEngine(context: Context): FlutterEngine {
+        val cache = FlutterEngineCache.getInstance()
+        cache.get(ENGINE_ID)?.let {
+            reusedEngine = true
+            return it
+        }
+        return FlutterEngine(context.applicationContext).also { cache.put(ENGINE_ID, it) }
+    }
+
+    /// 백그라운드로 실행이 꺼져 있으면 지금처럼 화면과 함께 엔진도 끝낸다
+    override fun shouldDestroyEngineWithHost(): Boolean {
+        if (background) return false
+        FlutterEngineCache.getInstance().remove(ENGINE_ID)
+        return true
+    }
+
+    /// 첫 화면에서 ←: 백그라운드로 실행이면 앱을 끝내지 않고 뒤로 보낸다 (홈 버튼과 같음)
+    override fun popSystemNavigator(): Boolean {
+        if (!background) return false
+        moveTaskToBack(true)
+        return true
     }
 
     private var channel: MethodChannel? = null
@@ -36,8 +72,30 @@ class MainActivity : FlutterActivity() {
         pendingShowJobs = intent?.action == ACTION_SHOW_JOBS
         val ch = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "jj_mkvmaker/android")
         channel = ch
+        if (reusedEngine) {
+            // Dart 는 이미 돌고 있어 take… 로 가져가지 않는다: 바로 보낸다
+            if (pendingShowJobs) ch.invokeMethod("showJobs", null)
+            if (pendingOpen.isNotEmpty()) ch.invokeMethod("openFiles", pendingOpen)
+            pendingShowJobs = false
+            pendingOpen = emptyList()
+        }
         ch.setMethodCallHandler { call, result ->
             when (call.method) {
+                "setBackground" -> {
+                    background = call.argument<Boolean>("on") ?: false
+                    result.success(null)
+                }
+                "exitApp" -> {
+                    // [종료]: 작업 알림 · 살려 둔 엔진까지 모두 끝낸다
+                    result.success(null)
+                    background = false
+                    stopService(Intent(applicationContext, KeepAliveService::class.java))
+                    FlutterEngineCache.getInstance().remove(ENGINE_ID)
+                    finishAndRemoveTask()
+                    android.os.Handler(mainLooper).postDelayed({
+                        android.os.Process.killProcess(android.os.Process.myPid())
+                    }, 300)
+                }
                 "takeOpenedFiles" -> {
                     result.success(pendingOpen)
                     pendingOpen = emptyList()
@@ -81,7 +139,7 @@ class MainActivity : FlutterActivity() {
                     result.success(null)
                 }
                 "stopKeepAlive" -> {
-                    stopService(Intent(this, KeepAliveService::class.java))
+                    stopService(Intent(applicationContext, KeepAliveService::class.java))
                     result.success(null)
                 }
                 "downloadToolsInit" -> inBackground(result) { downloadToolsInit() }
@@ -345,21 +403,22 @@ class MainActivity : FlutterActivity() {
     private var askedNotifications = false
 
     private fun keepAlive(text: String, progress: Int) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !askedNotifications &&
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !askedNotifications && !isDestroyed &&
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
             askedNotifications = true
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 2)
         }
         if (KeepAliveService.running) {
-            KeepAliveService.update(this, text, progress)
+            KeepAliveService.update(applicationContext, text, progress)
             return
         }
-        val i = Intent(this, KeepAliveService::class.java)
+        val i = Intent(applicationContext, KeepAliveService::class.java)
             .putExtra(KeepAliveService.EXTRA_TEXT, text)
             .putExtra(KeepAliveService.EXTRA_PROGRESS, progress)
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(i) else startService(i)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) applicationContext.startForegroundService(i)
+            else applicationContext.startService(i)
         } catch (e: Exception) {
             // 백그라운드에서는 새로 시작할 수 없다 (Android 12+). 이미 떠 있으면 다음 갱신 때 바뀐다
             android.util.Log.w("jj_mkvmaker", "keepAlive", e)

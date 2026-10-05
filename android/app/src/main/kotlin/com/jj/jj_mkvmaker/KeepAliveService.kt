@@ -12,7 +12,7 @@ import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 
-/// 다운로드 · MKV 만들기 · AI 자막이 진행 중일 때 앱이 화면에서 내려가도 Android 가 멈추지 않도록 하는
+/// 다운로드 · MKV 만들기 · AI 자막 · 실시간 동기화 (백그라운드로 실행) 가 진행 중일 때 앱이 화면에서 내려가도 Android 가 멈추지 않도록 하는
 /// 포그라운드 서비스. 알림에 진행 상황을 보여 주고, 화면이 꺼져도 CPU 가 잠들지 않게 한다.
 /// 실제 작업은 앱 (Dart) 이 같은 프로세스에서 계속한다. 작업이 모두 끝나면 앱이 멈춘다.
 class KeepAliveService : Service() {
@@ -25,7 +25,10 @@ class KeepAliveService : Service() {
         val progress = intent?.getIntExtra(EXTRA_PROGRESS, -1) ?: -1
         val n = notification(this, text, progress)
         running = true
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            // 실시간 동기화는 앱이 켜져 있는 내내 지켜봐야 하므로 하루 6시간 제한이 있는 dataSync 대신 specialUse (Android 14+)
+            startForeground(NOTIFICATION_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(NOTIFICATION_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
         } else {
             startForeground(NOTIFICATION_ID, n)
@@ -70,7 +73,7 @@ class KeepAliveService : Service() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && nm.getNotificationChannel(CHANNEL_ID) == null) {
                 nm.createNotificationChannel(
                     NotificationChannel(CHANNEL_ID, "작업 진행", NotificationManager.IMPORTANCE_LOW).apply {
-                        description = "다운로드 · MKV 만들기 · AI 자막 진행 상황"
+                        description = "다운로드 · MKV 만들기 · AI 자막 · 동기화 진행 상황"
                         setShowBadge(false)
                     }
                 )

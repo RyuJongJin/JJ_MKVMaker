@@ -122,6 +122,56 @@ void main() {
     });
   });
 
+  group('백그라운드 · 다시 켤 때 동기화', () {
+    test('설정 저장 · 읽기, Windows 는 종료 동작과 같은 값', () {
+      final s = AppSettings()
+        ..runInBackground = true
+        ..liveSyncOnStart = 'ask';
+      final r = AppSettings.fromJson(s.toJson());
+      expect([r.runInBackground, r.liveSyncOnStart], [true, 'ask']);
+      expect(AppSettings.fromJson({'liveSyncOnStart': 'x'}).liveSyncOnStart, 'auto');
+      expect(AppSettings.fromJson({}).runInBackground, isFalse);
+      final w = AppSettings()..backgroundRun = false;
+      if (Platform.isWindows) {
+        expect(w.closeAction, 'quit');
+        w.backgroundRun = true;
+        expect([w.closeAction, w.backgroundRun], ['background', true]);
+      } else {
+        expect(w.runInBackground, isFalse);
+      }
+    });
+
+    test('멈춘 채로 시작 · 고른 것만 시작 · 모두 시작', () async {
+      final tmp = Directory.systemTemp.createTempSync('jj_hold_');
+      addTearDown(() => tmp.deleteSync(recursive: true));
+      final a = Directory(p.join(tmp.path, 'a'))..createSync();
+      final b = Directory(p.join(tmp.path, 'b'))..createSync();
+      File(p.join(a.path, '1.txt')).writeAsStringSync('1');
+      File(p.join(b.path, '2.txt')).writeAsStringSync('2');
+      final c = AppController(PlatformServices(mediaTool: ProcessMediaTool('x', 'y'), storage: DesktopStorageService()));
+      final pa = LiveSyncPair(a.path, p.join(tmp.path, 'ta')), pb = LiveSyncPair(b.path, p.join(tmp.path, 'tb'));
+      c.settings
+        ..liveSyncPairs = [pa, pb]
+        ..liveSyncOnStart = 'off';
+      final live = LiveSync(c)..start(hold: c.settings.liveSyncOnStart != 'auto');
+      addTearDown(live.dispose);
+      expect(live.watching, isEmpty);
+      await Future<void>.delayed(const Duration(seconds: 4));
+      expect(Directory(pa.target).existsSync(), isFalse); // 시작 안 함
+      live.runOnly([pa]);
+      expect(live.watching.map((x) => x.source), [a.path]);
+      expect(live.isPaused(pb), isTrue);
+      await Future<void>.delayed(const Duration(seconds: 4));
+      expect(File(p.join(pa.target, '1.txt')).existsSync(), isTrue);
+      expect(Directory(pb.target).existsSync(), isFalse);
+      live.resumeAll();
+      await Future<void>.delayed(const Duration(seconds: 4));
+      expect(File(p.join(pb.target, '2.txt')).existsSync(), isTrue);
+      live.pause(pa);
+      expect(live.watching.map((x) => x.source), [b.path]);
+    });
+  });
+
   testWidgets('모니터링 화면: 복사 목록 · 옵션 고치기 → 현재 유지 / 반영 후 실행, lsync 탭 · 일정', (tester) async {
     final tmp = Directory.systemTemp.createTempSync('jj_monui_');
     addTearDown(() => tmp.deleteSync(recursive: true));

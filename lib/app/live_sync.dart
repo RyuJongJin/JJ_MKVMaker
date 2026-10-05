@@ -57,8 +57,13 @@ class LiveSync extends ChangeNotifier {
   /// 1분마다: 동작 시간 (cron) 이 시작되면 밀린 것을 맞춘다
   Timer? _clock;
 
-  void start() {
+  /// 이번 실행 동안 멈춘 쌍 (설정의 켜기 · 끄기와 따로, 앱을 다시 켜면 [AppSettings.liveSyncOnStart] 를 따른다)
+  final paused = <String>{};
+
+  /// [hold] 면 켜진 쌍을 모두 멈춘 채로 시작 (모니터링 · [resume] 으로 시작)
+  void start({bool hold = false}) {
     instance = this;
+    if (hold) paused.addAll(c.settings.liveSyncPairs.where((x) => x.enabled).map(keyOf));
     c.addListener(_apply);
     _apply();
     _clock ??= Timer.periodic(const Duration(minutes: 1), (_) => _onClock());
@@ -76,8 +81,35 @@ class LiveSync extends ChangeNotifier {
   /// 지금 동작 시간인지 (일정이 없으면 늘)
   static bool activeNow(LiveSyncPair x, [DateTime? now]) => scheduleActive(x.schedule, now ?? DateTime.now());
 
+  bool isPaused(LiveSyncPair x) => paused.contains(keyOf(x));
+
+  /// 지금 지켜보는 쌍 (켜져 있고 멈추지 않은 것)
+  List<LiveSyncPair> get watching => [
+        for (final x in c.settings.liveSyncPairs)
+          if (x.enabled && !paused.contains(keyOf(x))) x,
+      ];
+
+  void pause(LiveSyncPair x) => _setPaused({...paused, keyOf(x)});
+  void resume(LiveSyncPair x) => _setPaused({...paused}..remove(keyOf(x)));
+  void pauseAll() => _setPaused({...paused, ...c.settings.liveSyncPairs.map(keyOf)});
+  void resumeAll() => _setPaused({});
+
+  /// 시작할 때 고른 쌍만 (나머지는 멈춤)
+  void runOnly(Iterable<LiveSyncPair> xs) {
+    final keep = xs.map(keyOf).toSet();
+    _setPaused({for (final x in c.settings.liveSyncPairs) if (!keep.contains(keyOf(x))) keyOf(x)});
+  }
+
+  void _setPaused(Set<String> v) {
+    paused
+      ..clear()
+      ..addAll(v);
+    _apply();
+    notifyListeners();
+  }
+
   void _onClock() {
-    for (final x in c.settings.liveSyncPairs.where((x) => x.enabled)) {
+    for (final x in watching) {
       if (activeNow(x) && (pending[keyOf(x)]?.isNotEmpty ?? false)) _schedule(x);
     }
     notifyListeners(); // 남은 시간 표시
@@ -144,7 +176,7 @@ class LiveSync extends ChangeNotifier {
   /// 설정이 바뀌면 감시를 다시 꾸린다
   void _apply() {
     final s = c.settings;
-    final pairs = s.liveSyncPairs.where((x) => x.enabled).toList();
+    final pairs = watching;
     final sig = jsonEncode([for (final x in pairs) x.toJson(), s.liveSyncIntervalSec]);
     if (sig == _sig) return;
     _sig = sig;
@@ -186,6 +218,9 @@ class LiveSync extends ChangeNotifier {
   }
 
   bool isRunning(LiveSyncPair x) => _running.contains(keyOf(x));
+
+  /// 지금 맞추는 쌍이 있는지
+  bool get anyRunning => _running.isNotEmpty;
 
   /// 지금 맞추기 (원본 내용 → 대상)
   Future<void> syncNow(LiveSyncPair x) async {

@@ -17,8 +17,15 @@ class AndroidShell extends NoopShell {
   static const _ch = MethodChannel('jj_mkvmaker/android');
   bool _full = false;
 
+  /// [종료]: 백그라운드로 살려 둔 엔진 · 작업 알림까지 끝낸다 (화면만 닫는 ← 와 다름)
   @override
-  Future<void> quit() => SystemNavigator.pop();
+  Future<void> quit() async {
+    try {
+      await _ch.invokeMethod<void>('exitApp');
+    } catch (_) {
+      await SystemNavigator.pop();
+    }
+  }
 
   @override
   Future<void> setFullScreen(bool on) async {

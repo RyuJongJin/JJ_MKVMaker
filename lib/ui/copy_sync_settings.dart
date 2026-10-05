@@ -286,6 +286,7 @@ class _LiveSyncTile extends StatelessWidget {
               label: Text(tr('추가')),
             ),
           ),
+          Padding(padding: const EdgeInsets.only(left: 16), child: LiveSyncRunOptions(c: c)),
           for (var i = 0; i < pairs.length; i++)
             Padding(
               padding: const EdgeInsets.only(left: 16),
@@ -334,5 +335,68 @@ class _LiveSyncTile extends StatelessWidget {
             ),
         ]);
     return live == null ? body() : ListenableBuilder(listenable: live, builder: (_, _) => body());
+  }
+}
+
+/// 백그라운드로 실행 · 앱을 다시 켤 때 동기화 (환경 설정 > 파일 탐색기 > 실시간 동기화, 모니터링 > lsync 위)
+class LiveSyncRunOptions extends StatelessWidget {
+  final AppController c;
+
+  /// 모니터링: 한 줄로 짧게
+  final bool dense;
+  const LiveSyncRunOptions({super.key, required this.c, this.dense = false});
+
+  static String backgroundHelp() => Platform.isWindows
+      ? tr('창을 닫아도 (✕) 트레이에서 동기화 · MKV 만들기 · 다운로드를 계속합니다. 끄면 닫을 때 모두 끝냅니다. (실행 · 종료의 "종료를 누르면" 과 같은 설정)')
+      : tr('← 로 닫거나 최근 앱 목록에서 밀어도 동기화 · MKV 만들기 · 다운로드를 계속합니다 (알림에 표시). 끄면 지금처럼 닫을 때 끝납니다. 완전히 끝내려면 [종료].');
+
+  @override
+  Widget build(BuildContext context) {
+    final s = c.settings;
+    final onStart = DropdownButton<String>(
+      value: s.liveSyncOnStart,
+      isDense: dense,
+      items: [
+        DropdownMenuItem(value: 'auto', child: Text(tr('바로 시작 (기본)'))),
+        DropdownMenuItem(value: 'ask', child: Text(tr('골라서 시작'))),
+        DropdownMenuItem(value: 'off', child: Text(tr('시작 안 함 (모니터링에서 시작)'))),
+      ],
+      onChanged: (v) => c.updateSettings((x) => x.liveSyncOnStart = v!),
+    );
+    void setBackground(bool? v) => c.updateSettings((x) => x.backgroundRun = v ?? false);
+    if (dense) {
+      return Wrap(spacing: 12, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
+        Tooltip(
+          message: backgroundHelp(),
+          child: InkWell(
+            onTap: () => setBackground(!s.backgroundRun),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Checkbox(value: s.backgroundRun, onChanged: setBackground),
+              Text(tr('백그라운드로 실행'), style: const TextStyle(fontSize: 13)),
+            ]),
+          ),
+        ),
+        Row(mainAxisSize: MainAxisSize.min, children: [
+          Text(tr('다시 켤 때 동기화'), style: const TextStyle(fontSize: 13, color: JjColors.textDim)),
+          const SizedBox(width: 8),
+          onStart,
+        ]),
+      ]);
+    }
+    return Column(children: [
+      CheckboxListTile(
+        dense: true,
+        value: s.backgroundRun,
+        onChanged: setBackground,
+        title: Text(tr('백그라운드로 실행')),
+        subtitle: Text(backgroundHelp()),
+      ),
+      ListTile(
+        dense: true,
+        title: Text(tr('앱을 다시 켤 때 동기화')),
+        subtitle: Text(tr('바로 시작: 켜진 동기화를 모두 시작 · 골라서 시작: 켤 때 고르기 · 시작 안 함: 모니터링 > lsync 의 시작 버튼으로')),
+        trailing: onStart,
+      ),
+    ]);
   }
 }

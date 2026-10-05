@@ -13,7 +13,7 @@ import '../core/file_ops.dart';
 import '../core/sync_tools.dart';
 import '../l10n/tr.dart';
 import 'app_actions.dart';
-import 'copy_sync_settings.dart' show addLiveSyncPairDialog;
+import 'copy_sync_settings.dart' show addLiveSyncPairDialog, LiveSyncRunOptions;
 import 'rsync_setup.dart';
 import 'schedule_editor.dart';
 import 'theme.dart';
@@ -442,6 +442,18 @@ class _LiveTabState extends State<_LiveTab> {
             ),
             TextButton.icon(onPressed: () => addLiveSyncPairDialog(context, c), icon: const Icon(Icons.add), label: Text(tr('추가'))),
           ]),
+          // 백그라운드로 실행 · 다시 켤 때 동기화 (환경 설정과 같은 값) · 모두 시작 / 멈춤
+          Wrap(spacing: 12, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
+            LiveSyncRunOptions(c: c, dense: true),
+            if (live != null && pairs.any((x) => x.enabled))
+              live.paused.isEmpty
+                  ? TextButton.icon(
+                      onPressed: live.pauseAll, icon: const Icon(Icons.pause, size: 18), label: Text(tr('모두 멈춤')))
+                  : FilledButton.tonalIcon(
+                      onPressed: live.resumeAll,
+                      icon: const Icon(Icons.play_arrow, size: 18),
+                      label: Text(trf('모두 시작 (멈춘 것 {0}개)', [pairs.where(live.isPaused).length]))),
+          ]),
           const SizedBox(height: 8),
           if (pairs.isEmpty)
             Padding(
@@ -461,6 +473,7 @@ class _LiveTabState extends State<_LiveTab> {
     final st = live?.status[k];
     final active = LiveSync.activeNow(x);
     final running = live?.isRunning(x) ?? false;
+    final held = live?.isPaused(x) ?? false;
     return Card(
       color: JjColors.panel,
       margin: const EdgeInsets.only(bottom: 10),
@@ -468,8 +481,17 @@ class _LiveTabState extends State<_LiveTab> {
         padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
-            Icon(running ? Icons.sync : x.enabled ? (active ? Icons.sync : Icons.bedtime_outlined) : Icons.sync_disabled,
-                color: x.enabled ? (active ? JjColors.accent : Colors.orangeAccent) : JjColors.textDim),
+            Icon(
+                running
+                    ? Icons.sync
+                    : !x.enabled
+                        ? Icons.sync_disabled
+                        : held
+                            ? Icons.pause_circle_outline
+                            : active
+                                ? Icons.sync
+                                : Icons.bedtime_outlined,
+                color: x.enabled && !held ? (active ? JjColors.accent : Colors.orangeAccent) : JjColors.textDim),
             const SizedBox(width: 8),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -481,8 +503,21 @@ class _LiveTabState extends State<_LiveTab> {
               visualDensity: VisualDensity.compact,
               label: Text([tr(CopyMethod.of(x.method).label), if (x.delete) tr('지우기 포함')].join(' · ')),
             ),
+            // 이번 실행 동안 멈춤 / 시작 (설정의 켜기 · 끄기는 오른쪽 스위치)
+            if (live != null && x.enabled)
+              IconButton(
+                tooltip: held ? tr('시작') : tr('멈춤 (이번 실행 동안)'),
+                icon: Icon(held ? Icons.play_arrow : Icons.pause, color: held ? JjColors.accent : null),
+                onPressed: () => held ? live.resume(x) : live.pause(x),
+              ),
             Switch(value: x.enabled, onChanged: (v) => _replace(x, x.copyWith(enabled: v))),
           ]),
+          if (held)
+            Padding(
+              padding: const EdgeInsets.only(left: 32, top: 2),
+              child: Text(tr('멈춤 (이번 실행 동안) · 시작 버튼을 누르면 다시 동기화합니다'),
+                  style: const TextStyle(fontSize: 12, color: Colors.orangeAccent)),
+            ),
           Padding(
             padding: const EdgeInsets.only(left: 32, top: 4),
             child: Wrap(spacing: 16, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
@@ -577,4 +612,46 @@ class _LiveTabState extends State<_LiveTab> {
       ),
     );
   }
+}
+
+/// 앱을 다시 켤 때 ([AppSettings.liveSyncOnStart] 'ask'): 어느 실시간 동기화를 시작할지 고르기.
+/// 고르지 않은 것은 이번 실행 동안 멈춤 (모니터링 > lsync 에서 ▶ 로 시작).
+Future<void> askLiveSyncStart(BuildContext context, LiveSync live) async {
+  final pairs = live.c.settings.liveSyncPairs.where((x) => x.enabled).toList();
+  if (pairs.isEmpty) return;
+  final pick = {for (final x in pairs) LiveSync.keyOf(x)};
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, set) => AlertDialog(
+        title: Text(tr('실시간 동기화 시작')),
+        content: SizedBox(
+          width: 520,
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(tr('시작할 동기화를 고르세요. 고르지 않은 것은 이번 실행 동안 멈춥니다 (모니터링 > lsync 에서 시작).'),
+                style: const TextStyle(fontSize: 12, color: JjColors.textDim)),
+            const SizedBox(height: 8),
+            Flexible(
+              child: ListView(shrinkWrap: true, children: [
+                for (final x in pairs)
+                  CheckboxListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    value: pick.contains(LiveSync.keyOf(x)),
+                    onChanged: (v) => set(() => v == true ? pick.add(LiveSync.keyOf(x)) : pick.remove(LiveSync.keyOf(x))),
+                    title: Text('${x.source}  →  ${x.target}', maxLines: 2, overflow: TextOverflow.ellipsis),
+                    subtitle: Text(scheduleSummary(x.schedule)),
+                  ),
+              ]),
+            ),
+          ]),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('모두 나중에'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('고른 것 시작'))),
+        ],
+      ),
+    ),
+  );
+  if (ok == true) live.runOnly(pairs.where((x) => pick.contains(LiveSync.keyOf(x))));
 }

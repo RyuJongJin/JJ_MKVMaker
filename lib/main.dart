@@ -36,6 +36,7 @@ import 'ui/downloads_page.dart';
 import 'ui/explorer_page.dart';
 import 'ui/exit_dialog.dart';
 import 'ui/home_page.dart';
+import 'ui/monitor_page.dart' show askLiveSyncStart;
 import 'ui/player_page.dart';
 import 'ui/setup_dialog.dart';
 import 'ui/update_dialog.dart';
@@ -91,8 +92,8 @@ Future<void> main(List<String> args) async {
     controller.note(trf('⚠ 지난 실행이 정상적으로 끝나지 않았습니다 (시작 {0}, 마지막 확인 {1}). ' '그 전의 기록은 Logs 폴더의 app.log 에 있습니다.', [hm(crashed.$1), hm(crashed.$2)]));
   }
   await controller.init();
-  // 실시간 동기화 (환경 설정 > 파일 탐색기): 앱이 켜져 있는 동안
-  LiveSync(controller).start();
+  // 실시간 동기화 (환경 설정 > 파일 탐색기): 앱이 켜져 있는 동안. 다시 켤 때 바로 / 골라서 / 시작 안 함
+  final live = LiveSync(controller)..start(hold: controller.settings.liveSyncOnStart != 'auto');
   // 화면 언어 (환경 설정 > 화면 언어)
   i18n.init(controller, dataDir);
   await i18n.apply(controller.settings.uiLanguage, save: false);
@@ -295,6 +296,8 @@ Future<void> main(List<String> args) async {
       final nav = navigatorKey.currentState;
       if (nav != null) unawaited(ExplorerPage.open(nav, c: controller));
     }
+    if (controller.settings.liveSyncOnStart == 'ask' && ctx.mounted) await askLiveSyncStart(ctx, live);
+    if (!ctx.mounted) return;
     await checkRequiredTools(ctx, services.shell);
     final ctx2 = navigatorKey.currentContext;
     if (ctx2 != null && ctx2.mounted) await checkForUpdate(ctx2, controller);
@@ -374,8 +377,8 @@ Future<void> runAndroid(String dataDir) async {
   final controller = AppController(services, settingsStore: SettingsStore())..logFile = p.join(logs.path, 'app.log');
   controller.note(trf('── 시작 {0} (Android) ──', [appTitle]));
   await controller.init();
-  // 실시간 동기화 (환경 설정 > 파일 탐색기): 앱이 켜져 있는 동안
-  LiveSync(controller).start();
+  // 실시간 동기화 (환경 설정 > 파일 탐색기): 앱이 켜져 있는 동안. 다시 켤 때 바로 / 골라서 / 시작 안 함
+  final live = LiveSync(controller)..start(hold: controller.settings.liveSyncOnStart != 'auto');
   // 화면 언어 (환경 설정 > 화면 언어)
   i18n.init(controller, dataDir);
   await i18n.apply(controller.settings.uiLanguage, save: false);
@@ -414,6 +417,8 @@ Future<void> runAndroid(String dataDir) async {
   downloads.log = controller.note;
   // 진행 중인 일이 있으면 화면에서 내려가도 계속 (알림에 진행 상황)
   AndroidKeepAlive(controller, downloads);
+  // 백그라운드로 실행: 화면을 닫았다가 다시 열면 새 화면 (Activity) 이 살아 있던 엔진에 붙는다 → 화면 방향을 다시 적용
+  AppLifecycleListener(onResume: () => applyScreenOrientation(controller.settings.screenOrientation));
   // 동영상 목록 기억 (앱을 껐다 켜도 그대로, 없어진 파일은 뺀다) - Windows 와 같은 파일
   unawaited(controller.shareVideoList(p.join(dataDir, 'videos.json')));
 
@@ -452,6 +457,9 @@ Future<void> runAndroid(String dataDir) async {
       final nav = navigatorKey.currentState;
       if (nav != null) unawaited(ExplorerPage.open(nav, c: controller));
     }
+    // 다시 켤 때 실시간 동기화를 골라서 시작
+    final ctx0 = navigatorKey.currentContext;
+    if (controller.settings.liveSyncOnStart == 'ask' && ctx0 != null && ctx0.mounted) await askLiveSyncStart(ctx0, live);
     // 새 버전 확인 (하루 한 번, 환경 설정에서 끌 수 있음)
     final ctx = navigatorKey.currentContext;
     if (ctx != null && ctx.mounted) unawaited(checkForUpdate(ctx, controller));
