@@ -953,10 +953,13 @@ class _ExplorerPageState extends State<ExplorerPage> {
     // 확인 창에는 기억한 옵션 (없으면 지금 설정) 을 보여 주고, 실행할 때 모니터링에 기억한다
     var tasks = [for (final (src, dst) in runs) center.peek([src], dst, contents: true, method: 'rsync')];
     String opts(CopyTask t) => both ? withUpdateOption(t.options) : t.options;
+    // 한 방향 (→ · ←) 만: 원본 파일 지우기 (--remove-source-files) 와 끝난 뒤 원본 정리
+    var removeSource = false;
+    var prune = 'keep';
     if (!mounted) return;
     final go = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => StatefulBuilder(builder: (ctx, set) => AlertDialog(
         title: Text(both ? tr('rsync 양쪽 (⇄)') : 'rsync'),
         content: SizedBox(
           width: 560,
@@ -964,7 +967,8 @@ class _ExplorerPageState extends State<ExplorerPage> {
             for (final t in tasks) ...[
               Text('${t.sources.first}/', style: const TextStyle(fontWeight: FontWeight.w600)),
               Text('→  ${t.dest}/', style: const TextStyle(fontWeight: FontWeight.w600)),
-              Text('rsync ${opts(t)}${t.bandwidthKBps > 0 ? ' · ${trf('속도 제한 {0} KB/s', [t.bandwidthKBps])}' : ''}',
+              Text('rsync ${opts(t)}${removeSource ? ' --remove-source-files' : ''}'
+                  '${t.bandwidthKBps > 0 ? ' · ${trf('속도 제한 {0} KB/s', [t.bandwidthKBps])}' : ''}',
                   style: const TextStyle(fontSize: 12, fontFamily: 'monospace', color: JjColors.textDim)),
               const SizedBox(height: 10),
             ],
@@ -972,19 +976,42 @@ class _ExplorerPageState extends State<ExplorerPage> {
                 style: const TextStyle(fontSize: 12, color: JjColors.textDim)),
             if (both)
               Text(tr('양쪽을 함께: 받는 쪽이 더 새 파일은 덮어쓰지 않습니다 (-u).'),
-                  style: const TextStyle(fontSize: 12, color: JjColors.textDim)),
+                  style: const TextStyle(fontSize: 12, color: JjColors.textDim))
+            else ...[
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                value: removeSource,
+                onChanged: (v) => set(() => removeSource = v ?? false),
+                title: Text(tr('원본 파일 지우기 (--remove-source-files)')),
+                subtitle: Text(tr('대상으로 옮긴 파일을 원본에서 지웁니다 (이동)')),
+              ),
+              if (removeSource) ...[
+                Text(tr('끝난 뒤 원본의 빈 폴더를 지웁니다 (find 원본/ -type d -empty -delete). 원본 폴더는:'),
+                    style: const TextStyle(fontSize: 12, color: JjColors.textDim)),
+                const SizedBox(height: 6),
+                PruneChoice(value: prune, onChanged: (v) => set(() => prune = v)),
+              ],
+            ],
           ]),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('취소'))),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('실행'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(removeSource ? tr('이동') : tr('실행'))),
         ],
-      ),
+      )),
     );
     if (go != true || !mounted) return;
     final exe = await _ensureRsync();
     if (exe == null || !mounted) return;
-    tasks = [for (final (src, dst) in runs) await center.remember([src], dst, contents: true, method: 'rsync')];
+    tasks = [
+      for (final (src, dst) in runs) await center.remember([src], dst, contents: true, method: 'rsync', move: removeSource),
+    ];
+    if (removeSource) {
+      tasks = [for (final t in tasks) t.copyWith(prune: prune)];
+      for (final t in tasks) {
+        await center.update(t);
+      }
+    }
     final jobs = <TransferJob>[];
     for (final t in tasks) {
       final j = await center.start(t.copyWith(options: opts(t)), rsyncExe: exe);
@@ -994,7 +1021,11 @@ class _ExplorerPageState extends State<ExplorerPage> {
     setState(() => _jobs = jobs);
     await Future.wait(jobs.map((j) => j.done));
     if (!mounted) return;
-    await _refreshAll([l, r]);
+    // 원본 폴더까지 지웠으면 고른 표시도 뺀다
+    for (final x in _panes) {
+      x.marked.removeWhere((m) => FileSystemEntity.typeSync(m) == FileSystemEntityType.notFound);
+    }
+    await _refreshAll([l, r, p.dirname(l), p.dirname(r)]);
     for (final x in _panes) {
       x.changed();
     }
@@ -1091,7 +1122,11 @@ class _ExplorerPageState extends State<ExplorerPage> {
         '${pct(job.overall)} · ${trf('파일 {0}/{1}', [job.allDone, job.allFiles])}',
       ),
       line(
-        job.counting ? tr('파일 세는 중…') : trf('{0} 안의 파일', [job.currentName]),
+        job.counting
+            ? tr('파일 세는 중…')
+            : job.pruning
+                ? (job.finished ? trf('빈 폴더 {0}개 지움', [job.pruned]) : tr('원본의 빈 폴더 정리 중…'))
+                : trf('{0} 안의 파일', [job.currentName]),
         job.current,
         '${pct(job.current)} · ${trf('파일 {0}/{1}', [curDone, curFiles])}',
       ),

@@ -76,6 +76,22 @@ void main() {
     expect(b.existsSync(), isFalse);
   });
 
+  test('빈 폴더 지우기 (find -type d -empty -delete): 안쪽부터 · 파일 있는 폴더는 그대로 · 원본 폴더 남김 / 지움', () async {
+    final root = p.join(tmp.path, 'src');
+    Directory(p.join(root, 'a', 'b', 'c')).createSync(recursive: true);
+    Directory(p.join(root, 'empty')).createSync();
+    file('src/keep/x.txt');
+    expect(await removeEmptyDirs(root), 4); // a/b/c, a/b, a, empty
+    expect(Directory(p.join(root, 'keep')).existsSync(), isTrue);
+    expect(Directory(p.join(root, 'a')).existsSync(), isFalse);
+    File(p.join(root, 'keep', 'x.txt')).deleteSync();
+    expect(await removeEmptyDirs(root), 1); // keep (원본 폴더는 남김)
+    expect(Directory(root).existsSync(), isTrue);
+    expect(await removeEmptyDirs(root, keepRoot: false), 1); // 원본 폴더도
+    expect(Directory(root).existsSync(), isFalse);
+    expect(await removeEmptyDirs(root), 0); // 없으면 아무것도
+  });
+
   test('시작 전 확인: 없는 원본 · 없는 대상 · 자기 안으로 · 같은 폴더로 이동', () {
     final a = Directory(p.join(tmp.path, 'a'))..createSync();
     final inner = Directory(p.join(a.path, 'inner'))..createSync();

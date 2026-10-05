@@ -102,6 +102,14 @@ void main() {
       expect(Directory(p.join(dst, 'src', 'src')).existsSync(), isFalse);
     });
 
+    test('이동 뒤 원본 정리 (prune) 저장 · 읽기', () {
+      final t = CopyTask(id: '1', sources: const ['/a'], dest: '/b', move: true, contents: true, method: 'rsync', prune: 'all');
+      final back = CopyTask.fromJson(t.toJson());
+      expect([back.move, back.prune], [true, 'all']);
+      expect(CopyTask.fromJson({'id': '2', 'dest': '/b', 'prune': 'x'}).prune, '');
+      expect(t.copyWith(prune: 'keep').prune, 'keep');
+    });
+
     test('기억한 복사의 원본이 없어졌거나 자기 안으로면 시작하지 않고 실패로 남긴다', () async {
       c.settings.copyMethodFolder = 'rsync';
       final center = CopyCenter(c);

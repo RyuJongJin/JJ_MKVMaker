@@ -144,7 +144,13 @@ class TransferProgressLines extends StatelessWidget {
           return Column(children: [
             line(trf('전체 {0}개 중 {1}번째', [job.total, cur + 1]), job.overall,
                 '${pct(job.overall)} · ${trf('파일 {0}/{1}', [job.allDone, job.allFiles])}'),
-            line(job.counting ? tr('파일 세는 중…') : trf('{0} 안의 파일', [p.basename(job.sources[cur])]), job.current,
+            line(
+                job.counting
+                    ? tr('파일 세는 중…')
+                    : job.pruning
+                        ? (job.finished ? trf('빈 폴더 {0}개 지움', [job.pruned]) : tr('원본의 빈 폴더 정리 중…'))
+                        : trf('{0} 안의 파일', [p.basename(job.sources[cur])]),
+                job.current,
                 '${pct(job.current)} · ${trf('파일 {0}/{1}', [job.filesDone[cur], job.filesTotal[cur]])}'),
           ]);
         },
@@ -179,6 +185,27 @@ class _CopyTab extends StatelessWidget {
   }
 }
 
+/// 이동 (rsync --remove-source-files) 뒤 원본 정리 이름
+String pruneLabel(String v) => switch (v) {
+      'keep' => tr('빈 폴더 지움 · 원본 폴더는 남김'),
+      'all' => tr('빈 폴더 지움 · 원본 폴더도 지움'),
+      _ => tr('빈 폴더 그대로'),
+    };
+
+/// 원본 정리 고르기: 원본 폴더를 남길지 · 지울지 (빈 폴더는 지움 = find 원본/ -type d -empty -delete)
+class PruneChoice extends StatelessWidget {
+  final String value;
+  final ValueChanged<String> onChanged;
+  final bool allowNone;
+  const PruneChoice({super.key, required this.value, required this.onChanged, this.allowNone = false});
+
+  @override
+  Widget build(BuildContext context) => Wrap(spacing: 6, runSpacing: 6, children: [
+        for (final v in [if (allowNone) '', 'keep', 'all'])
+          ChoiceChip(label: Text(pruneLabel(v)), selected: value == v, onSelected: (_) => onChanged(v)),
+      ]);
+}
+
 class _CopyCard extends StatefulWidget {
   final AppController c;
   final CopyTask task;
@@ -194,8 +221,10 @@ class _CopyCardState extends State<_CopyCard> {
   late final _options = TextEditingController(text: widget.task.options);
   late final _bw = TextEditingController(text: '${widget.task.bandwidthKBps}');
   late bool _once = widget.task.once;
+  late String _prune = widget.task.prune;
 
   bool get _dirty =>
+      _prune != widget.task.prune ||
       _method != widget.task.method ||
       _options.text.trim() != widget.task.options ||
       (int.tryParse(_bw.text) ?? 0) != widget.task.bandwidthKBps ||
@@ -234,6 +263,7 @@ class _CopyCardState extends State<_CopyCard> {
       options: _options.text.trim(),
       bandwidthKBps: int.tryParse(_bw.text) ?? 0,
       once: _once,
+      prune: _prune,
     );
     await center.update(t);
     if (!mounted) return;
@@ -366,6 +396,13 @@ class _CopyCardState extends State<_CopyCard> {
               ),
               if (t.sources.length > 1 && _method == 'rsync')
                 FilterChip(label: Text(tr('한 번에')), selected: _once, onSelected: (v) => setState(() => _once = v)),
+              // 이동 (원본 파일 지우기) 이면: 끝난 뒤 원본의 빈 폴더 · 원본 폴더 정리
+              if (t.move && _method == 'rsync')
+                DropdownButton<String>(
+                  value: _prune,
+                  items: [for (final v in ['', 'keep', 'all']) DropdownMenuItem(value: v, child: Text(pruneLabel(v)))],
+                  onChanged: (v) => setState(() => _prune = v!),
+                ),
               if (_dirty) FilledButton.tonal(onPressed: _save, child: Text(tr('저장'))),
             ]),
           ),
@@ -426,6 +463,71 @@ class _LiveTabState extends State<_LiveTab> {
   Future<void> _replace(LiveSyncPair old, LiveSyncPair now) => c.updateSettings((x) => x.liveSyncPairs = [
         for (final y in x.liveSyncPairs) y.source == old.source && y.target == old.target ? now : y,
       ]);
+
+  /// 최종 정리: 원본의 것을 모두 대상으로 옮기고 (rsync -avHPOg --remove-source-files 원본/ 대상/)
+  /// 빈 폴더를 지운다 (find 원본/ -type d -empty -delete). 원본 폴더를 남길지 · 지울지만 고른다.
+  /// 원본이 비므로 이 실시간 동기화는 끈다 (켜 둔 채 "지우기 포함" 이면 대상까지 비워 버린다).
+  Future<void> _finalize(LiveSyncPair x) async {
+    final live = LiveSync.instance;
+    final messenger = ScaffoldMessenger.of(context);
+    if (live?.isRunning(x) ?? false) {
+      messenger.showSnackBar(SnackBar(content: Text(tr('지금 맞추는 중입니다. 끝난 뒤에 하세요.'))));
+      return;
+    }
+    var prune = 'keep';
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, set) => AlertDialog(
+          title: Text(tr('최종 정리')),
+          content: SizedBox(
+            width: 600,
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(tr('원본의 파일을 모두 대상으로 옮기고 (원본에서 지움), 원본에 남은 빈 폴더를 지웁니다.')),
+              const SizedBox(height: 10),
+              SelectableText(
+                  'rsync -avHPOg --remove-source-files ${x.source}/ ${x.target}/\n'
+                  'find ${x.source}/ -type d -empty -delete',
+                  style: const TextStyle(fontFamily: 'monospace', fontSize: 12, color: JjColors.textDim)),
+              const SizedBox(height: 14),
+              Text(tr('원본 폴더'), style: const TextStyle(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 6),
+              PruneChoice(value: prune, onChanged: (v) => set(() => prune = v)),
+              const SizedBox(height: 12),
+              Text(tr('원본이 비므로 이 실시간 동기화는 끕니다. 진행은 [복사 · rsync] 탭에서 봅니다.'),
+                  style: const TextStyle(fontSize: 12, color: Colors.orangeAccent)),
+            ]),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('취소'))),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('최종 정리'))),
+          ],
+        ),
+      ),
+    );
+    if (go != true || !mounted) return;
+    var exe = await rsyncExecutable(c.settings);
+    if (exe == null && Platform.isWindows && c.settings.rsyncSource == 'download' && mounted) {
+      exe = await installRsyncWithDialog(context);
+    }
+    if (exe == null) {
+      messenger.showSnackBar(SnackBar(content: Text(tr('rsync 실행 파일을 찾을 수 없습니다. 환경 설정 > Rsync 에서 확인하세요.'))));
+      return;
+    }
+    await _replace(x, x.copyWith(enabled: false));
+    final center = CopyCenter.of(c);
+    var t = await center.remember([x.source], x.target, move: true, contents: true, method: 'rsync');
+    // 처음이면 정해진 옵션 (모니터링에서 고친 것이 있으면 그것)
+    t = t.copyWith(prune: prune, options: t.lastRun.isEmpty ? '-avHPOg' : null);
+    await center.update(t);
+    final job = await center.start(t, rsyncExe: exe);
+    if (!mounted) return;
+    if (job == null) {
+      messenger.showSnackBar(SnackBar(content: Text(center.tasks.firstWhere((y) => y.id == t.id).lastMessage)));
+      return;
+    }
+    DefaultTabController.of(context).animateTo(0);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -591,6 +693,11 @@ class _LiveTabState extends State<_LiveTab> {
               label: Text(tr('지금 맞추기')),
             ),
             const SizedBox(width: 6),
+            TextButton.icon(
+              onPressed: running ? null : () => _finalize(x),
+              icon: const Icon(Icons.cleaning_services_outlined, size: 18),
+              label: Text(tr('최종 정리')),
+            ),
             TextButton.icon(
               onPressed: () async {
                 await CopyCenter.of(c).fromLiveSync(x);

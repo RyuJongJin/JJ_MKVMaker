@@ -333,12 +333,20 @@ void main() {
     await tester.tap(find.text('취소'));
     await tester.pumpAndSettle();
     expect(c.settings.copyTasks, isEmpty);
-    // → 는 한 방향 · -u 없이
+    expect(find.text('원본 파일 지우기 (--remove-source-files)'), findsNothing); // 양쪽에는 없음
+    // → 는 한 방향 · -u 없이 · 원본 파일 지우기를 고를 수 있다 (고르면 원본 폴더 남김 / 지움)
     await act(tester, () => tester.tap(find.text('좌 → 우')));
     await tester.pumpAndSettle();
     expect(find.text('→  ${p.join(right, 'rsub')}/'), findsOneWidget);
     expect(find.text('→  ${p.join(left, 'sub')}/'), findsNothing);
     expect(find.textContaining('-u'), findsNothing);
+    expect(find.text('빈 폴더 지움 · 원본 폴더는 남김'), findsNothing);
+    await tester.tap(find.text('원본 파일 지우기 (--remove-source-files)'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('-avPog --remove-source-files'), findsOneWidget);
+    expect(find.text('빈 폴더 지움 · 원본 폴더는 남김'), findsOneWidget);
+    expect(find.text('빈 폴더 지움 · 원본 폴더도 지움'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, '이동'), findsOneWidget);
     await tester.tap(find.text('취소'));
     await tester.pumpAndSettle();
     // 고른 폴더는 기억 (다음에 열 때 그 폴더부터)

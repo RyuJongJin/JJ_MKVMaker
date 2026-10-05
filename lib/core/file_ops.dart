@@ -106,6 +106,39 @@ String? transferProblem(List<String> sources, String dest, {required bool move})
   return null;
 }
 
+/// [root] 안의 빈 폴더를 안쪽부터 지운다 (find root/ -type d -empty -delete 와 같음). 지운 폴더 수.
+/// [keepRoot] 면 [root] 자신은 비어도 남긴다. 파일 · 링크가 하나라도 있는 폴더는 그대로.
+Future<int> removeEmptyDirs(String root, {bool keepRoot = true}) async {
+  var n = 0;
+  Future<bool> walk(Directory d) async {
+    var empty = true;
+    final items = await d.list(followLinks: false).handleError((_) => empty = false).toList();
+    for (final e in items) {
+      if (e is Directory && await walk(e)) {
+        try {
+          await e.delete();
+          n++;
+        } catch (_) {
+          empty = false;
+        }
+      } else {
+        empty = false;
+      }
+    }
+    return empty;
+  }
+
+  final d = Directory(root);
+  if (!await d.exists()) return 0;
+  if (await walk(d) && !keepRoot) {
+    try {
+      await d.delete();
+      n++;
+    } catch (_) {}
+  }
+  return n;
+}
+
 /// 복사 · 이동 중 알림 (지금 파일, 지금까지 바이트, 전체 바이트)
 typedef CopyProgress = void Function(String current, int done, int total);
 

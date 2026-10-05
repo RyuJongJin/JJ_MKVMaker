@@ -30,6 +30,9 @@ class TransferJob extends ChangeNotifier {
   /// 폴더 "안의 것" 을 [dest] 에 맞추기 (rsync 원본/ → 대상/, 현재 방식은 바뀐 것만). lsync 에서 옮겨 온 복사.
   final bool contents;
 
+  /// 이동 뒤 원본 정리: '' 안 함 · 'keep' 빈 폴더 지움 (원본 폴더는 남김) · 'all' 원본 폴더까지
+  final String prune;
+
   TransferJob({
     required this.sources,
     required this.dest,
@@ -40,7 +43,12 @@ class TransferJob extends ChangeNotifier {
     this.bandwidthKBps = 0,
     this.rsyncExe,
     this.contents = false,
+    this.prune = '',
   });
+
+  /// 원본 정리 중 · 지운 빈 폴더 수
+  bool pruning = false;
+  int pruned = 0;
 
   // ── 진행 상태 ──
   int index = 0; // 지금 항목
@@ -124,6 +132,14 @@ class TransferJob extends ChangeNotifier {
           await _runRobocopy();
       }
       if (cancelled) throw const FileOpCancelled();
+      // 옮긴 뒤 원본에 남은 빈 폴더 정리 (find 원본/ -type d -empty -delete)
+      if (move && prune.isNotEmpty) {
+        pruning = true;
+        _tick();
+        for (final s in sources) {
+          if (FileSystemEntity.isDirectorySync(s)) pruned += await removeEmptyDirs(s, keepRoot: prune == 'keep');
+        }
+      }
     } catch (e) {
       error = cancelled ? const FileOpCancelled() : e;
     } finally {
@@ -213,8 +229,9 @@ class TransferJob extends ChangeNotifier {
       for (final i in idx) {
         filesDone[i] = filesTotal[i];
         made.add(p.join(dest, p.basename(sources[i])));
-        // 이동: rsync 는 파일만 지우므로 빈 폴더를 정리
-        if (move && FileSystemEntity.isDirectorySync(sources[i]) && await countFiles(sources[i]) == 0) {
+        // 폴더째 이동 (안의 것 [contents] 이 아니고 원본 정리 [prune] 를 고르지 않음): rsync 는 파일만 지우므로
+        // 비어 남은 원본 폴더를 지운다. 원본 정리를 고른 이동은 끝에서 그 고른 대로 ([prune]).
+        if (move && !contents && prune.isEmpty && FileSystemEntity.isDirectorySync(sources[i]) && await countFiles(sources[i]) == 0) {
           await Directory(sources[i]).delete(recursive: true);
         }
       }

@@ -87,6 +87,10 @@ class CopyTask {
   final String lastMessage;
   final int lastFiles;
 
+  /// 이동 ([move], rsync --remove-source-files) 뒤 원본 정리: '' 그대로 · 'keep' 빈 폴더를 지우고 원본 폴더는 남김 ·
+  /// 'all' 원본 폴더까지 (비었으면) 지움 (find 원본/ -type d -empty -delete)
+  final String prune;
+
   const CopyTask({
     required this.id,
     required this.sources,
@@ -101,6 +105,7 @@ class CopyTask {
     this.lastResult = '',
     this.lastMessage = '',
     this.lastFiles = 0,
+    this.prune = '',
   });
 
   /// 같은 복사인지 (원본들 · 대상 · 이동)
@@ -116,6 +121,7 @@ class CopyTask {
     String? lastResult,
     String? lastMessage,
     int? lastFiles,
+    String? prune,
   }) =>
       CopyTask(
         id: id,
@@ -131,6 +137,7 @@ class CopyTask {
         lastResult: lastResult ?? this.lastResult,
         lastMessage: lastMessage ?? this.lastMessage,
         lastFiles: lastFiles ?? this.lastFiles,
+        prune: prune ?? this.prune,
       );
 
   Map<String, Object?> toJson() => {
@@ -147,6 +154,7 @@ class CopyTask {
         'lastResult': lastResult,
         'lastMessage': lastMessage,
         'lastFiles': lastFiles,
+        'prune': prune,
       };
 
   factory CopyTask.fromJson(Map<Object?, Object?> j) => CopyTask(
@@ -163,6 +171,7 @@ class CopyTask {
         lastResult: j['lastResult'] as String? ?? '',
         lastMessage: j['lastMessage'] as String? ?? '',
         lastFiles: (j['lastFiles'] as num?)?.toInt() ?? 0,
+        prune: const ['keep', 'all'].contains(j['prune']) ? j['prune'] as String : '',
       );
 }
 

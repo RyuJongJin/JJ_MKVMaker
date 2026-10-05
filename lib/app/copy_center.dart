@@ -106,6 +106,7 @@ class CopyCenter extends ChangeNotifier {
       bandwidthKBps: t.bandwidthKBps,
       rsyncExe: exe,
       contents: t.contents,
+      prune: t.move ? t.prune : '',
     );
     jobs[t.id] = job;
     job.addListener(notifyListeners);
@@ -122,7 +123,7 @@ class CopyCenter extends ChangeNotifier {
       await update(cur.copyWith(
         lastRun: DateTime.now().toIso8601String(),
         lastResult: e == null ? 'done' : e is FileOpCancelled ? 'cancelled' : 'failed',
-        lastMessage: e == null ? '' : '$e',
+        lastMessage: e == null ? (job.pruned > 0 ? trf('빈 폴더 {0}개 지움', [job.pruned]) : '') : '$e',
         lastFiles: job.allDone,
       ));
     }
