@@ -53,17 +53,21 @@ void main() {
     await settle(tester, () => find.text('doc.txt').evaluate().isNotEmpty);
   }
 
-  testWidgets('두 창 (선택 모드): 한 번 = 선택 · 화살표 = 펼치기 · 두 번 = 실행 · 길게 = 메뉴 · 다른 창으로 복사', (tester) async {
+  testWidgets('두 창: 폴더 한 번 = 펼치기 · 파일 한 번 = 선택 · 두 번 = 실행 · 길게 = 메뉴 · 다른 창으로 복사', (tester) async {
     await open(tester);
-    // 두 창 + 가운데 버튼 줄
+    // 두 창 + 가운데 버튼 줄, 선택 동그라미는 평소에 안 보임
     expect(find.text('상위 폴더'), findsOneWidget);
     expect(find.text('doc.txt'), findsOneWidget);
+    expect(find.byTooltip('표시 (여러 개 고르기)'), findsNothing);
 
-    // 폴더를 한 번 누르면 고르기만 (펼치지 않음)
+    // 폴더를 한 번 누르면 바로 펼치고, 다시 누르면 접는다
     await act(tester, () => tester.tap(find.text('sub')));
-    await settle(tester, () => false, rounds: 15);
+    await settle(tester, () => find.text('inner.txt').evaluate().isNotEmpty);
+    expect(find.text('inner.txt'), findsOneWidget);
+    await act(tester, () => tester.tap(find.text('sub')));
+    await settle(tester, () => find.text('inner.txt').evaluate().isEmpty);
     expect(find.text('inner.txt'), findsNothing);
-    // › 화살표로 펼친다
+    // › 화살표로도 펼친다
     await act(tester, () => tester.tap(chevronOf('sub')));
     await settle(tester, () => find.text('inner.txt').evaluate().isNotEmpty);
     expect(find.text('inner.txt'), findsOneWidget);
@@ -161,12 +165,42 @@ void main() {
     expect(find.text('확장자'), findsOneWidget);
   });
 
+  testWidgets('선택 모드: 파일 누르기 = 선택 · 취소, 고른 폴더 다시 누르기 = 펼쳐서 안의 것 선택', (tester) async {
+    await open(tester);
+    await act(tester, () => tester.tap(find.text('선택').first)); // 가운데 [선택] 버튼
+    expect(find.byTooltip('표시 (여러 개 고르기)'), findsWidgets); // 동그라미가 보인다
+    // 파일: 누르면 선택, 다시 누르면 취소 (실행하지 않음)
+    await act(tester, () => tester.tap(find.text('doc.txt')));
+    expect(find.text('1개 표시함'), findsOneWidget);
+    await act(tester, () => tester.tap(find.text('doc.txt')));
+    expect(find.text('0개 표시함'), findsNWidgets(2)); // 두 창 모두 (각 창의 선택 수)
+    expect(shell.opened, isEmpty);
+    // 폴더: 처음엔 선택 (펼치지 않음)
+    await act(tester, () => tester.tap(find.text('sub')));
+    await settle(tester, () => false, rounds: 10);
+    expect(find.text('1개 표시함'), findsOneWidget);
+    expect(find.text('inner.txt'), findsNothing);
+    // 고른 폴더를 다시 누르면: 폴더는 풀고, 펼쳐서 안의 파일을 선택
+    await act(tester, () => tester.tap(find.text('sub')));
+    await settle(tester, () => find.text('inner.txt').evaluate().isNotEmpty);
+    expect(find.text('inner.txt'), findsOneWidget);
+    expect(find.text('1개 표시함'), findsOneWidget);
+    final inner = tester.widget<IconButton>(find.descendant(
+        of: find.ancestor(of: find.text('inner.txt'), matching: find.byType(Material)).first,
+        matching: find.byType(IconButton)));
+    expect((inner.icon as Icon).icon, Icons.check_circle); // ✔
+    // [선택 끝] → 동그라미가 사라지고 표시도 지운다
+    await act(tester, () => tester.tap(find.text('선택 끝').first)); // 두 창 모두에 있음
+    expect(find.byTooltip('표시 (여러 개 고르기)'), findsNothing);
+    expect(find.text('1개 표시함'), findsNothing);
+  });
+
   testWidgets('여러 개 표시 → 삭제 · 새 폴더 · 이름 변경', (tester) async {
     await open(tester);
+    await act(tester, () => tester.tap(find.text('선택').first));
     // 동그라미로 doc.txt · sub 표시 (반드시 이름으로 찾은 줄의 버튼만: 목록에는 시험 폴더 위쪽의 실제 폴더도 보인다)
     await act(tester, () => tester.tap(markOf('sub')));
     await act(tester, () => tester.tap(markOf('doc.txt')));
-    // 표시 버튼은 두 번 누르기를 기다리지 않고 바로
     expect(find.text('2개 표시함'), findsOneWidget);
     await act(tester, () => tester.tap(find.text('삭제').first));
     await tester.pumpAndSettle();

@@ -106,7 +106,10 @@ String totalCmdName(FileEntry e) {
 /// 열 머리 (Windows 탐색기 · Total Commander)
 class ExplorerColumnsHeader extends StatelessWidget {
   final ExplorerStyle style;
-  const ExplorerColumnsHeader({super.key, required this.style});
+
+  /// 선택 모드: 줄 끝의 선택 동그라미 칸만큼 비운다
+  final bool markColumn;
+  const ExplorerColumnsHeader({super.key, required this.style, this.markColumn = false});
 
   @override
   Widget build(BuildContext context) {
@@ -115,7 +118,7 @@ class ExplorerColumnsHeader extends StatelessWidget {
         Expanded(flex: flex, child: Text(t, style: st, textAlign: align, maxLines: 1, overflow: TextOverflow.clip));
     return Container(
       height: 24,
-      padding: const EdgeInsets.only(left: 10, right: 40),
+      padding: EdgeInsets.only(left: 10, right: markColumn ? 40 : 4),
       decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: JjColors.border))),
       child: Row(
         children: style == ExplorerStyle.windows

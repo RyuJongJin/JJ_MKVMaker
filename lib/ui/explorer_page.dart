@@ -56,6 +56,7 @@ class ExplorerPage extends StatefulWidget {
 enum ExplorerButton {
   up(Icons.arrow_upward, '상위 폴더'),
   refresh(Icons.refresh, '새로 고침'),
+  select(Icons.checklist, '선택'),
   play(Icons.play_circle_outline, '재생'),
   addMkv(Icons.playlist_add, 'MKV 목록에 추가'),
   newFolder(Icons.create_new_folder_outlined, '새 폴더'),
@@ -104,10 +105,16 @@ class _Pane extends ChangeNotifier {
 
   _Pane(this.root) : current = root;
 
-  void changed() => notifyListeners();
+  /// 화면을 닫은 뒤 끝난 파일 작업 · 읽기가 알리지 않게
+  bool _disposed = false;
+
+  void changed() {
+    if (!_disposed) notifyListeners();
+  }
 
   @override
   void dispose() {
+    _disposed = true;
     scroll.dispose();
     listScroll.dispose();
     super.dispose();
@@ -294,10 +301,23 @@ class _ExplorerPageState extends State<ExplorerPage> {
 
   // ───────── 누르기 ─────────
 
+  /// 선택 모드 (X-plore 처럼): 각 줄의 ✔ 동그라미가 보이고, 누르면 고르기 · 풀기
+  bool _selecting = false;
+
+  void _setSelecting(bool on) => setState(() {
+        _selecting = on;
+        if (!on) {
+          for (final x in _panes) {
+            x.marked.clear();
+          }
+        }
+      });
+
   /// 한 번 누르기.
-  /// - 선택 (기본): 고르기만. 폴더는 그 폴더가 "지금 폴더" (오른쪽 파일 목록 · 새 폴더 등의 기준).
-  /// - 바로 열기: 열기 ([_onOpen]).
-  /// Ctrl 을 누른 채면 표시 (여러 개 고르기). 목록의 ".." 은 늘 상위 폴더로.
+  /// - 선택 모드: 고르기 · 풀기 ([_toggleMark])
+  /// - 폴더: 바로 펼치기 · 접기 (트리), 들어가기 (오른쪽 파일 목록)
+  /// - 파일: 누르기 설정이 "선택" 이면 고르기만 (두 번 누르면 실행), "바로 실행" 이면 실행
+  /// Ctrl 을 누른 채면 선택 모드로 고르기. 목록의 ".." 은 늘 상위 폴더로.
   Future<void> _onTap(_Pane pane, _Row row, {bool list = false}) async {
     final e = row.entry;
     setState(() => _active = _panes.indexOf(pane));
@@ -305,25 +325,35 @@ class _ExplorerPageState extends State<ExplorerPage> {
       await _goTo(pane, e.path);
       return;
     }
-    if (HardwareKeyboard.instance.isControlPressed && !row.isRoot) {
-      setState(() => pane.marked.contains(e.path) ? pane.marked.remove(e.path) : pane.marked.add(e.path));
+    if (!row.isRoot && (_selecting || HardwareKeyboard.instance.isControlPressed)) {
+      if (!_selecting) setState(() => _selecting = true);
+      await _toggleMark(pane, e);
       return;
     }
-    if (!_selectMode) return _onOpen(pane, row, list: list);
+    if (e.isDir || !_selectMode) return _onOpen(pane, row, list: list);
     pane.focused = e.path;
-    if (e.isDir && !list) {
-      pane.current = e.path;
-      pane.changed();
-      await _load(pane, e.path);
-      if (pane.listScroll.hasClients) pane.listScroll.jumpTo(0);
-      _remember(pane, e.path);
-    } else {
-      if (!list) pane.current = p.dirname(e.path);
-      pane.changed();
-    }
+    if (!list) pane.current = p.dirname(e.path);
+    pane.changed();
   }
 
-  /// 열기 (선택 모드는 두 번 누르기, 바로 열기 모드는 한 번 누르기):
+  /// 선택 모드에서 누르기: 파일은 고르기 · 풀기.
+  /// 폴더는 처음엔 고르기, 고른 폴더를 다시 누르면 폴더는 풀고 펼쳐서 그 안의 파일 · 폴더를 모두 고른다.
+  Future<void> _toggleMark(_Pane pane, FileEntry e) async {
+    pane.focused = e.path;
+    if (!pane.marked.contains(e.path)) {
+      setState(() => pane.marked.add(e.path));
+      return;
+    }
+    setState(() => pane.marked.remove(e.path));
+    if (!e.isDir) return;
+    await _load(pane, e.path);
+    setState(() {
+      pane.expanded.add(e.path);
+      pane.marked.addAll([for (final x in pane.cache[e.path] ?? const <FileEntry>[]) x.path]);
+    });
+  }
+
+  /// 열기 (파일: 선택 설정이면 두 번 누르기, 바로 실행이면 한 번 누르기 / 폴더: 한 번 누르기):
   /// 트리의 폴더는 펼치기 · 접기, 목록의 폴더는 들어가기 (왼쪽 트리도 따라감), 파일은 실행.
   Future<void> _onOpen(_Pane pane, _Row row, {bool list = false}) async {
     final e = row.entry;
@@ -385,6 +415,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
       if (!e.isDir) ('openWith', Icons.open_in_new, tr('다른 앱으로 열기')),
       if (!e.isDir && !video) ('openDefault', Icons.launch, tr('기본 앱으로 열기')),
       if (video) ('addMkv', Icons.playlist_add, tr('MKV 목록에 추가')),
+      ('select', Icons.check_circle_outline, tr('선택')),
       ('rename', Icons.drive_file_rename_outline, tr('이름 변경')),
       if (dual) ('copy', Icons.copy_outlined, tr('다른 창으로 복사')),
       if (dual) ('move', Icons.drive_file_move_outline, tr('다른 창으로 이동')),
@@ -427,6 +458,9 @@ class _ExplorerPageState extends State<ExplorerPage> {
         if (!await c.services.shell.openWith(e.path)) _snack(tr('이 파일을 열 수 있는 앱이 없습니다.'));
       case 'addMkv':
         await _addMkv([e.path]);
+      case 'select':
+        setState(() => _selecting = true);
+        if (!pane.marked.contains(e.path)) await _toggleMark(pane, e);
       case 'rename':
         await _rename(pane, e.path);
       case 'copy':
@@ -487,6 +521,8 @@ class _ExplorerPageState extends State<ExplorerPage> {
         final up = p.dirname(pane.current);
         pane.expanded.remove(pane.current);
         await _goTo(pane, up);
+      case ExplorerButton.select:
+        _setSelecting(!_selecting);
       case ExplorerButton.refresh:
         pane.cache.clear();
         for (final d in pane.expanded.toList()) {
@@ -630,6 +666,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
     }
     for (final x in _panes) {
       x.marked.removeAll(paths);
+      if (_selecting && x.marked.isEmpty) _selecting = false;
       x.expanded.removeWhere((d) => paths.any((s) => isSameOrInside(d, s)));
       if (paths.any((s) => isSameOrInside(x.current, s))) x.current = p.dirname(paths.first);
     }
@@ -725,6 +762,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
     }
     if (mounted) Navigator.of(context).pop();
     pane.marked.clear();
+    if (_selecting && mounted) _setSelecting(false);
     await _refreshAll([dest, ...sources.map(p.dirname)]);
     // 넣은 폴더가 창의 지금 폴더면 펼쳐서 새 항목이 보이게
     for (final x in _panes) {
@@ -1077,7 +1115,8 @@ class _ExplorerPageState extends State<ExplorerPage> {
                 ExplorerButton.paste => _clip.isNotEmpty,
                 _ => true,
               },
-              selected: (b) => b == ExplorerButton.hidden && s.explorerShowHidden,
+              selected: (b) =>
+                  (b == ExplorerButton.hidden && s.explorerShowHidden) || (b == ExplorerButton.select && _selecting),
             );
       final middle = bar != null && s.explorerToolbar == 'middle';
       final edge = bar != null && s.explorerToolbar == 'edge';
@@ -1121,13 +1160,24 @@ class _ExplorerPageState extends State<ExplorerPage> {
     );
   }
 
-  Widget _marksBar(_Pane pane) => Container(
+  /// 선택 모드 막대: 고른 수 · 모두 고르기 · 선택 끝
+  Widget _marksBar(_Pane pane, {String? listDir}) => Container(
         color: JjColors.panel,
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
         child: Row(children: [
+          Icon(Icons.checklist, size: 18, color: JjColors.accent),
+          const SizedBox(width: 6),
           Text(trf('{0}개 표시함', [pane.marked.length]), style: const TextStyle(fontSize: 12)),
           const Spacer(),
+          TextButton(
+            onPressed: () => setState(() {
+              final dir = listDir ?? pane.current;
+              pane.marked.addAll([for (final x in pane.cache[dir] ?? const <FileEntry>[]) x.path]);
+            }),
+            child: Text(tr('모두 선택')),
+          ),
           TextButton(onPressed: () => setState(pane.marked.clear), child: Text(tr('표시 지우기'))),
+          TextButton(onPressed: () => _setSelecting(false), child: Text(tr('선택 끝'))),
         ]),
       );
 
@@ -1139,7 +1189,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
     return _frame(i, [
       _paneHeader(pane),
       const Divider(height: 1),
-      if (look.columns && !foldersOnly) ExplorerColumnsHeader(style: look),
+      if (look.columns && !foldersOnly) ExplorerColumnsHeader(style: look, markColumn: _selecting),
       Expanded(
         child: ListView.builder(
           controller: pane.scroll,
@@ -1148,7 +1198,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
           itemBuilder: (_, k) => _rowView(pane, rows[k], compact: foldersOnly),
         ),
       ),
-      if (pane.marked.isNotEmpty && !foldersOnly) _marksBar(pane),
+      if (_selecting && !foldersOnly) _marksBar(pane),
     ]);
   }
 
@@ -1170,7 +1220,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
         child: Text(dir, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: JjColors.textDim)),
       ),
       const Divider(height: 1),
-      if (look.columns) ExplorerColumnsHeader(style: look),
+      if (look.columns) ExplorerColumnsHeader(style: look, markColumn: _selecting),
       Expanded(
         child: pane.loading.contains(dir)
             ? const Center(child: CircularProgressIndicator())
@@ -1183,7 +1233,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
                     itemBuilder: (_, k) => _rowView(pane, rows[k], list: true),
                   ),
       ),
-      if (pane.marked.isNotEmpty) _marksBar(pane),
+      if (_selecting) _marksBar(pane, listDir: dir),
     ]);
   }
 
@@ -1327,7 +1377,10 @@ class _ExplorerPageState extends State<ExplorerPage> {
             child: InkWell(
               onTap: () => _onTap(pane, row, list: list),
               // 선택 모드: 두 번 누르면 열기 (바로 열기 모드는 두 번 누르기를 받지 않음 - 한 번 누르기가 늦어지지 않게)
-              onDoubleTap: _selectMode ? () => _onOpen(pane, row, list: list) : null,
+              // 폴더는 한 번 누르기로 바로 펼치므로 두 번 누르기를 받지 않는다 (기다리지 않게)
+              onDoubleTap: _selectMode && !_selecting && !e.isDir && !row.isUp
+                  ? () => _onOpen(pane, row, list: list)
+                  : null,
               child: Padding(
                 padding: const EdgeInsets.only(left: 6, right: 4),
                 child: Row(children: cells),
@@ -1335,7 +1388,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
             ),
           ),
           // 표시 동그라미는 두 번 누르기 영역 밖 (기다리지 않고 바로)
-          if (real && !compact)
+          if (real && _selecting)
             SizedBox(
               width: 36,
               child: IconButton(
@@ -1344,13 +1397,13 @@ class _ExplorerPageState extends State<ExplorerPage> {
                 padding: EdgeInsets.zero,
                 icon: Icon(marked ? Icons.check_circle : Icons.radio_button_unchecked,
                     size: look.rich ? 20 : 16, color: marked ? JjColors.accent : JjColors.textDim),
-                onPressed: () => setState(() {
-                  _active = _panes.indexOf(pane);
-                  marked ? pane.marked.remove(e.path) : pane.marked.add(e.path);
-                }),
+                onPressed: () {
+                  setState(() => _active = _panes.indexOf(pane));
+                  _toggleMark(pane, e);
+                },
               ),
             )
-          else if (!compact)
+          else if (_selecting)
             const SizedBox(width: 36),
         ]),
       ),
