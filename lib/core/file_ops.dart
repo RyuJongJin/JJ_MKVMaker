@@ -97,6 +97,27 @@ class FileOps {
   bool _cancel = false;
   void cancel() => _cancel = true;
 
+  /// 속도 제한 (KB/s, 0 = 제한 없음)
+  final int bandwidthKBps;
+
+  /// 파일 하나를 다 복사할 때마다 (원본 경로)
+  final void Function(String source)? onFileDone;
+
+  FileOps({this.bandwidthKBps = 0, this.onFileDone});
+
+  final _clock = Stopwatch();
+  int _sent = 0;
+
+  /// 속도 제한: 보낸 양이 허용량보다 앞서면 그만큼 쉰다
+  Future<void> _throttle(int bytes) async {
+    if (bandwidthKBps <= 0) return;
+    if (!_clock.isRunning) _clock.start();
+    _sent += bytes;
+    final wantMs = _sent * 1000 ~/ (bandwidthKBps * 1024);
+    final ahead = wantMs - _clock.elapsedMilliseconds;
+    if (ahead > 5) await Future<void>.delayed(Duration(milliseconds: ahead));
+  }
+
   void _check() {
     if (_cancel) throw const FileOpCancelled();
   }
@@ -136,6 +157,7 @@ class FileOps {
             out.add(chunk);
             done += chunk.length;
             onProgress?.call(f.path, done, total);
+            await _throttle(chunk.length);
           }
         } finally {
           await out.close();
@@ -151,6 +173,7 @@ class FileOps {
       try {
         await File(target).setLastModified(await f.lastModified());
       } catch (_) {}
+      onFileDone?.call(f.path);
     }
 
     Future<void> copyAny(String src, String target) async {
@@ -202,6 +225,59 @@ class FileOps {
       }
     }
     return made;
+  }
+
+  /// 동기화 (실시간 동기화 · lsyncd 처럼): [srcDir] 의 내용을 [dstDir] 에 맞춘다.
+  /// 크기나 바뀐 시각이 다른 파일만 복사, [delete] 면 원본에 없는 것을 대상에서 지운다. 복사한 파일 수를 돌려준다.
+  Future<int> mirror(String srcDir, String dstDir, {bool delete = false}) async {
+    var n = 0;
+    Future<void> walk(String src, String dst) async {
+      _check();
+      await Directory(dst).create(recursive: true);
+      final names = <String>{};
+      await for (final e in Directory(src).list(followLinks: false).handleError((_) {})) {
+        final name = p.basename(e.path);
+        names.add(name);
+        final target = p.join(dst, name);
+        if (e is Directory) {
+          await walk(e.path, target);
+        } else if (e is File) {
+          final st = await e.stat();
+          final t = File(target);
+          final same = await t.exists() &&
+              (await t.length()) == st.size &&
+              ((await t.lastModified()).difference(st.modified).inSeconds.abs() <= 2);
+          if (same) continue;
+          final tmp = '$target.jjsync';
+          final out = File(tmp).openWrite();
+          try {
+            await for (final chunk in e.openRead()) {
+              _check();
+              out.add(chunk);
+              await _throttle(chunk.length);
+            }
+          } finally {
+            await out.close();
+          }
+          await File(tmp).rename(target);
+          try {
+            await File(target).setLastModified(st.modified);
+          } catch (_) {}
+          n++;
+          onFileDone?.call(e.path);
+        }
+      }
+      if (delete) {
+        await for (final e in Directory(dst).list(followLinks: false).handleError((_) {})) {
+          if (!names.contains(p.basename(e.path)) && !e.path.endsWith('.jjsync')) {
+            await e.delete(recursive: true);
+          }
+        }
+      }
+    }
+
+    await walk(srcDir, dstDir);
+    return n;
   }
 
   Future<void> delete(List<String> paths) async {

@@ -22,6 +22,7 @@ import 'language_settings.dart';
 import 'app_actions.dart';
 import 'cef_setup.dart';
 import 'cleanup_dialog.dart';
+import 'copy_sync_settings.dart';
 import 'explorer_look.dart' show ExplorerStyle;
 import 'theme.dart';
 import '../l10n/tr.dart';
@@ -595,6 +596,8 @@ class _SettingsPageState extends State<SettingsPage> {
                         onChanged: (v) => c.updateSettings((x) => x.explorerLayout = v!),
                       ),
                     ),
+                    // 복사 · 이동 방법 (현재 방식 · rsync · robocopy) · 속도 제한 · 실시간 동기화
+                    CopySyncSettings(c: c),
                   ]),
                   _group('download', Icons.download_outlined, tr('다운로드'), [
                     if (desk)

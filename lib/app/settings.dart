@@ -29,6 +29,34 @@ class MoveTarget {
   int get hashCode => Object.hash(name, dir);
 }
 
+/// 실시간 동기화 한 쌍 (lsyncd 처럼: 원본 폴더를 지켜보다가 바뀌면 대상 폴더에 맞춘다)
+class LiveSyncPair {
+  final String source;
+  final String target;
+
+  /// 'builtin' · 'rsync' · 'robocopy' (CopyMethod 이름)
+  final String method;
+
+  /// 원본에 없는 것을 대상에서 지우기 (rsync --delete, robocopy /PURGE)
+  final bool delete;
+  final bool enabled;
+  const LiveSyncPair(this.source, this.target, {this.method = 'builtin', this.delete = false, this.enabled = true});
+
+  LiveSyncPair copyWith({String? method, bool? delete, bool? enabled}) =>
+      LiveSyncPair(source, target, method: method ?? this.method, delete: delete ?? this.delete, enabled: enabled ?? this.enabled);
+
+  Map<String, Object?> toJson() =>
+      {'source': source, 'target': target, 'method': method, 'delete': delete, 'enabled': enabled};
+
+  factory LiveSyncPair.fromJson(Map<Object?, Object?> j) => LiveSyncPair(
+        j['source'] as String,
+        j['target'] as String,
+        method: const ['rsync', 'robocopy'].contains(j['method']) ? j['method'] as String : 'builtin',
+        delete: j['delete'] == true,
+        enabled: j['enabled'] != false,
+      );
+}
+
 /// 환경 설정 (settings.json 에 저장)
 class AppSettings {
   /// MKV·자막 저장 위치. null 이면 동영상이 있는 폴더 아래 jj_mkv
@@ -158,6 +186,29 @@ class AppSettings {
   bool explorerSortDesc = false;
   bool explorerShowHidden = false;
 
+  // ── 복사 · 이동 · 동기화 (파일 탐색기) ──
+  /// 방법: 'builtin' 현재 방식 (기본) · 'rsync' · 'robocopy' (Windows). 파일만 고를 때 / 폴더가 들어 있을 때
+  String copyMethodFile = 'builtin';
+  String copyMethodFolder = 'builtin';
+  String rsyncOptions = '-avPog';
+  String robocopyOptions = '/E /COPY:DAT /DCOPY:T /R:2 /W:2';
+
+  /// 여러 개를 고르면: 'each' 항목마다 따로 실행 (기본) · 'once' 한 번에 (rsync)
+  String copyRunMode = 'each';
+
+  /// 속도 제한 KB/s (0 = 제한 없음). 모든 방법에 (rsync --bwlimit, 현재 방식은 앱이 조절, robocopy 는 /IPG 로 비슷하게)
+  int copyBandwidthKBps = 0;
+
+  /// rsync 가져오기: 'download' 처음 쓸 때 내려받기 (Windows 기본) · 'custom' 직접 지정한 실행 파일 ([rsyncPath])
+  String rsyncSource = 'download';
+  String rsyncPath = '';
+
+  /// 실시간 동기화 (lsyncd 처럼)
+  List<LiveSyncPair> liveSyncPairs = [];
+
+  /// 실시간 동기화 확인 간격 (초). Windows 는 바뀌면 바로, 그 밖은 이 간격으로 살핀다.
+  int liveSyncIntervalSec = 30;
+
   /// 마지막으로 연 폴더 (왼쪽 · 오른쪽 창)
   List<String> explorerPaths = [];
 
@@ -240,6 +291,16 @@ class AppSettings {
         'explorerSortDesc': explorerSortDesc,
         'explorerShowHidden': explorerShowHidden,
         'explorerPaths': explorerPaths,
+        'copyMethodFile': copyMethodFile,
+        'copyMethodFolder': copyMethodFolder,
+        'rsyncOptions': rsyncOptions,
+        'robocopyOptions': robocopyOptions,
+        'copyRunMode': copyRunMode,
+        'copyBandwidthKBps': copyBandwidthKBps,
+        'rsyncSource': rsyncSource,
+        'rsyncPath': rsyncPath,
+        'liveSyncPairs': [for (final x in liveSyncPairs) x.toJson()],
+        'liveSyncIntervalSec': liveSyncIntervalSec,
         'explorerHistory': explorerHistory,
         'autoCheckUpdates': autoCheckUpdates,
         'lastUpdateCheck': lastUpdateCheck,
@@ -263,6 +324,8 @@ class AppSettings {
         'aiTargets': aiTargets,
         'aiWhisper': aiWhisper,
       };
+
+  static String _method(Object? v) => const ['rsync', 'robocopy'].contains(v) ? v as String : 'builtin';
 
   /// 색 보정 값 (-100 ~ 100)
   static int _adj(Object? v) => ((v as num?)?.round() ?? 0).clamp(-100, 100);
@@ -327,6 +390,19 @@ class AppSettings {
       ..explorerSortDesc = j['explorerSortDesc'] as bool? ?? false
       ..explorerShowHidden = j['explorerShowHidden'] as bool? ?? false
       ..explorerPaths = [for (final x in (j['explorerPaths'] as List?) ?? const []) '$x']
+      ..copyMethodFile = _method(j['copyMethodFile'])
+      ..copyMethodFolder = _method(j['copyMethodFolder'])
+      ..rsyncOptions = j['rsyncOptions'] as String? ?? '-avPog'
+      ..robocopyOptions = j['robocopyOptions'] as String? ?? '/E /COPY:DAT /DCOPY:T /R:2 /W:2'
+      ..copyRunMode = j['copyRunMode'] == 'once' ? 'once' : 'each'
+      ..copyBandwidthKBps = ((j['copyBandwidthKBps'] as num?)?.toInt() ?? 0).clamp(0, 10000000)
+      ..rsyncSource = j['rsyncSource'] == 'custom' ? 'custom' : 'download'
+      ..rsyncPath = j['rsyncPath'] as String? ?? ''
+      ..liveSyncPairs = [
+        for (final x in (j['liveSyncPairs'] as List?) ?? const [])
+          if (x is Map && x['source'] is String && x['target'] is String) LiveSyncPair.fromJson(x),
+      ]
+      ..liveSyncIntervalSec = ((j['liveSyncIntervalSec'] as num?)?.toInt() ?? 30).clamp(5, 3600)
       ..explorerHistory = [for (final x in (j['explorerHistory'] as List?) ?? const []) '$x']
       ..autoCheckUpdates = j['autoCheckUpdates'] as bool? ?? true
       ..lastUpdateCheck = j['lastUpdateCheck'] as String? ?? ''

@@ -9,12 +9,16 @@ import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 
 import '../app/app_controller.dart';
+import '../app/live_sync.dart';
+import '../app/transfer_job.dart';
+import '../core/sync_tools.dart';
 import '../core/file_ops.dart';
 import '../core/playlist.dart' show isVideoFile;
 import '../platform/android/android_storage.dart';
 import 'app_actions.dart';
 import 'explorer_look.dart';
 import 'player_page.dart';
+import 'rsync_setup.dart';
 import 'theme.dart';
 import '../l10n/tr.dart';
 
@@ -712,17 +716,48 @@ class _ExplorerPageState extends State<ExplorerPage> {
     if (done && move && mounted) setState(() => _clip = []);
   }
 
-  /// [dest] 로 복사 · 이동 (확인 · 진행 창 · 취소). 끝까지 했으면 true.
+  /// 지금 도는 복사 · 이동 (아래에서 올라오는 진행 막대)
+  TransferJob? _job;
+
+  /// 고른 것에 맞는 방법: 폴더가 하나라도 있으면 "폴더 복사 방법", 파일만이면 "파일 복사 방법"
+  CopyMethod _methodFor(List<String> sources) {
+    final s = c.settings;
+    final hasDir = sources.any(FileSystemEntity.isDirectorySync);
+    final m = CopyMethod.of(hasDir ? s.copyMethodFolder : s.copyMethodFile);
+    return copyMethodAvailable(m, s) ? m : CopyMethod.builtin;
+  }
+
+  /// rsync 가 없으면 (Windows · 내려받기 설정) 지금 내려받을지 묻는다. 쓸 수 있는 rsync 경로 (없으면 null)
+  Future<String?> _ensureRsync() async {
+    final s = c.settings;
+    final have = await rsyncExecutable(s);
+    if (have != null) return have;
+    if (!mounted) return null;
+    if (s.rsyncSource == 'custom' || !Platform.isWindows) {
+      _snack(tr('rsync 실행 파일을 찾을 수 없습니다. 환경 설정 > 파일 탐색기에서 경로를 확인하세요.'));
+      return null;
+    }
+    return installRsyncWithDialog(context);
+  }
+
+  /// [dest] 로 복사 · 이동 (확인 · 아래 진행 막대 · 취소). 끝까지 했으면 true.
   Future<bool> _runTransfer(_Pane pane, List<String> sources, String dest, {required bool move}) async {
     if (sources.isEmpty) {
       _snack(tr('복사 · 이동할 항목을 고르세요 (누르거나 오른쪽 동그라미로 표시).'));
       return false;
     }
+    if (_job != null && !_job!.finished) {
+      _snack(tr('앞의 복사 · 이동이 끝난 뒤에 하세요.'));
+      return false;
+    }
+    final method = _methodFor(sources);
     final go = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(move ? tr('이동') : tr('복사')),
-        content: Text(trf('{0}개 항목을 다음 폴더로 {1}\n{2}', [sources.length, move ? tr('옮길까요?') : tr('복사할까요?'), dest])),
+        content: Text('${trf('{0}개 항목을 다음 폴더로 {1}\n{2}', [sources.length, move ? tr('옮길까요?') : tr('복사할까요?'), dest])}'
+            '\n\n${trf('방법: {0}', [tr(method.label)])}'
+            '${c.settings.copyBandwidthKBps > 0 ? ' · ${trf('속도 제한 {0} KB/s', [c.settings.copyBandwidthKBps])}' : ''}'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('취소'))),
           FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(move ? tr('이동') : tr('복사'))),
@@ -730,39 +765,28 @@ class _ExplorerPageState extends State<ExplorerPage> {
       ),
     );
     if (go != true || !mounted) return false;
-    final ops = FileOps();
-    final progress = ValueNotifier<(String, double)>(('', 0));
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        title: Text(move ? tr('옮기는 중') : tr('복사하는 중')),
-        content: ValueListenableBuilder<(String, double)>(
-          valueListenable: progress,
-          builder: (_, v, _) => Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(p.basename(v.$1), maxLines: 1, overflow: TextOverflow.ellipsis),
-            const SizedBox(height: 10),
-            LinearProgressIndicator(value: v.$2 <= 0 ? null : v.$2),
-            const SizedBox(height: 6),
-            Text('${(v.$2 * 100).round()}%', style: const TextStyle(fontSize: 12, color: JjColors.textDim)),
-          ]),
-        ),
-        actions: [TextButton(onPressed: ops.cancel, child: Text(tr('취소')))],
-      ),
-    );
-    Object? error;
-    var made = <String>[];
-    try {
-      void onP(String f, int done, int total) => progress.value = (f, total == 0 ? 0 : done / total);
-      made = move ? await ops.move(sources, dest, onProgress: onP) : await ops.copy(sources, dest, onProgress: onP);
-    } on FileOpCancelled {
-      error = tr('취소했습니다.');
-    } catch (e) {
-      error = e;
+    String? rsync;
+    if (method == CopyMethod.rsync) {
+      rsync = await _ensureRsync();
+      if (rsync == null || !mounted) return false;
     }
-    if (mounted) Navigator.of(context).pop();
+    final s = c.settings;
+    final job = TransferJob(
+      sources: sources,
+      dest: dest,
+      move: move,
+      method: method,
+      options: method == CopyMethod.robocopy ? s.robocopyOptions : s.rsyncOptions,
+      once: s.copyRunMode == 'once',
+      bandwidthKBps: s.copyBandwidthKBps,
+      rsyncExe: rsync,
+    );
+    setState(() => _job = job);
+    await job.run();
+    final error = job.error;
+    if (!mounted) return false;
     pane.marked.clear();
-    if (_selecting && mounted) _setSelecting(false);
+    if (_selecting) _setSelecting(false);
     await _refreshAll([dest, ...sources.map(p.dirname)]);
     // 넣은 폴더가 창의 지금 폴더면 펼쳐서 새 항목이 보이게
     for (final x in _panes) {
@@ -772,10 +796,99 @@ class _ExplorerPageState extends State<ExplorerPage> {
       }
       x.changed();
     }
-    _snack(error != null
-        ? trf('끝나지 못했습니다: {0}', [error])
-        : trf('{0}개 항목을 {1}', [made.length, move ? tr('옮겼습니다.') : tr('복사했습니다.')]));
+    _snack(error is FileOpCancelled
+        ? tr('취소했습니다.')
+        : error != null
+            ? trf('끝나지 못했습니다: {0}', [error])
+            : trf('{0}개 항목을 {1}', [job.made.length, move ? tr('옮겼습니다.') : tr('복사했습니다.')]));
+    // 다 되면 진행 막대가 잠깐 100% 를 보인 뒤 내려간다
+    await Future<void>.delayed(const Duration(milliseconds: 1200));
+    if (mounted && _job == job) setState(() => _job = null);
     return error == null;
+  }
+
+  /// 아래에서 올라오는 진행 막대 (위: 전체 항목 중 · 아래: 지금 폴더의 파일 중)
+  Widget _transferPanel() {
+    final job = _job;
+    return AnimatedSlide(
+      offset: job == null ? const Offset(0, 1.2) : Offset.zero,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOut,
+      child: job == null
+          ? const SizedBox(height: 0)
+          : ListenableBuilder(
+              listenable: job,
+              builder: (context, _) {
+                String pct(double v) => '${(v * 100).round()}%';
+                final cur = job.index < job.total ? job.index : job.total - 1;
+                final curFiles = job.total == 0 ? 0 : job.filesTotal[cur.clamp(0, job.total - 1)];
+                final curDone = job.total == 0 ? 0 : job.filesDone[cur.clamp(0, job.total - 1)];
+                final title = job.finished
+                    ? (job.error == null ? tr('완료') : tr('멈춤'))
+                    : job.move
+                        ? tr('옮기는 중')
+                        : tr('복사하는 중');
+                Widget line(String label, double value, String right) => Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Row(children: [
+                        SizedBox(
+                          width: 300,
+                          child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12.5)),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(3),
+                            child: LinearProgressIndicator(
+                              minHeight: 8,
+                              value: job.counting ? null : value,
+                              // 빈 곳과 찬 곳이 분명히 다르게
+                              color: JjColors.accent,
+                              backgroundColor: JjColors.border,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        SizedBox(
+                          width: 150,
+                          child: Text(right, textAlign: TextAlign.end, style: const TextStyle(fontSize: 12, color: JjColors.textDim)),
+                        ),
+                      ]),
+                    );
+                return Material(
+                  elevation: 12,
+                  color: JjColors.panel,
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 10, 12, 12),
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      Row(children: [
+                        Icon(job.move ? Icons.drive_file_move_outline : Icons.copy_outlined, size: 18, color: JjColors.accent),
+                        const SizedBox(width: 8),
+                        Text('$title · ${tr(job.method.label)}', style: const TextStyle(fontWeight: FontWeight.w600)),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(job.dest,
+                              maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: JjColors.textDim)),
+                        ),
+                        if (!job.finished) TextButton(onPressed: job.cancel, child: Text(tr('취소'))),
+                      ]),
+                      line(
+                        trf('전체 {0}개 중 {1}번째', [job.total, (cur + 1).clamp(1, job.total)]),
+                        job.overall,
+                        '${pct(job.overall)} · ${trf('파일 {0}/{1}', [job.allDone, job.allFiles])}',
+                      ),
+                      line(
+                        job.counting ? tr('파일 세는 중…') : trf('{0} 안의 파일', [job.currentName]),
+                        job.current,
+                        '${pct(job.current)} · ${trf('파일 {0}/{1}', [curDone, curFiles])}',
+                      ),
+                    ]),
+                  ),
+                );
+              },
+            ),
+    );
   }
 
   Future<String?> _askName(String title, String initial) {
@@ -1045,7 +1158,13 @@ class _ExplorerPageState extends State<ExplorerPage> {
             listenable: c,
             builder: (context, _) => Column(children: [
               _topBar(),
-              Expanded(child: _ready ? _body() : const Center(child: CircularProgressIndicator())),
+              Expanded(
+                child: Stack(children: [
+                  Positioned.fill(child: _ready ? _body() : const Center(child: CircularProgressIndicator())),
+                  // 복사 · 이동 진행: 아래에서 올라오고 끝나면 내려간다
+                  Positioned(left: 8, right: 8, bottom: 0, child: _transferPanel()),
+                ]),
+              ),
             ]),
           ),
         ),
@@ -1395,8 +1514,10 @@ class _ExplorerPageState extends State<ExplorerPage> {
                 tooltip: marked ? tr('표시 지우기') : tr('표시 (여러 개 고르기)'),
                 visualDensity: VisualDensity.compact,
                 padding: EdgeInsets.zero,
-                icon: Icon(marked ? Icons.check_circle : Icons.radio_button_unchecked,
-                    size: look.rich ? 20 : 16, color: marked ? JjColors.accent : JjColors.textDim),
+                // ✔ 모양: 고르지 않은 것은 흐리게, 고른 것은 진하게
+                icon: Icon(marked ? Icons.check_circle : Icons.check_circle_outline,
+                    size: look.rich ? 22 : 18,
+                    color: marked ? JjColors.accent : JjColors.textDim.withValues(alpha: 0.35)),
                 onPressed: () {
                   setState(() => _active = _panes.indexOf(pane));
                   _toggleMark(pane, e);

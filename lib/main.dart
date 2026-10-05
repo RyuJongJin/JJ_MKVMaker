@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'app/app_controller.dart';
+import 'app/live_sync.dart';
 import 'app/bookmarks_controller.dart';
 import 'app/download_manager.dart';
 import 'app/settings.dart';
@@ -90,6 +91,8 @@ Future<void> main(List<String> args) async {
     controller.note(trf('⚠ 지난 실행이 정상적으로 끝나지 않았습니다 (시작 {0}, 마지막 확인 {1}). ' '그 전의 기록은 Logs 폴더의 app.log 에 있습니다.', [hm(crashed.$1), hm(crashed.$2)]));
   }
   await controller.init();
+  // 실시간 동기화 (환경 설정 > 파일 탐색기): 앱이 켜져 있는 동안
+  LiveSync(controller).start();
   // 화면 언어 (환경 설정 > 화면 언어)
   i18n.init(controller, dataDir);
   await i18n.apply(controller.settings.uiLanguage, save: false);
@@ -371,6 +374,8 @@ Future<void> runAndroid(String dataDir) async {
   final controller = AppController(services, settingsStore: SettingsStore())..logFile = p.join(logs.path, 'app.log');
   controller.note(trf('── 시작 {0} (Android) ──', [appTitle]));
   await controller.init();
+  // 실시간 동기화 (환경 설정 > 파일 탐색기): 앱이 켜져 있는 동안
+  LiveSync(controller).start();
   // 화면 언어 (환경 설정 > 화면 언어)
   i18n.init(controller, dataDir);
   await i18n.apply(controller.settings.uiLanguage, save: false);
