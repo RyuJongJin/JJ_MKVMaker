@@ -64,6 +64,14 @@ class MainActivity : FlutterActivity() {
                     result.error("INSTALL", e.message ?: e.toString(), null)
                 }
                 "openFolder" -> result.success(openFolder(call.argument<String>("path") ?: ""))
+                "diskSpace" -> result.success(
+                    try {
+                        val st = android.os.StatFs(call.argument<String>("path") ?: "")
+                        listOf(st.availableBytes, st.totalBytes)
+                    } catch (e: Exception) {
+                        null
+                    }
+                )
                 "openWith" -> result.success(
                     openWith(call.argument<String>("path") ?: "", call.argument<Boolean>("choose") ?: false)
                 )

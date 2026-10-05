@@ -27,6 +27,9 @@ class TransferJob extends ChangeNotifier {
   /// rsync 실행 파일 (rsync 방법일 때)
   final String? rsyncExe;
 
+  /// 폴더 "안의 것" 을 [dest] 에 맞추기 (rsync 원본/ → 대상/, 현재 방식은 바뀐 것만). lsync 에서 옮겨 온 복사.
+  final bool contents;
+
   TransferJob({
     required this.sources,
     required this.dest,
@@ -36,6 +39,7 @@ class TransferJob extends ChangeNotifier {
     this.once = false,
     this.bandwidthKBps = 0,
     this.rsyncExe,
+    this.contents = false,
   });
 
   // ── 진행 상태 ──
@@ -76,6 +80,11 @@ class TransferJob extends ChangeNotifier {
 
   Process? _proc;
   FileOps? _ops;
+
+  final _done = Completer<void>();
+
+  /// 끝날 때 (성공 · 실패 · 취소)
+  Future<void> get done => _done.future;
 
   void cancel() {
     cancelled = true;
@@ -120,6 +129,7 @@ class TransferJob extends ChangeNotifier {
     } finally {
       finished = true;
       _tick();
+      if (!_done.isCompleted) _done.complete();
     }
   }
 
@@ -132,8 +142,13 @@ class TransferJob extends ChangeNotifier {
         _tick();
       });
       _tick();
-      final r = move ? await _ops!.move([sources[i]], dest) : await _ops!.copy([sources[i]], dest);
-      made.addAll(r);
+      if (contents && FileSystemEntity.isDirectorySync(sources[i])) {
+        await _ops!.mirror(sources[i], dest);
+        made.add(dest);
+      } else {
+        final r = move ? await _ops!.move([sources[i]], dest) : await _ops!.copy([sources[i]], dest);
+        made.addAll(r);
+      }
       filesDone[i] = filesTotal[i]; // 이름 바꾸기로 옮긴 경우
     }
     index = sources.length;
@@ -175,14 +190,15 @@ class TransferJob extends ChangeNotifier {
             dest: dest,
             bandwidthKBps: bandwidthKBps,
             move: move,
-            windows: windows),
+            windows: windows,
+            contents: contents),
         utf8,
         (chunk) {
           for (final f in out.feed(chunk)) {
             _addLog(f);
-            // 출력 경로의 첫 부분 = 원본 이름 → 어느 항목인지
+            // 출력 경로의 첫 부분 = 원본 이름 → 어느 항목인지 (안의 것 모드는 이름이 없어 지금 항목)
             final first = f.split('/').first;
-            var k = idx.indexWhere((i) => p.basename(sources[i]) == first);
+            var k = contents ? -1 : idx.indexWhere((i) => p.basename(sources[i]) == first);
             if (k < 0) k = names.indexOf(f);
             final at = k < 0 ? index : idx[k];
             if (at > index) index = at;
@@ -230,6 +246,7 @@ class TransferJob extends ChangeNotifier {
         dest: dest,
         bandwidthKBps: bandwidthKBps,
         move: move,
+        contents: contents,
       );
       _tick();
       for (final args in runs) {

@@ -4,6 +4,9 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+import 'package:path/path.dart' as p;
+
+import '../core/cron_window.dart';
 import '../core/file_ops.dart';
 import '../core/sync_tools.dart';
 import '../l10n/tr.dart';
@@ -46,20 +49,82 @@ class LiveSync extends ChangeNotifier {
   /// 쌍마다 마지막 결과 (화면 표시용): (시각, 글)
   final status = <String, (DateTime, String)>{};
 
+  /// 쌍마다 아직 맞추지 않은 것 (원본 기준 상대 경로, 지울 것은 "− " 를 앞에). 바뀌면 자동으로 다시 센다.
+  final pending = <String, List<String>>{};
+
   String _sig = '';
+
+  /// 1분마다: 동작 시간 (cron) 이 시작되면 밀린 것을 맞춘다
+  Timer? _clock;
 
   void start() {
     instance = this;
     c.addListener(_apply);
     _apply();
+    _clock ??= Timer.periodic(const Duration(minutes: 1), (_) => _onClock());
   }
 
   @override
   void dispose() {
     c.removeListener(_apply);
+    _clock?.cancel();
     _stopAll();
     if (instance == this) instance = null;
     super.dispose();
+  }
+
+  /// 지금 동작 시간인지 (일정이 없으면 늘)
+  static bool activeNow(LiveSyncPair x, [DateTime? now]) => scheduleActive(x.schedule, now ?? DateTime.now());
+
+  void _onClock() {
+    for (final x in c.settings.liveSyncPairs.where((x) => x.enabled)) {
+      if (activeNow(x) && (pending[keyOf(x)]?.isNotEmpty ?? false)) _schedule(x);
+    }
+    notifyListeners(); // 남은 시간 표시
+  }
+
+  /// 원본과 대상의 다른 점 (크기 · 바뀐 시각). [x.delete] 면 원본에 없는 대상 항목도 "− 이름" 으로.
+  static Future<List<String>> diff(LiveSyncPair x, {int limit = 500}) async {
+    final out = <String>[];
+    Future<void> walk(String src, String dst, String rel) async {
+      if (out.length >= limit) return;
+      final names = <String>{};
+      await for (final e in Directory(src).list(followLinks: false).handleError((_) {})) {
+        if (out.length >= limit) return;
+        final name = p.basename(e.path);
+        names.add(name);
+        final r = rel.isEmpty ? name : '$rel/$name';
+        final t = p.join(dst, name);
+        if (e is Directory) {
+          await walk(e.path, t, r);
+        } else if (e is File) {
+          final st = await e.stat();
+          final tf = File(t);
+          if (!await tf.exists()) {
+            out.add(r);
+            continue;
+          }
+          final ts = await tf.stat();
+          if (ts.size != st.size || ts.modified.difference(st.modified).inSeconds.abs() > 2) out.add(r);
+        }
+      }
+      if (x.delete && await Directory(dst).exists()) {
+        await for (final e in Directory(dst).list(followLinks: false).handleError((_) {})) {
+          final name = p.basename(e.path);
+          if (!names.contains(name) && !name.endsWith('.jjsync')) out.add('− ${rel.isEmpty ? name : '$rel/$name'}');
+        }
+      }
+    }
+
+    if (await Directory(x.source).exists()) await walk(x.source, x.target, '');
+    return out;
+  }
+
+  Future<void> refreshPending(LiveSyncPair x) async {
+    try {
+      pending[keyOf(x)] = await diff(x);
+    } catch (_) {}
+    notifyListeners();
   }
 
   static String keyOf(LiveSyncPair x) => '${x.source}=>${x.target}';
@@ -110,10 +175,14 @@ class LiveSync extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 바뀜 · 정해진 간격: 다른 점을 다시 세고, 동작 시간이면 3초 뒤 맞춘다 (모아서)
   void _schedule(LiveSyncPair x) {
     final k = keyOf(x);
     _pending[k]?.cancel();
-    _pending[k] = Timer(const Duration(seconds: 3), () => syncNow(x));
+    _pending[k] = Timer(const Duration(seconds: 3), () async {
+      await refreshPending(x);
+      if (activeNow(x) && (pending[k]?.isNotEmpty ?? false)) await syncNow(x);
+    });
   }
 
   bool isRunning(LiveSyncPair x) => _running.contains(keyOf(x));
@@ -136,6 +205,7 @@ class LiveSync extends ChangeNotifier {
         CopyMethod.robocopy => await _robocopy(x, s),
       };
       status[k] = (DateTime.now(), n < 0 ? tr('맞춤') : trf('{0}개 맞춤', [n]));
+      pending[k] = await diff(x);
       if (n != 0) c.note(trf('실시간 동기화 ({0}): {1} → {2}', [method.label, x.source, x.target]));
     } catch (e) {
       status[k] = (DateTime.now(), trf('실패: {0}', [e]));

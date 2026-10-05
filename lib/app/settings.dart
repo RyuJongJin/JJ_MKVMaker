@@ -40,13 +40,20 @@ class LiveSyncPair {
   /// 원본에 없는 것을 대상에서 지우기 (rsync --delete, robocopy /PURGE)
   final bool delete;
   final bool enabled;
-  const LiveSyncPair(this.source, this.target, {this.method = 'builtin', this.delete = false, this.enabled = true});
 
-  LiveSyncPair copyWith({String? method, bool? delete, bool? enabled}) =>
-      LiveSyncPair(source, target, method: method ?? this.method, delete: delete ?? this.delete, enabled: enabled ?? this.enabled);
+  /// 동작 시간 (cron 줄들, core/cron_window.dart). 비어 있으면 계속 (앱이 켜져 있는 동안 늘)
+  final List<String> schedule;
+  const LiveSyncPair(this.source, this.target,
+      {this.method = 'builtin', this.delete = false, this.enabled = true, this.schedule = const []});
+
+  LiveSyncPair copyWith({String? method, bool? delete, bool? enabled, List<String>? schedule}) => LiveSyncPair(source, target,
+      method: method ?? this.method,
+      delete: delete ?? this.delete,
+      enabled: enabled ?? this.enabled,
+      schedule: schedule ?? this.schedule);
 
   Map<String, Object?> toJson() =>
-      {'source': source, 'target': target, 'method': method, 'delete': delete, 'enabled': enabled};
+      {'source': source, 'target': target, 'method': method, 'delete': delete, 'enabled': enabled, 'schedule': schedule};
 
   factory LiveSyncPair.fromJson(Map<Object?, Object?> j) => LiveSyncPair(
         j['source'] as String,
@@ -54,6 +61,108 @@ class LiveSyncPair {
         method: const ['rsync', 'robocopy'].contains(j['method']) ? j['method'] as String : 'builtin',
         delete: j['delete'] == true,
         enabled: j['enabled'] != false,
+        schedule: [for (final x in (j['schedule'] as List?) ?? const []) '$x'],
+      );
+}
+
+/// 복사 · 이동 기억 (모니터링 > 복사 · rsync): 같은 원본 → 대상을 다시 복사하면 이 옵션을 쓴다. 언제든 [실행] 으로 다시.
+class CopyTask {
+  final String id;
+  final List<String> sources;
+  final String dest;
+  final bool move;
+
+  /// 폴더 "안의 것" 을 대상에 맞추기 (lsync 에서 옮겨 온 것: 원본/ → 대상/)
+  final bool contents;
+
+  /// CopyMethod 이름 · 그 방법의 옵션 · 한 번에 · 속도 제한 (KB/s)
+  final String method;
+  final String options;
+  final bool once;
+  final int bandwidthKBps;
+
+  /// 마지막 실행: 시각 (ISO) · 결과 ('done' · 'failed' · 'cancelled' · '') · 글 · 파일 수
+  final String lastRun;
+  final String lastResult;
+  final String lastMessage;
+  final int lastFiles;
+
+  const CopyTask({
+    required this.id,
+    required this.sources,
+    required this.dest,
+    this.move = false,
+    this.contents = false,
+    this.method = 'builtin',
+    this.options = '',
+    this.once = false,
+    this.bandwidthKBps = 0,
+    this.lastRun = '',
+    this.lastResult = '',
+    this.lastMessage = '',
+    this.lastFiles = 0,
+  });
+
+  /// 같은 복사인지 (원본들 · 대상 · 이동)
+  String get key => '${move ? 'M' : contents ? 'S' : 'C'}|${[...sources]..sort()}|$dest';
+
+  CopyTask copyWith({
+    String? method,
+    String? options,
+    bool? once,
+    int? bandwidthKBps,
+    bool? move,
+    String? lastRun,
+    String? lastResult,
+    String? lastMessage,
+    int? lastFiles,
+  }) =>
+      CopyTask(
+        id: id,
+        sources: sources,
+        dest: dest,
+        move: move ?? this.move,
+        contents: contents,
+        method: method ?? this.method,
+        options: options ?? this.options,
+        once: once ?? this.once,
+        bandwidthKBps: bandwidthKBps ?? this.bandwidthKBps,
+        lastRun: lastRun ?? this.lastRun,
+        lastResult: lastResult ?? this.lastResult,
+        lastMessage: lastMessage ?? this.lastMessage,
+        lastFiles: lastFiles ?? this.lastFiles,
+      );
+
+  Map<String, Object?> toJson() => {
+        'id': id,
+        'sources': sources,
+        'dest': dest,
+        'move': move,
+        'contents': contents,
+        'method': method,
+        'options': options,
+        'once': once,
+        'bandwidthKBps': bandwidthKBps,
+        'lastRun': lastRun,
+        'lastResult': lastResult,
+        'lastMessage': lastMessage,
+        'lastFiles': lastFiles,
+      };
+
+  factory CopyTask.fromJson(Map<Object?, Object?> j) => CopyTask(
+        id: '${j['id']}',
+        sources: [for (final x in (j['sources'] as List?) ?? const []) '$x'],
+        dest: '${j['dest']}',
+        move: j['move'] == true,
+        contents: j['contents'] == true,
+        method: const ['rsync', 'robocopy'].contains(j['method']) ? j['method'] as String : 'builtin',
+        options: j['options'] as String? ?? '',
+        once: j['once'] == true,
+        bandwidthKBps: (j['bandwidthKBps'] as num?)?.toInt() ?? 0,
+        lastRun: j['lastRun'] as String? ?? '',
+        lastResult: j['lastResult'] as String? ?? '',
+        lastMessage: j['lastMessage'] as String? ?? '',
+        lastFiles: (j['lastFiles'] as num?)?.toInt() ?? 0,
       );
 }
 
@@ -206,6 +315,10 @@ class AppSettings {
   /// 실시간 동기화 (lsyncd 처럼)
   List<LiveSyncPair> liveSyncPairs = [];
 
+  /// 복사 모니터링: 파일 탐색기 가운데 [모니터링] 버튼, 복사 · 이동을 기억해 다시 실행 · 옵션 고치기
+  bool copyMonitor = false;
+  List<CopyTask> copyTasks = [];
+
   /// 실시간 동기화 확인 간격 (초). Windows 는 바뀌면 바로, 그 밖은 이 간격으로 살핀다.
   int liveSyncIntervalSec = 30;
 
@@ -301,6 +414,8 @@ class AppSettings {
         'rsyncPath': rsyncPath,
         'liveSyncPairs': [for (final x in liveSyncPairs) x.toJson()],
         'liveSyncIntervalSec': liveSyncIntervalSec,
+        'copyMonitor': copyMonitor,
+        'copyTasks': [for (final x in copyTasks) x.toJson()],
         'explorerHistory': explorerHistory,
         'autoCheckUpdates': autoCheckUpdates,
         'lastUpdateCheck': lastUpdateCheck,
@@ -403,6 +518,11 @@ class AppSettings {
           if (x is Map && x['source'] is String && x['target'] is String) LiveSyncPair.fromJson(x),
       ]
       ..liveSyncIntervalSec = ((j['liveSyncIntervalSec'] as num?)?.toInt() ?? 30).clamp(5, 3600)
+      ..copyMonitor = j['copyMonitor'] == true
+      ..copyTasks = [
+        for (final x in (j['copyTasks'] as List?) ?? const [])
+          if (x is Map && x['dest'] is String) CopyTask.fromJson(x),
+      ]
       ..explorerHistory = [for (final x in (j['explorerHistory'] as List?) ?? const []) '$x']
       ..autoCheckUpdates = j['autoCheckUpdates'] as bool? ?? true
       ..lastUpdateCheck = j['lastUpdateCheck'] as String? ?? ''

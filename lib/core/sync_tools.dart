@@ -66,13 +66,15 @@ List<String> rsyncArgs({
   int bandwidthKBps = 0,
   bool move = false,
   bool windows = true,
+  bool contents = false,
 }) {
   final opts = splitOptions(options);
   return [
     ...opts,
     if (bandwidthKBps > 0 && !opts.any((o) => o.startsWith('--bwlimit'))) '--bwlimit=$bandwidthKBps',
     if (move && !opts.contains('--remove-source-files')) '--remove-source-files',
-    for (final s in sources) toCygwinPath(_noTrailingSlash(s), windows: windows),
+    // [contents]: 폴더 "안의 것" 을 대상에 (rsync 의 끝 / - 동기화 · lsync 와 같은 모양)
+    for (final s in sources) '${toCygwinPath(_noTrailingSlash(s), windows: windows)}${contents ? '/' : ''}',
     '${toCygwinPath(_noTrailingSlash(dest), windows: windows)}/',
   ];
 }
@@ -90,6 +92,7 @@ List<List<String>> robocopyRuns({
   required String dest,
   int bandwidthKBps = 0,
   bool move = false,
+  bool contents = false,
 }) {
   final opts = splitOptions(options);
   final extra = [
@@ -97,7 +100,7 @@ List<List<String>> robocopyRuns({
     if (move && !opts.any((o) => o.toUpperCase().startsWith('/MOV'))) '/MOVE',
   ];
   final runs = <List<String>>[
-    for (final f in folders) [f, p.join(dest, p.basename(f)), ...opts, ...extra],
+    for (final f in folders) [f, contents ? dest : p.join(dest, p.basename(f)), ...opts, ...extra],
   ];
   final byDir = <String, List<String>>{};
   for (final f in files) {

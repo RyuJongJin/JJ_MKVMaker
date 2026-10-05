@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 
 import '../app/app_controller.dart';
+import '../app/copy_center.dart';
 import '../app/live_sync.dart';
 import '../app/transfer_job.dart';
 import '../core/sync_tools.dart';
@@ -17,6 +18,7 @@ import '../core/playlist.dart' show isVideoFile;
 import '../platform/android/android_storage.dart';
 import 'app_actions.dart';
 import 'explorer_look.dart';
+import 'monitor_page.dart';
 import 'player_page.dart';
 import 'rsync_setup.dart';
 import 'theme.dart';
@@ -61,6 +63,7 @@ enum ExplorerButton {
   up(Icons.arrow_upward, '상위 폴더'),
   refresh(Icons.refresh, '새로 고침'),
   select(Icons.checklist, '선택'),
+  monitor(Icons.monitor_heart_outlined, '모니터링'),
   play(Icons.play_circle_outline, '재생'),
   addMkv(Icons.playlist_add, 'MKV 목록에 추가'),
   newFolder(Icons.create_new_folder_outlined, '새 폴더'),
@@ -527,6 +530,8 @@ class _ExplorerPageState extends State<ExplorerPage> {
         await _goTo(pane, up);
       case ExplorerButton.select:
         _setSelecting(!_selecting);
+      case ExplorerButton.monitor:
+        await MonitorPage.open(context, c);
       case ExplorerButton.refresh:
         pane.cache.clear();
         for (final d in pane.expanded.toList()) {
@@ -719,14 +724,6 @@ class _ExplorerPageState extends State<ExplorerPage> {
   /// 지금 도는 복사 · 이동 (아래에서 올라오는 진행 막대)
   TransferJob? _job;
 
-  /// 고른 것에 맞는 방법: 폴더가 하나라도 있으면 "폴더 복사 방법", 파일만이면 "파일 복사 방법"
-  CopyMethod _methodFor(List<String> sources) {
-    final s = c.settings;
-    final hasDir = sources.any(FileSystemEntity.isDirectorySync);
-    final m = CopyMethod.of(hasDir ? s.copyMethodFolder : s.copyMethodFile);
-    return copyMethodAvailable(m, s) ? m : CopyMethod.builtin;
-  }
-
   /// rsync 가 없으면 (Windows · 내려받기 설정) 지금 내려받을지 묻는다. 쓸 수 있는 rsync 경로 (없으면 null)
   Future<String?> _ensureRsync() async {
     final s = c.settings;
@@ -750,14 +747,21 @@ class _ExplorerPageState extends State<ExplorerPage> {
       _snack(tr('앞의 복사 · 이동이 끝난 뒤에 하세요.'));
       return false;
     }
-    final method = _methodFor(sources);
+    // 복사 모니터링을 켜면 기억한 같은 복사의 옵션을 쓰고, 처음이면 기억한다
+    final center = CopyCenter.of(c);
+    final task = c.settings.copyMonitor
+        ? await center.remember(sources, dest, move: move)
+        : center.fresh(sources, dest, move: move);
+    final method = CopyMethod.of(task.method);
+    if (!mounted) return false;
     final go = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(move ? tr('이동') : tr('복사')),
         content: Text('${trf('{0}개 항목을 다음 폴더로 {1}\n{2}', [sources.length, move ? tr('옮길까요?') : tr('복사할까요?'), dest])}'
             '\n\n${trf('방법: {0}', [tr(method.label)])}'
-            '${c.settings.copyBandwidthKBps > 0 ? ' · ${trf('속도 제한 {0} KB/s', [c.settings.copyBandwidthKBps])}' : ''}'),
+            '${method == CopyMethod.builtin ? '' : ' · ${task.options}'}'
+            '${task.bandwidthKBps > 0 ? ' · ${trf('속도 제한 {0} KB/s', [task.bandwidthKBps])}' : ''}'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('취소'))),
           FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(move ? tr('이동') : tr('복사'))),
@@ -770,19 +774,10 @@ class _ExplorerPageState extends State<ExplorerPage> {
       rsync = await _ensureRsync();
       if (rsync == null || !mounted) return false;
     }
-    final s = c.settings;
-    final job = TransferJob(
-      sources: sources,
-      dest: dest,
-      move: move,
-      method: method,
-      options: method == CopyMethod.robocopy ? s.robocopyOptions : s.rsyncOptions,
-      once: s.copyRunMode == 'once',
-      bandwidthKBps: s.copyBandwidthKBps,
-      rsyncExe: rsync,
-    );
+    final job = await center.start(task, rsyncExe: rsync);
+    if (job == null || !mounted) return false;
     setState(() => _job = job);
-    await job.run();
+    await job.done;
     final error = job.error;
     if (!mounted) return false;
     pane.marked.clear();
@@ -1227,7 +1222,11 @@ class _ExplorerPageState extends State<ExplorerPage> {
       final bar = s.explorerToolbar == 'hidden'
           ? null
           : _Toolbar(
-              buttons: ExplorerButton.fromSettings(s.explorerButtons),
+              // [모니터링] 은 환경 설정 > 복사 모니터링 을 켰을 때만
+              buttons: [
+                for (final b in ExplorerButton.fromSettings(s.explorerButtons))
+                  if (b != ExplorerButton.monitor || s.copyMonitor) b,
+              ],
               vertical: side,
               onPressed: _button,
               enabled: (b) => switch (b) {

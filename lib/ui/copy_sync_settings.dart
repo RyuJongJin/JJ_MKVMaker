@@ -12,6 +12,7 @@ import '../l10n/tr.dart';
 import '../platform/windows/rsync_installer.dart';
 import 'folder_picker.dart';
 import 'rsync_setup.dart';
+import 'schedule_editor.dart';
 import 'theme.dart';
 
 /// 환경 설정 > 파일 탐색기 의 복사 · 이동 · 동기화 부분:
@@ -195,23 +196,34 @@ class _CopySyncSettingsState extends State<CopySyncSettings> {
             child: Text(tr('고르기')),
           ),
         ),
+      SwitchListTile(
+        value: s.copyMonitor,
+        onChanged: (v) => c.updateSettings((x) => x.copyMonitor = v),
+        title: Text(tr('복사 모니터링')),
+        subtitle: Text(tr('파일 탐색기 가운데에 [모니터링] 버튼: 복사 · 이동을 기억해 진행 · 대상 디스크 용량 · 옵션을 보여 주고, '
+            '옵션을 고쳐 다시 실행 · 재개하거나 lsync 로 옮깁니다 (복사 · rsync 와 lsync 를 따로).')),
+      ),
       _LiveSyncTile(c: c),
     ]);
   }
 }
 
-/// 실시간 동기화 (lsyncd 처럼): 폴더 쌍 목록 · 추가 · 켜기 / 끄기 · 지금 맞추기 · 지우기
+/// 실시간 동기화 쌍 추가 (원본 · 대상 폴더 고르기 → 방법 · 지우기 · 일정)
+Future<void> addLiveSyncPairDialog(BuildContext context, AppController c) => _LiveSyncTile._add(context, c);
+
+/// 실시간 동기화 (lsyncd 처럼): 폴더 쌍 목록 · 추가 · 켜기 / 끄기 · 일정 · 지금 맞추기 · 지우기
 class _LiveSyncTile extends StatelessWidget {
   final AppController c;
   const _LiveSyncTile({required this.c});
 
-  Future<void> _add(BuildContext context) async {
+  static Future<void> _add(BuildContext context, AppController c) async {
     final src = await pickFolder(context, tr('실시간 동기화: 원본 폴더'));
     if (src == null || !context.mounted) return;
     final dst = await pickFolder(context, tr('실시간 동기화: 대상 폴더'));
     if (dst == null || !context.mounted) return;
-    var method = 'builtin';
+    var method = copyMethodAvailable(CopyMethod.rsync, c.settings) ? 'rsync' : 'builtin';
     var delete = false;
+    var schedule = <String>[];
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -232,6 +244,19 @@ class _LiveSyncTile extends StatelessWidget {
               title: Text(tr('원본에 없는 것을 대상에서 지우기')),
               subtitle: Text(tr('rsync --delete · robocopy /PURGE. 끄면 대상에 더하기 · 바꾸기만')),
             ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: WeekGridPreview(lines: schedule, width: 96),
+              title: Text(scheduleSummary(schedule)),
+              subtitle: Text(tr('동기화 시간 (계속 / 시간 지정)')),
+              trailing: TextButton(
+                onPressed: () async {
+                  final r = await editSchedule(ctx, schedule);
+                  if (r != null) set(() => schedule = r);
+                },
+                child: Text(tr('바꾸기')),
+              ),
+            ),
           ]),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('취소'))),
@@ -241,7 +266,8 @@ class _LiveSyncTile extends StatelessWidget {
       ),
     );
     if (ok != true) return;
-    await c.updateSettings((x) => x.liveSyncPairs = [...x.liveSyncPairs, LiveSyncPair(src, dst, method: method, delete: delete)]);
+    await c.updateSettings(
+        (x) => x.liveSyncPairs = [...x.liveSyncPairs, LiveSyncPair(src, dst, method: method, delete: delete, schedule: schedule)]);
   }
 
   @override
@@ -255,7 +281,7 @@ class _LiveSyncTile extends StatelessWidget {
                 ? tr('원본 폴더가 바뀌면 곧바로 대상 폴더에 맞춥니다 (앱이 켜져 있는 동안). 시작할 때 한 번 맞춥니다.')
                 : trf('{0}초마다 원본 폴더를 살펴 대상 폴더에 맞춥니다 (앱이 켜져 있는 동안).', [c.settings.liveSyncIntervalSec])),
             trailing: TextButton.icon(
-              onPressed: () => _add(context),
+              onPressed: () => _add(context, c),
               icon: const Icon(Icons.add, size: 18),
               label: Text(tr('추가')),
             ),
@@ -270,11 +296,23 @@ class _LiveSyncTile extends StatelessWidget {
                 subtitle: Text([
                   tr(CopyMethod.of(pairs[i].method).label),
                   if (pairs[i].delete) tr('지우기 포함'),
+                  scheduleSummary(pairs[i].schedule),
                   if (live?.isRunning(pairs[i]) ?? false) tr('맞추는 중…'),
                   if (live?.status[LiveSync.keyOf(pairs[i])] case final st?)
                     '${st.$1.hour.toString().padLeft(2, '0')}:${st.$1.minute.toString().padLeft(2, '0')} ${st.$2}',
                 ].join(' · ')),
                 trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                  IconButton(
+                    tooltip: tr('동기화 시간 (계속 / 시간 지정)'),
+                    icon: const Icon(Icons.schedule, size: 18),
+                    onPressed: () async {
+                      final r = await editSchedule(context, pairs[i].schedule);
+                      if (r == null) return;
+                      await c.updateSettings((x) => x.liveSyncPairs = [
+                            for (var k = 0; k < pairs.length; k++) k == i ? pairs[k].copyWith(schedule: r) : pairs[k],
+                          ]);
+                    },
+                  ),
                   IconButton(
                     tooltip: tr('지금 맞추기'),
                     icon: const Icon(Icons.sync, size: 18),
