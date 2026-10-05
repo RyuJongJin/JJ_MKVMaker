@@ -76,9 +76,12 @@ git clone <이 저장소>
 cd app
 powershell -File tool\fetch_ffmpeg.ps1   # third_party\ffmpeg\windows 에 FFmpeg 준비
 powershell -File tool\fetch_tools.ps1    # third_party\tools\windows 에 yt-dlp · aria2 · Deno 준비
+powershell -File tool\fetch_rsync.ps1    # third_party\rsync\windows 에 rsync (MSYS2, SHA256 고정) 준비
 flutter pub get
 flutter build windows --release          # build\windows\x64\runner\Release
 ```
+
+Android 의 rsync: Git Bash 에서 `sh tool/build_rsync_android.sh` (Android NDK 로 rsync 3.4.1 소스를 빌드해 third_party/rsync/android 에 둠, APK 에 들어감)
 
 테스트: `flutter test` (AI 모델 · 인터넷이 필요한 테스트는 자동으로 건너뜀)
 
