@@ -704,33 +704,106 @@ class AppSettings {
 }
 
 /// 설정 파일 읽기·쓰기
+/// 설정 파일 읽기 · 쓰기.
+/// - 쓰기: 임시 파일에 다 쓴 뒤 바꿔치기 (쓰는 도중 앱이 끝나도 settings.json 이 깨지지 않게).
+///   바꿔치기 전의 정상 파일은 settings.json.bak 으로 남긴다.
+/// - 읽기: settings.json 을 읽지 못하면 settings.json.bak 으로 되살린다. 읽지 못한 파일은 지우지 않고
+///   settings.broken-(시각).json 으로 보관한다 (다음 저장에 덮여 사라지지 않게). 무슨 일이 있었는지는 [problem].
 class SettingsStore {
   final String? _path;
 
   SettingsStore([this._path]);
 
+  /// 마지막 [load] 에서 생긴 일 (null = 문제 없음). 앱이 켜질 때 사용자에게 알린다.
+  SettingsLoadProblem? problem;
+
   Future<String> _file() async =>
       _path ?? p.join((await getApplicationSupportDirectory()).path, 'settings.json');
 
+  static AppSettings _parse(String text) => AppSettings.fromJson(jsonDecode(text) as Map<String, dynamic>);
+
   Future<AppSettings> load() async {
+    problem = null;
+    final f = File(await _file());
     try {
-      final f = File(await _file());
       // 이전 이름(jj_capcut) 의 설정 파일이 있으면 옮겨 온다
       final legacy = File(p.join(p.dirname(f.parent.path), 'jj_capcut', 'settings.json'));
       if (_path == null && !await f.exists() && await legacy.exists()) {
         await f.parent.create(recursive: true);
         await legacy.copy(f.path);
       }
-      if (await f.exists()) {
-        return AppSettings.fromJson(jsonDecode(await f.readAsString()) as Map<String, dynamic>);
-      }
     } catch (_) {}
+    final bak = File('${f.path}.bak');
+    if (!await f.exists()) {
+      // 바꿔치기 도중 끝나 settings.json 만 없는 경우: 백업이 있으면 그것으로
+      if (await bak.exists()) {
+        try {
+          final s = _parse(await bak.readAsString());
+          problem = SettingsLoadProblem(restoredFromBackup: true, brokenCopy: null, error: 'settings.json 없음');
+          return s;
+        } catch (_) {}
+      }
+      return AppSettings();
+    }
+    String? text;
+    Object? error;
+    try {
+      text = await f.readAsString();
+      return _parse(text);
+    } catch (e) {
+      error = e;
+    }
+    // 읽지 못함: 깨진 파일을 보관하고 백업으로
+    String? kept;
+    try {
+      final stamp = DateTime.now().toIso8601String().replaceAll(':', '').split('.').first;
+      kept = p.join(f.parent.path, 'settings.broken-$stamp.json');
+      await f.copy(kept);
+    } catch (_) {
+      kept = null;
+    }
+    if (await bak.exists()) {
+      try {
+        final s = _parse(await bak.readAsString());
+        problem = SettingsLoadProblem(restoredFromBackup: true, brokenCopy: kept, error: '$error');
+        return s;
+      } catch (_) {}
+    }
+    problem = SettingsLoadProblem(restoredFromBackup: false, brokenCopy: kept, error: '$error');
     return AppSettings();
   }
 
-  Future<void> save(AppSettings s) async {
+  /// 한 번에 하나씩 쓴다 (빠르게 여러 번 바꿔도 파일이 섞이지 않게)
+  Future<void> _last = Future.value();
+
+  Future<void> save(AppSettings s) {
+    final text = const JsonEncoder.withIndent('  ').convert(s.toJson());
+    return _last = _last.catchError((_) {}).then((_) => _write(text));
+  }
+
+  Future<void> _write(String text) async {
     final f = File(await _file());
     await f.parent.create(recursive: true);
-    await f.writeAsString(const JsonEncoder.withIndent('  ').convert(s.toJson()));
+    final tmp = File('${f.path}.tmp');
+    await tmp.writeAsString(text, flush: true);
+    if (await f.exists()) {
+      // 지금 파일이 정상이면 백업으로 남긴다 (깨진 파일로 좋은 백업을 덮지 않게)
+      try {
+        _parse(await f.readAsString());
+        await f.copy('${f.path}.bak');
+      } catch (_) {}
+    }
+    await tmp.rename(f.path);
   }
+}
+
+/// 설정 파일을 읽다 생긴 일 (앱이 켜질 때 알림)
+class SettingsLoadProblem {
+  /// 백업 (직전 정상 저장) 으로 되살렸는지. false 면 처음 설정으로 켰다.
+  final bool restoredFromBackup;
+
+  /// 읽지 못한 원래 파일을 보관한 곳
+  final String? brokenCopy;
+  final String error;
+  const SettingsLoadProblem({required this.restoredFromBackup, required this.brokenCopy, required this.error});
 }

@@ -12,6 +12,7 @@ import 'app/app_controller.dart';
 import 'app/live_sync.dart';
 import 'app/version_snapshot.dart';
 import 'app/component_store.dart';
+import 'ui/settings_problem.dart';
 import 'app/bookmarks_controller.dart';
 import 'app/download_manager.dart';
 import 'app/settings.dart';
@@ -303,6 +304,8 @@ Future<void> main(List<String> args) async {
       unawaited(AppNavButtons.openPage(nav0, home, c: controller, downloads: downloads, bookmarks: bookmarks));
     }
     if (controller.settings.liveSyncOnStart == 'ask' && ctx.mounted) await askLiveSyncStart(ctx, live);
+    // 설정 파일을 읽지 못했으면 (백업으로 되살렸거나 처음 설정으로 켰으면) 알린다
+    if (ctx.mounted) await showSettingsProblem(ctx, controller);
     // 다른 버전을 쓰다가 이 버전으로 돌아왔으면 보관해 둔 이 버전의 설정을 되살릴지
     final current = await _currentVersion(services);
     if (ctx.mounted) {
@@ -491,6 +494,7 @@ Future<void> runAndroid(String dataDir) async {
     // 다른 버전을 쓰다가 돌아왔거나 앱을 다시 설치했으면 보관해 둔 설정을 되살릴지 (되살리면 앱을 끝내고 다시 켜 달라고)
     final current = await _currentVersion(services);
     final ctxV = navigatorKey.currentContext;
+    if (ctxV != null && ctxV.mounted) await showSettingsProblem(ctxV, controller);
     if (ctxV != null && ctxV.mounted) {
       await checkVersionRestore(ctxV, controller, current: current, freshInstall: freshInstall,
           restart: () async {

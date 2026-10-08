@@ -155,6 +155,12 @@ class AppController extends ChangeNotifier {
   Future<void> init() async {
     if (settingsStore != null) {
       settings = await settingsStore!.load();
+      final problem = settingsStore!.problem;
+      if (problem != null) {
+        _log(problem.restoredFromBackup
+            ? trf('설정 파일을 읽지 못해 백업으로 되살림 (보관: {0}): {1}', [problem.brokenCopy ?? '-', problem.error])
+            : trf('설정 파일을 읽지 못해 처음 설정으로 켬 (보관: {0}): {1}', [problem.brokenCopy ?? '-', problem.error]));
+      }
       // 앱 안 브라우저의 로그인 · 쿠키 폴더 (yt-dlp 가 같은 쿠키를 읽음)
       try {
         settings.webViewDataDir = p.join((await getApplicationSupportDirectory()).path, 'webview');
