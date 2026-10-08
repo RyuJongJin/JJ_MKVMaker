@@ -576,8 +576,9 @@ class _SettingsPageState extends State<SettingsPage> {
                       trailing: DropdownButton<String>(
                         value: s.explorerClick,
                         items: [
-                          DropdownMenuItem(value: 'select', child: Text(tr('한 번: 선택 · 두 번: 실행 (기본)'))),
-                          DropdownMenuItem(value: 'open', child: Text(tr('한 번: 바로 실행'))),
+                          DropdownMenuItem(
+                              value: 'select', child: Text(desk ? tr('한 번: 선택 · 두 번: 실행 (기본)') : tr('한 번: 선택 · 두 번: 실행'))),
+                          DropdownMenuItem(value: 'open', child: Text(desk ? tr('한 번: 바로 실행') : tr('한 번: 바로 실행 (기본)'))),
                         ],
                         onChanged: (v) => c.updateSettings((x) => x.explorerClick = v!),
                       ),
@@ -601,6 +602,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       trailing: DropdownButton<String>(
                         value: s.explorerLayout,
                         items: [
+                          DropdownMenuItem(value: 'auto', child: Text(tr('화면 크기 따라 (기본)'))),
                           DropdownMenuItem(value: 'dual', child: Text(tr('두 창'))),
                           DropdownMenuItem(value: 'split', child: Text(tr('폴더 + 파일 목록'))),
                           DropdownMenuItem(value: 'single', child: Text(tr('한 창'))),

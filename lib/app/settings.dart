@@ -285,11 +285,11 @@ class AppSettings {
 
   // ── 파일 탐색기 (X-plore 참고) ──
   /// 창: 'dual' 두 창 (기본) · 'split' 왼쪽 폴더 트리 + 오른쪽 그 폴더의 파일 목록 · 'single' 한 창
-  String explorerLayout = 'dual';
+  String explorerLayout = 'auto';
 
   /// 누르기: 'select' 한 번 = 선택 · 두 번 = 열기 (기본) / 'open' 한 번 = 바로 열기.
   /// 길게 누르기 · 오른쪽 클릭은 늘 기능 메뉴.
-  String explorerClick = 'select';
+  String explorerClick = Platform.isAndroid ? 'open' : 'select';
 
   /// 모양: 'xplore' (기본) · 'windows' Windows 탐색기 · 'totalcmd' Total Commander
   String explorerStyle = 'xplore';
@@ -356,8 +356,8 @@ class AppSettings {
   /// 보기: 밝기 (-0.7 어둡게 ~ 0.7 밝게)
   double readerBrightness = 0;
 
-  /// ZIP · CBZ 를 두 번 누르면 안의 그림을 만화처럼 보기 (끄면 목록)
-  bool zipComic = true;
+  /// ZIP · CBZ 를 두 번 누르면 안의 그림을 만화처럼 보기 (끄면 목록). 기본은 목록 (사용자 지시)
+  bool zipComic = false;
 
   /// WebDAV 서버 (파일 탐색기 · Rsync 화면 위쪽 "SD 카드" 옆 탭). 비밀번호는 이 설정 파일에만.
   List<DavServer> webdavServers = [];
@@ -462,6 +462,8 @@ class AppSettings {
         'webJavaScript': webJavaScript,
         'explorerLayout': explorerLayout,
         'explorerClick': explorerClick,
+        // 예전 기본값 (두 창 · 한 번 누르면 선택) 은 사용자가 고른 값이 아니므로 한 번 새 기본값으로 옮긴다
+        'explorerV2': true,
         'explorerStyle': explorerStyle,
         'explorerOrientation': explorerOrientation,
         'explorerToolbar': explorerToolbar,
@@ -481,6 +483,8 @@ class AppSettings {
         'readerRtl': readerRtl,
         'readerBrightness': readerBrightness,
         'zipComic': zipComic,
+        // 예전 기본값 (만화 보기 켜짐) 은 지시와 반대였으므로 한 번 꺼진 상태 (목록) 로
+        'zipComicV2': true,
         'webdavServers': [for (final x in webdavServers) x.toJson()],
         'rsyncOptions': rsyncOptions,
         'robocopyOptions': robocopyOptions,
@@ -572,8 +576,18 @@ class AppSettings {
       ..externalBrowser = j['externalBrowser'] as String? ?? 'system'
       ..webTranslate = j['webTranslate'] as bool? ?? false
       ..webJavaScript = j['webJavaScript'] as bool? ?? true
-      ..explorerLayout = const ['single', 'split'].contains(j['explorerLayout']) ? j['explorerLayout'] as String : 'dual'
-      ..explorerClick = j['explorerClick'] == 'open' ? 'open' : 'select'
+      // 'auto' = 넓은 화면은 두 창, 좁은 화면 (폰 세로) 은 한 창. 예전 기본 'dual' 은 한 번 'auto' 로
+      ..explorerLayout = const ['single', 'split', 'auto'].contains(j['explorerLayout'])
+          ? j['explorerLayout'] as String
+          : j['explorerLayout'] == 'dual' && j['explorerV2'] == true
+              ? 'dual'
+              : 'auto'
+      // Android 는 손가락으로 한 번 누르면 바로 실행이 기본. 예전 기본 'select' 는 Android 에서 한 번 'open' 으로
+      ..explorerClick = j['explorerClick'] == 'open'
+          ? 'open'
+          : j['explorerClick'] == 'select' && (j['explorerV2'] == true || !Platform.isAndroid)
+              ? 'select'
+              : (Platform.isAndroid ? 'open' : 'select')
       ..explorerStyle = const ['windows', 'totalcmd'].contains(j['explorerStyle']) ? j['explorerStyle'] as String : 'xplore'
       ..explorerOrientation = const ['side', 'stacked'].contains(j['explorerOrientation'])
           ? j['explorerOrientation'] as String
@@ -600,7 +614,7 @@ class AppSettings {
       ..readerFit = j['readerFit'] == 'width' ? 'width' : 'page'
       ..readerRtl = j['readerRtl'] as bool? ?? false
       ..readerBrightness = ((j['readerBrightness'] as num?)?.toDouble() ?? 0).clamp(-0.7, 0.7)
-      ..zipComic = j['zipComic'] as bool? ?? true
+      ..zipComic = j['zipComic'] == true && j['zipComicV2'] == true
       ..webdavServers = [
         for (final x in (j['webdavServers'] as List?) ?? const [])
           if (x is Map) DavServer.fromJson(x),

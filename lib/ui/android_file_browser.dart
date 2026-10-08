@@ -61,9 +61,16 @@ class _FileBrowserState extends State<_FileBrowser> {
     _start();
   }
 
+  /// 듀얼 앱 (복제한 앱): Android 가 "모든 파일 접근" 을 주지 않을 수 있어 안내를 따로
+  bool _dual = false;
+
   Future<void> _start() async {
     _volumes = await AndroidAccess.volumes();
     final allowed = await AndroidAccess.hasAllFiles();
+    try {
+      final root = await AndroidAccess.storageRoot();
+      _dual = root.contains('/emulated/') && !root.endsWith('/emulated/0');
+    } catch (_) {}
     final first = [widget.initialDirectory, _lastDir, _volumes.first.$1].firstWhere(
         (d) => d != null && Directory(d).existsSync() && _volumeOf(d) != null,
         orElse: () => _volumes.first.$1)!;
@@ -285,6 +292,15 @@ class _FileBrowserState extends State<_FileBrowser> {
               tr('동영상을 고르고, 동영상 옆 jj_mkv 폴더에 MKV 를 만들려면\n"모든 파일에 대한 접근" 권한이 필요합니다.'),
               textAlign: TextAlign.center,
             ),
+            if (_dual) ...[
+              const SizedBox(height: 12),
+              Text(
+                tr('지금은 듀얼 앱 (복제한 앱) 입니다. Android 가 듀얼 앱에는 이 권한을 주지 않을 수 있습니다. '
+                    '허용 화면에서 켤 수 없으면 배지 없는 원래 JJ_MKVMaker 아이콘으로 여세요.'),
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: JjColors.textDim),
+              ),
+            ],
             const SizedBox(height: 16),
             FilledButton(onPressed: AndroidAccess.request, child: Text(tr('권한 허용 화면 열기'))),
             const SizedBox(height: 8),

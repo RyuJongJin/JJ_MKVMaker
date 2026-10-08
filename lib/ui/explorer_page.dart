@@ -212,6 +212,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
     for (final pane in _panes) {
       pane.dispose();
     }
+    if (_allFiles != null) _life.dispose();
     super.dispose();
   }
 
@@ -222,16 +223,181 @@ class _ExplorerPageState extends State<ExplorerPage> {
   Future<void> _init() async {
     _local = await _loadVolumes();
     if (_local.isEmpty) _local = [(Platform.isWindows ? r'C:\' : '/', Platform.isWindows ? 'C:' : '/')];
+    if (Platform.isAndroid) unawaited(_checkAccess());
     final saved = widget.rsync ? c.settings.rsyncPaths : c.settings.explorerPaths;
+    // 창마다 따로 읽는다: 한 창이 WebDAV 서버를 기다려도 다른 창 (이 기기 파일) 은 바로 보이게
+    final wants = [
+      for (var i = 0; i < 2; i++) i < saved.length && _reachable(saved[i]) ? saved[i] : _local[0].$1,
+    ];
     for (var i = 0; i < 2; i++) {
-      final want = i < saved.length && _reachable(saved[i]) ? saved[i] : _local[0].$1;
-      await _goTo(_panes[i], want, remember: false);
+      _panes[i]
+        ..root = _volumeOf(wants[i])
+        ..current = wants[i]
+        ..focused = wants[i];
     }
     if (!mounted) return;
     setState(() => _ready = true);
-    for (final pane in _panes) {
-      _reveal(pane, pane.current); // 목록이 그려진 뒤에
+    for (var i = 0; i < 2; i++) {
+      final pane = _panes[i];
+      unawaited(_goTo(pane, wants[i], remember: false).then((_) => _reveal(pane, pane.current)));
     }
+  }
+
+  // ───────── 권한 (Android) ─────────
+
+  /// "모든 파일에 대한 접근" 권한 (없으면 폴더만 보이고 파일은 안 보인다). null = 아직 모름
+  bool? _allFiles;
+
+  /// 듀얼 앱 (복제한 앱) 인지: 저장소가 /storage/emulated/0 이 아님
+  bool _dualApp = false;
+
+  late final AppLifecycleListener _life = AppLifecycleListener(onResume: () {
+    if (Platform.isAndroid && _allFiles == false) unawaited(_checkAccess(reload: true));
+  });
+
+  Future<void> _checkAccess({bool reload = false}) async {
+    _life; // 다시 돌아오면 (권한 화면에서 허용하고 오면) 다시 확인
+    final ok = await AndroidAccess.hasAllFiles();
+    var dual = false;
+    try {
+      final root = await AndroidAccess.storageRoot();
+      dual = root.contains('/emulated/') && !root.endsWith('/emulated/0');
+    } catch (_) {}
+    if (!mounted) return;
+    final changed = ok != _allFiles;
+    setState(() {
+      _allFiles = ok;
+      _dualApp = dual;
+    });
+    if (reload && changed && ok) {
+      for (final pane in _panes) {
+        pane.cache.clear();
+        for (final d in pane.expanded.toList()) {
+          await _load(pane, d, force: true);
+        }
+      }
+    }
+  }
+
+  /// 권한이 없을 때 목록 위 안내 (이유 · 할 일 · 허용 화면 열기 · 다시 확인)
+  Widget? _accessNotice(_Pane pane) {
+    if (!Platform.isAndroid || _allFiles != false || isDav(pane.root)) return null;
+    return _notice(
+      icon: Icons.lock_outline,
+      title: tr('파일이 보이지 않습니다: "모든 파일에 대한 접근" 권한이 없습니다'),
+      body: _dualApp
+          ? tr('지금은 듀얼 앱 (복제한 앱) 입니다. Android 가 듀얼 앱에는 이 권한을 주지 않을 수 있습니다. '
+              '허용 화면에서 켤 수 없으면 배지 없는 원래 JJ_MKVMaker 아이콘으로 여세요.')
+          : tr('폴더는 보여도 그 안의 동영상 · 파일은 이 권한이 있어야 보입니다. 허용 화면에서 JJ_MKVMaker 를 켜고 돌아오세요.'),
+      actions: [
+        FilledButton.tonal(onPressed: AndroidAccess.request, child: Text(tr('권한 허용 화면 열기'))),
+        TextButton(onPressed: () => _checkAccess(reload: true), child: Text(tr('허용했으면 다시 확인'))),
+      ],
+    );
+  }
+
+  /// 목록 위 안내 상자
+  Widget _notice({required IconData icon, required String title, required String body, required List<Widget> actions}) =>
+      Container(
+        width: double.infinity,
+        margin: const EdgeInsets.fromLTRB(6, 6, 6, 0),
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+        decoration: BoxDecoration(
+          color: Colors.redAccent.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.redAccent.withValues(alpha: 0.5)),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Icon(icon, size: 18, color: Colors.redAccent),
+            const SizedBox(width: 8),
+            Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.w600))),
+          ]),
+          const SizedBox(height: 4),
+          Text(body, style: const TextStyle(fontSize: 12, color: JjColors.textDim)),
+          Wrap(spacing: 8, children: actions),
+        ]),
+      );
+
+  // ───────── 읽을 수 없을 때 (12) ─────────
+
+  /// 오류 → (무엇이 문제인지, 무엇을 하면 되는지)
+  (String, String) _explain(String e, {required bool dav}) {
+    final s = e.toLowerCase();
+    if (dav && (s.contains('socketexception') || s.contains('connection refused') || s.contains('failed host lookup') ||
+        s.contains('network is unreachable') || s.contains('no route') || s.contains('timed out') ||
+        s.contains('timeoutexception') || s.contains('connection reset') || s.contains('connection closed'))) {
+      return (
+        tr('서버에 닿지 않습니다'),
+        tr('서버와 같은 네트워크에 있거나 VPN (예: Tailscale) 이 켜져 있어야 합니다. 켠 뒤 [다시 시도] 를 누르세요.'),
+      );
+    }
+    if (s.contains(' 401') || s.contains('status: 401') || s.contains('아이디 · 비밀번호')) {
+      return (tr('아이디 또는 비밀번호가 맞지 않습니다'), tr('[서버 설정 고치기] 에서 아이디 · 비밀번호를 확인하세요.'));
+    }
+    if (s.contains('handshake') || s.contains('certificate')) {
+      return (
+        tr('서버 인증서를 확인할 수 없습니다'),
+        tr('집 NAS 처럼 자체 서명 인증서면 [서버 설정 고치기] 에서 "인증서 확인 안 함" 을 켜세요.'),
+      );
+    }
+    if (s.contains(' 403') || s.contains('권한 없음')) return (tr('이 폴더를 볼 권한이 없습니다'), tr('서버에서 이 계정의 권한을 확인하세요.'));
+    if (s.contains(' 404') || s.contains('없는 경로')) return (tr('폴더가 없습니다'), tr('다른 곳에서 지웠거나 옮겼을 수 있습니다. 위 폴더로 가 보세요.'));
+    if (s.contains('permission denied') || s.contains('pathaccessexception') || s.contains('errno = 13')) {
+      return (
+        tr('이 폴더를 읽을 권한이 없습니다'),
+        Platform.isAndroid ? tr('Android 가 막은 폴더 (Android/data 등) 이거나 "모든 파일에 대한 접근" 권한이 없습니다.') : '',
+      );
+    }
+    return (tr('읽을 수 없습니다'), e);
+  }
+
+  Widget? _errorNotice(_Pane pane, String dir) {
+    final err = pane.errors[dir] ?? pane.errors[pane.root];
+    if (err == null) return null;
+    final where = pane.errors[dir] != null ? dir : pane.root;
+    final dav = isDav(where);
+    final (title, body) = _explain(err, dav: dav);
+    return _notice(
+      icon: dav ? Icons.cloud_off_outlined : Icons.error_outline,
+      title: '${_displayPath(where)}: $title',
+      body: body,
+      actions: [
+        FilledButton.tonal(
+          onPressed: () async {
+            pane.errors.remove(where);
+            pane.changed();
+            await _load(pane, where, force: true);
+            for (final d in pane.expanded.toList()) {
+              if (isSameOrInside(d, where) && d != where) await _load(pane, d, force: true);
+            }
+          },
+          child: Text(tr('다시 시도')),
+        ),
+        if (dav) TextButton(onPressed: () => _editDav(pane, pane.root), child: Text(tr('서버 설정 고치기'))),
+      ],
+    );
+  }
+
+  /// 화면에 보일 경로 (5 · 14): Android 는 "SD 카드 › JJ_sdtest › jj_mkv", WebDAV 는 "☁ 서버 › 폴더", Windows 는 그대로
+  String _displayPath(String path) {
+    if (isDav(path)) {
+      final d = DavPath.parse(path);
+      final label = DavRegistry.server(d.server)?.label ?? 'WebDAV';
+      return ['☁ $label', ...d.rel.split('/').where((s) => s.isNotEmpty)].join(' › ');
+    }
+    if (!Platform.isAndroid) return path;
+    String? best;
+    var label = '';
+    for (final (v, l) in _local) {
+      if ((samePath(v, path) || p.isWithin(v, path)) && (best == null || v.length > best.length)) {
+        best = v;
+        label = l;
+      }
+    }
+    if (best == null) return path;
+    final rest = p.relative(path, from: best);
+    return [label, if (rest != '.') ...p.split(rest)].join(' › ');
   }
 
   Future<List<(String, String)>> _loadVolumes() async {
@@ -362,7 +528,11 @@ class _ExplorerPageState extends State<ExplorerPage> {
   bool get _split => !widget.rsync && c.settings.explorerLayout == 'split';
 
   /// 좌우 두 창 (Rsync 화면은 늘)
-  bool get _dual => widget.rsync || c.settings.explorerLayout == 'dual';
+  bool get _dual =>
+      widget.rsync ||
+      c.settings.explorerLayout == 'dual' ||
+      // 자동: 넓으면 두 창, 좁은 화면 (폰 세로) 은 한 창 - 같은 목록이 반씩 잘려 두 번 보이지 않게
+      (c.settings.explorerLayout == 'auto' && !isCompact(context));
 
   /// 한 번 누르면 선택 · 두 번 누르면 열기 (아니면 한 번에 바로 열기)
   bool get _selectMode => c.settings.explorerClick != 'open';
@@ -1553,6 +1723,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
               width: 420,
               child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
                 group(tr('창'), layout, [
+                  ('auto', tr('화면 크기 따라 (기본)')),
                   ('dual', tr('두 창')),
                   ('split', tr('폴더 + 파일 목록')),
                   ('single', tr('한 창')),
@@ -1708,7 +1879,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
           Text(widget.rsync ? 'Rsync' : tr('파일 탐색기'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
           const SizedBox(width: 12),
           Expanded(
-            child: Text(_ready ? vDisplay(_pane.current) : '',
+            child: Text(_ready ? _displayPath(_pane.current) : '',
                 maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: JjColors.textDim)),
           ),
           PopupMenuButton<ExplorerButton>(
@@ -1839,6 +2010,10 @@ class _ExplorerPageState extends State<ExplorerPage> {
     return _frame(i, [
       _paneHeader(pane),
       const Divider(height: 1),
+      ?_accessNotice(pane),
+      ?_errorNotice(pane, pane.current),
+      // 읽는 중 (WebDAV 서버를 기다릴 때 등)
+      if (pane.loading.isNotEmpty) const LinearProgressIndicator(minHeight: 2),
       if (look.columns && !foldersOnly) ExplorerColumnsHeader(style: look, markColumn: _selecting),
       Expanded(
         child: ListView.builder(
@@ -1867,9 +2042,11 @@ class _ExplorerPageState extends State<ExplorerPage> {
         height: 40,
         alignment: Alignment.centerLeft,
         padding: const EdgeInsets.symmetric(horizontal: 12),
-        child: Text(dir, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: JjColors.textDim)),
+        child: Text(_displayPath(dir), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: JjColors.textDim)),
       ),
       const Divider(height: 1),
+      ?_accessNotice(pane),
+      ?_errorNotice(pane, dir),
       if (look.columns) ExplorerColumnsHeader(style: look, markColumn: _selecting),
       Expanded(
         child: pane.loading.contains(dir)
@@ -2139,13 +2316,32 @@ class _Toolbar extends StatelessWidget {
   const _Toolbar(
       {required this.buttons, required this.vertical, required this.onPressed, required this.enabled, required this.selected});
 
+  /// 창이 위아래로 놓이면 (버튼 줄이 가로) "좌 → 우" 대신 "위 → 아래"
+  String _label(ExplorerButton b) => vertical
+      ? b.label
+      : switch (b) {
+          ExplorerButton.toRight => '위 → 아래',
+          ExplorerButton.toLeft => '위 ← 아래',
+          ExplorerButton.both => '위 ⇄ 아래',
+          _ => b.label,
+        };
+
+  IconData _icon(ExplorerButton b) => vertical
+      ? b.icon
+      : switch (b) {
+          ExplorerButton.toRight => Icons.arrow_downward,
+          ExplorerButton.toLeft => Icons.arrow_upward,
+          ExplorerButton.both => Icons.swap_vert,
+          _ => b.icon,
+        };
+
   @override
   Widget build(BuildContext context) {
     Widget btn(ExplorerButton b) {
       final on = enabled(b);
       final sel = selected(b);
       return Tooltip(
-        message: tr(b.label),
+        message: tr(_label(b)),
         child: InkWell(
           onTap: on ? () => onPressed(b) : null,
           borderRadius: BorderRadius.circular(6),
@@ -2153,9 +2349,9 @@ class _Toolbar extends StatelessWidget {
             width: 72,
             height: 58,
             child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-              Icon(b.icon, size: 22, color: !on ? JjColors.textDim.withValues(alpha: 0.4) : sel ? JjColors.accent : null),
+              Icon(_icon(b), size: 22, color: !on ? JjColors.textDim.withValues(alpha: 0.4) : sel ? JjColors.accent : null),
               const SizedBox(height: 2),
-              Text(tr(b.label),
+              Text(tr(_label(b)),
                   maxLines: 2,
                   textAlign: TextAlign.center,
                   overflow: TextOverflow.ellipsis,
