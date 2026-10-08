@@ -555,6 +555,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
+        scrollable: true,
         title: Text(tr('WebDAV 에서 받는 중')),
         content: ValueListenableBuilder<(int, int)>(
           valueListenable: progress,
@@ -860,6 +861,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
+        scrollable: true,
         title: Text(tr('삭제')),
         // 무엇을 지우는지 늘 보여 준다 (여러 개면 앞의 8개 이름 · 폴더)
         content: Text(paths.length == 1
@@ -983,6 +985,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
     final go = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
+        scrollable: true,
         title: Text(move ? tr('이동') : tr('복사')),
         content: Text('${trf('{0}개 항목을 다음 폴더로 {1}\n{2}', [sources.length, move ? tr('옮길까요?') : tr('복사할까요?'), vDisplay(dest)])}'
             '\n\n${trf('방법: {0}', [tr(method.label)])}'
@@ -1069,6 +1072,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
     final go = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(builder: (ctx, set) => AlertDialog(
+        scrollable: true,
         title: Text(both ? tr('rsync 양쪽 (⇄)') : 'rsync'),
         content: SizedBox(
           width: 560,
@@ -1280,6 +1284,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
     return showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
+        scrollable: true,
         title: Text(title),
         content: TextField(
           controller: ctl,
@@ -1304,6 +1309,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
     await showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
+        scrollable: true,
         title: Text(e.name),
         content: SelectableText([
           e.path,
@@ -1337,6 +1343,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, set) => AlertDialog(
+        scrollable: true,
           title: Text(tr('정렬 기준')),
           content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Wrap(spacing: 6, children: [
@@ -1407,6 +1414,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
                 ]),
               ]);
           return AlertDialog(
+        scrollable: true,
             title: Text(tr('창 배치')),
             content: SizedBox(
               width: 420,
@@ -1557,13 +1565,10 @@ class _ExplorerPageState extends State<ExplorerPage> {
     );
   }
 
-  Widget _topBar() => Container(
-        height: appBarHeight,
-        color: JjColors.panel,
-        padding: const EdgeInsets.only(left: 8, right: appBarRightPadding),
-        child: Row(children: [
-          AppNavButtons(onExplorerPage: !widget.rsync, onRsyncPage: widget.rsync),
-          const SizedBox(width: 8),
+  Widget _topBar() => AppTopBar(
+        nav: AppNavButtons(onExplorerPage: !widget.rsync, onRsyncPage: widget.rsync),
+        actions: AppActions(c: c),
+        middle: Row(children: [
           Text(widget.rsync ? 'Rsync' : tr('파일 탐색기'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
           const SizedBox(width: 12),
           Expanded(
@@ -1586,7 +1591,6 @@ class _ExplorerPageState extends State<ExplorerPage> {
                 ),
             ],
           ),
-          AppActions(c: c),
         ]),
       );
 

@@ -34,28 +34,31 @@ class MonitorPage extends StatelessWidget {
         initialIndex: initialTab,
         child: Scaffold(
           body: Column(children: [
-            Container(
-              height: appBarHeight,
-              color: JjColors.panel,
-              padding: const EdgeInsets.only(left: 8, right: appBarRightPadding),
-              child: Row(children: [
-                const AppNavButtons(),
-                const SizedBox(width: 8),
-                Text(tr('모니터링'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: TabBar(
-                    isScrollable: true,
-                    tabAlignment: TabAlignment.start,
-                    tabs: [
-                      Tab(icon: const Icon(Icons.copy_all_outlined, size: 18), text: tr('복사 · rsync')),
-                      Tab(icon: const Icon(Icons.sync, size: 18), text: tr('lsync (실시간 동기화)')),
-                    ],
+            Builder(builder: (context) {
+              // 좁은 화면: 둘째 줄 (높이 48) 에 맞게 탭에 아이콘을 옆으로
+              final compact = isCompact(context);
+              Tab tab(IconData icon, String text) => compact
+                  ? Tab(height: 46, child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(icon, size: 16), const SizedBox(width: 6), Text(text)]))
+                  : Tab(icon: Icon(icon, size: 18), text: text);
+              return AppTopBar(
+                nav: const AppNavButtons(),
+                actions: AppActions(c: c),
+                middle: Row(children: [
+                  Text(tr('모니터링'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: TabBar(
+                      isScrollable: true,
+                      tabAlignment: TabAlignment.start,
+                      tabs: [
+                        tab(Icons.copy_all_outlined, tr('복사 · rsync')),
+                        tab(Icons.sync, tr('lsync (실시간 동기화)')),
+                      ],
+                    ),
                   ),
-                ),
-                AppActions(c: c),
-              ]),
-            ),
+                ]),
+              );
+            }),
             Expanded(
               child: TabBarView(children: [
                 _CopyTab(c: c),
@@ -182,8 +185,11 @@ class _CopyTab extends StatelessWidget {
         final tasks = center.tasks;
         if (tasks.isEmpty) {
           return Center(
-            child: Text(tr('실행한 rsync 가 없습니다. Rsync 화면에서 → · ← · ⇄ 로 실행하면 여기에 자동으로 등록됩니다.'),
-                style: const TextStyle(color: JjColors.textDim)),
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text(tr('실행한 rsync 가 없습니다. Rsync 화면에서 → · ← · ⇄ 로 실행하면 여기에 자동으로 등록됩니다.'),
+                  textAlign: TextAlign.center, style: const TextStyle(color: JjColors.textDim)),
+            ),
           );
         }
         return ListView(
@@ -281,6 +287,7 @@ class _CopyCardState extends State<_CopyCard> {
     final go = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
+        scrollable: true,
         title: Text(tr('옵션을 저장했습니다')),
         content: Text(running
             ? tr('지금 도는 복사는 앞의 옵션으로 돌고 있습니다. 멈추고 새 옵션으로 다시 실행할까요?')
@@ -307,6 +314,7 @@ class _CopyCardState extends State<_CopyCard> {
       final ok = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
+        scrollable: true,
           title: Text(tr('lsync 로 이동')),
           content: Text(tr('지금 실행 중입니다. 멈추고 lsync (실시간 동기화) 로 옮길까요? 남은 것은 lsync 가 이어서 맞춥니다.')),
           actions: [
@@ -509,6 +517,7 @@ class _LiveTabState extends State<_LiveTab> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, set) => AlertDialog(
+        scrollable: true,
           title: Text(tr('최종 정리')),
           content: SizedBox(
             width: 600,

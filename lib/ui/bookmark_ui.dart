@@ -160,6 +160,7 @@ Future<void> showNewBookmarkDialog(BuildContext context, BookmarksController bm,
   final ok = await showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
+        scrollable: true,
       title: Text(tr('즐겨찾기 추가')),
       content: SizedBox(
         width: 440,
@@ -204,6 +205,7 @@ Future<String?> askText(BuildContext context, String title, String label, String
   final r = await showDialog<String>(
     context: context,
     builder: (ctx) => AlertDialog(
+        scrollable: true,
       title: Text(title),
       content: SizedBox(
         width: 380,
@@ -468,17 +470,16 @@ class _BookmarkManagerPageState extends State<BookmarkManagerPage> {
         },
       );
 
-  Widget _topBar() => Container(
-        height: appBarHeight,
-        color: JjColors.panel,
-        padding: const EdgeInsets.only(left: 8, right: appBarRightPadding),
-        child: Row(children: [
-          const AppNavButtons(),
-          const SizedBox(width: 8),
+  Widget _topBar() => AppTopBar(
+        nav: const AppNavButtons(),
+        actions: const AppActions(),
+        middle: Row(children: [
           const Icon(Icons.bookmarks_outlined, color: JjColors.accent),
           const SizedBox(width: 8),
-          Text(tr('즐겨찾기 관리자'), style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-          const SizedBox(width: 24),
+          if (!isCompact(context)) ...[
+            Text(tr('즐겨찾기 관리자'), style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+            const SizedBox(width: 24),
+          ],
           Expanded(
             child: TextField(
               controller: _search,
@@ -530,7 +531,6 @@ class _BookmarkManagerPageState extends State<BookmarkManagerPage> {
               }
             },
           ),
-          const AppActions(),
         ]),
       );
 

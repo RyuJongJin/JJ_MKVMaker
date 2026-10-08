@@ -4,6 +4,7 @@ import '../app/app_controller.dart';
 import '../core/webdav.dart';
 import '../l10n/tr.dart';
 import 'theme.dart';
+import 'setting_tile.dart';
 
 /// 환경 설정 > 파일 탐색기 > WebDAV: 서버 목록 (추가 · 고치기 · 지우기 · 연결 확인).
 /// 서버마다 파일 탐색기 · Rsync 화면 위쪽 "SD 카드" 옆에 탭이 생긴다.
@@ -15,7 +16,7 @@ class WebDavSettings extends StatelessWidget {
   Widget build(BuildContext context) {
     final servers = c.settings.webdavServers;
     return Column(children: [
-      ListTile(
+      SettingTile(
         leading: const Icon(Icons.cloud_outlined),
         title: const Text('WebDAV'),
         subtitle: Text(tr('NAS · 클라우드의 WebDAV 폴더를 파일 탐색기 · Rsync 화면에서 열고 복사 · 동기화합니다 '
@@ -29,7 +30,7 @@ class WebDavSettings extends StatelessWidget {
       for (final s in servers)
         Padding(
           padding: const EdgeInsets.only(left: 16),
-          child: ListTile(
+          child: SettingTile(
             dense: true,
             leading: const Icon(Icons.cloud, color: JjColors.accent),
             title: Text(s.label),
@@ -100,6 +101,7 @@ Future<DavServer?> editDavServer(BuildContext context, AppController c, {DavServ
 
         final ok = Uri.tryParse(url.text.trim())?.hasAuthority ?? false;
         return AlertDialog(
+        scrollable: true,
           title: Text(old == null ? tr('WebDAV 서버 추가') : tr('WebDAV 서버 고치기')),
           content: SizedBox(
             width: 520,

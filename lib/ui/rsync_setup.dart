@@ -10,6 +10,7 @@ Future<String?> installRsyncWithDialog(BuildContext context) async {
   final ok = await showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
+        scrollable: true,
       title: Text(tr('rsync 내려받기')),
       content: Text(tr('rsync 는 처음 쓸 때 내려받습니다 (MSYS2 공식 저장소의 rsync 3.5.1 · 약 8MB, 파일마다 SHA256 확인).\n'
           '설정 폴더의 rsync 에 두어 업데이트해도 남습니다. 지금 받을까요?')),
@@ -25,6 +26,7 @@ Future<String?> installRsyncWithDialog(BuildContext context) async {
     context: context,
     barrierDismissible: false,
     builder: (_) => AlertDialog(
+        scrollable: true,
       title: Text(tr('rsync 받는 중')),
       content: ValueListenableBuilder<(double, String)>(
         valueListenable: progress,

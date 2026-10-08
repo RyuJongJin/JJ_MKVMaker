@@ -76,16 +76,13 @@ class _DownloadsPageState extends State<DownloadsPage> {
         final allSel = d.tasks.isNotEmpty && d.selected.length == d.tasks.length;
         return Scaffold(
           body: Column(children: [
-            Container(
-              height: appBarHeight,
-              color: JjColors.panel,
-              padding: const EdgeInsets.only(left: 8, right: appBarRightPadding),
-              child: Row(children: [
-                const AppNavButtons(onDownloadsPage: true),
-                const SizedBox(width: 8),
+            AppTopBar(
+              nav: const AppNavButtons(onDownloadsPage: true),
+              actions: const AppActions(),
+              middle: Row(children: [
                 Text(trf('다운로드 ({0})', [d.tasks.length]),
                     style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-                const SizedBox(width: 20),
+                SizedBox(width: isCompact(context) ? 8 : 20),
                 Expanded(
                   child: TextField(
                     controller: _url,
@@ -103,7 +100,6 @@ class _DownloadsPageState extends State<DownloadsPage> {
                 ),
                 const SizedBox(width: 8),
                 FilledButton(onPressed: _add, child: Text(tr('추가'))),
-                const AppActions(),
               ]),
             ),
             Container(
@@ -126,7 +122,12 @@ class _DownloadsPageState extends State<DownloadsPage> {
                     ),
                   ]),
                 ),
-                const Spacer(),
+                // 좁으면 옆으로 밀어 볼 수 있게 (오른쪽 끝부터 보임)
+                Expanded(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    reverse: true,
+                    child: Row(children: [
                 if (d.addToEditList != null) ...[
                   _btn(Icons.playlist_add, tr('동영상 추가'),
                       hasSel && d.selectedVideoFiles.isNotEmpty ? () => _addToEditList(context) : null),
@@ -158,18 +159,23 @@ class _DownloadsPageState extends State<DownloadsPage> {
                 const SizedBox(width: 12),
                 _btn(Icons.cleaning_services_outlined, tr('완료 정리'),
                     d.tasks.any((t) => !t.unfinished) ? d.cleanupFinished : null),
+                    ]),
+                  ),
+                ),
               ]),
             ),
             const Divider(height: 1),
             Expanded(
               child: d.tasks.isEmpty
-                  ? Center(
+                  ? Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Center(
                       child: Text(
                           Platform.isAndroid
                               ? tr('다운로드가 없습니다.\nYouTube 주소 · 마그넷 링크를 위 칸에 붙여 넣거나, 웹 브라우저에서 [다운로드] 를 누르세요.')
                               : tr('다운로드가 없습니다.\nYouTube 주소나 마그넷 링크를 복사(Ctrl+C)하면 자동으로 받습니다.'),
                           textAlign: TextAlign.center,
-                          style: const TextStyle(color: JjColors.textDim)))
+                          style: const TextStyle(color: JjColors.textDim))))
                   : ListView.builder(
                       itemCount: d.tasks.length,
                       itemBuilder: (_, i) => _DownloadRow(d: d, t: d.tasks[i]),
@@ -206,6 +212,7 @@ class _DownloadsPageState extends State<DownloadsPage> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
+        scrollable: true,
         title: Text(tr('삭제')),
         content: Text(trf('선택한 {0}개를 목록에서 삭제합니다.\n받는 중인 항목은 중지하고 받던 파일도 지웁니다. (완료된 파일은 남습니다)', [n])),
         actions: [
@@ -366,6 +373,7 @@ class _ExitDialog extends StatelessWidget {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
+        scrollable: true,
         title: Text(tr('종료')),
         content: Text(tr('다운로드를 종료하시겠습니까?')),
         actions: [

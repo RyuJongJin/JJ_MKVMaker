@@ -19,6 +19,7 @@ Future<void> checkRequiredTools(BuildContext context, AppShell shell, {bool quie
   final go = await showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
+        scrollable: true,
       title: Text(tr('필수 프로그램 설치')),
       content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(tr('아래 프로그램이 없어 일부 기능을 쓸 수 없습니다. 공식 배포처에서 내려받아 프로그램 폴더에 설치할까요?')),
@@ -41,6 +42,7 @@ Future<void> checkRequiredTools(BuildContext context, AppShell shell, {bool quie
     context: context,
     barrierDismissible: false,
     builder: (ctx) => AlertDialog(
+        scrollable: true,
       title: Text(tr('내려받는 중')),
       content: ValueListenableBuilder<(String, double)>(
         valueListenable: progress,
@@ -63,6 +65,7 @@ Future<void> checkRequiredTools(BuildContext context, AppShell shell, {bool quie
     await showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
+        scrollable: true,
         title: Text(tr('설치 실패')),
         content: SelectableText(trf('인터넷 연결을 확인한 뒤 환경 설정 > 필수 프로그램 점검에서 다시 시도하세요.\n\n{0}', [error])),
         actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('닫기')))],

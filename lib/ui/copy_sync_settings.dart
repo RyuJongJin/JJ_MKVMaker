@@ -14,6 +14,7 @@ import 'folder_picker.dart';
 import 'rsync_setup.dart';
 import 'schedule_editor.dart';
 import 'theme.dart';
+import 'setting_tile.dart';
 
 /// 환경 설정의 복사 · 동기화 부분.
 /// - 파일 탐색기 ([rsync] false): 파일 / 폴더 복사 방법 (현재 방식 · robocopy), robocopy 옵션, 속도 제한
@@ -58,7 +59,7 @@ class _CopySyncSettingsState extends State<CopySyncSettings> {
   String _valid(String v) => v == 'robocopy' && Platform.isWindows ? v : 'builtin';
 
   /// 옵션 입력칸 (바꾸면 바로 저장, ↺ 로 기본값)
-  Widget _options(String title, String hint, String value, String def, void Function(AppSettings, String) set) => ListTile(
+  Widget _options(String title, String hint, String value, String def, void Function(AppSettings, String) set) => SettingTile(
         title: Text(title),
         subtitle: Text(hint),
         trailing: SizedBox(
@@ -95,7 +96,7 @@ class _CopySyncSettingsState extends State<CopySyncSettings> {
     return Column(children: [
       const Divider(height: 1),
       if (desk) ...[
-        ListTile(
+        SettingTile(
           title: Text(tr('파일 복사 · 이동 방법')),
           subtitle: Text(tr('파일만 골랐을 때')),
           trailing: DropdownButton<String>(
@@ -104,7 +105,7 @@ class _CopySyncSettingsState extends State<CopySyncSettings> {
             onChanged: (v) => c.updateSettings((x) => x.copyMethodFile = v!),
           ),
         ),
-        ListTile(
+        SettingTile(
           title: Text(tr('폴더 복사 · 이동 방법')),
           subtitle: Text(tr('폴더가 들어 있을 때')),
           trailing: DropdownButton<String>(
@@ -116,7 +117,7 @@ class _CopySyncSettingsState extends State<CopySyncSettings> {
         _options(tr('robocopy 옵션'), tr('예: /E /COPY:DAT /DCOPY:T /R:2 /W:2. 이동은 /MOVE 를 자동으로 붙임'), s.robocopyOptions,
             defaultRobocopyOptions, (x, v) => x.robocopyOptions = v),
       ],
-      ListTile(
+      SettingTile(
         title: Text(tr('속도 제한 (KB/s)')),
         subtitle: Text(tr('0 = 제한 없음. 모든 방법에 적용: rsync --bwlimit, 현재 방식은 앱이 조절, robocopy 는 /IPG 로 비슷하게. '
             '옵션 칸에 직접 넣어도 됩니다 (그쪽이 우선)')),
@@ -142,7 +143,7 @@ class _CopySyncSettingsState extends State<CopySyncSettings> {
     return Column(children: [
       _options(tr('rsync 옵션'), tr('예: -avPog (보관 · 자세히 · 진행 · 소유자 · 그룹). 속도 제한은 파일 탐색기의 속도 제한을 함께 씀'),
           s.rsyncOptions, defaultRsyncOptions, (x, v) => x.rsyncOptions = v),
-      ListTile(
+      SettingTile(
         title: Text(tr('rsync 가져오기')),
         subtitle: Text(_checking
             ? tr('확인 중…')
@@ -187,7 +188,7 @@ class _CopySyncSettingsState extends State<CopySyncSettings> {
         ]),
       ),
       if (s.rsyncSource == 'custom')
-        ListTile(
+        SettingTile(
           title: Text(tr('rsync 실행 파일')),
           subtitle: Text(s.rsyncPath.isEmpty ? tr('고르지 않음') : s.rsyncPath),
           trailing: TextButton(
@@ -226,6 +227,7 @@ class _LiveSyncTile extends StatelessWidget {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, set) => AlertDialog(
+        scrollable: true,
           title: Text(tr('실시간 동기화 추가')),
           content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('$src\n→ $dst', style: const TextStyle(fontSize: 13)),
@@ -242,7 +244,7 @@ class _LiveSyncTile extends StatelessWidget {
               title: Text(tr('원본에 없는 것을 대상에서 지우기')),
               subtitle: Text(tr('rsync --delete · robocopy /PURGE. 끄면 대상에 더하기 · 바꾸기만')),
             ),
-            ListTile(
+            SettingTile(
               contentPadding: EdgeInsets.zero,
               leading: WeekGridPreview(lines: schedule, width: 96),
               title: Text(scheduleSummary(schedule)),
@@ -273,7 +275,7 @@ class _LiveSyncTile extends StatelessWidget {
     final live = LiveSync.instance;
     final pairs = c.settings.liveSyncPairs;
     Widget body() => Column(children: [
-          ListTile(
+          SettingTile(
             title: Text(tr('실시간 동기화 (lsyncd 처럼)')),
             subtitle: Text(Platform.isWindows
                 ? tr('원본 폴더가 바뀌면 곧바로 대상 폴더에 맞춥니다 (앱이 켜져 있는 동안). 시작할 때 한 번 맞춥니다.')
@@ -288,7 +290,7 @@ class _LiveSyncTile extends StatelessWidget {
           for (var i = 0; i < pairs.length; i++)
             Padding(
               padding: const EdgeInsets.only(left: 16),
-              child: ListTile(
+              child: SettingTile(
                 dense: true,
                 leading: Icon(Icons.sync, color: pairs[i].enabled ? JjColors.accent : JjColors.textDim),
                 title: Text('${pairs[i].source}  →  ${pairs[i].target}', maxLines: 2, overflow: TextOverflow.ellipsis),
@@ -389,7 +391,7 @@ class LiveSyncRunOptions extends StatelessWidget {
         title: Text(tr('백그라운드로 실행')),
         subtitle: Text(backgroundHelp()),
       ),
-      ListTile(
+      SettingTile(
         dense: true,
         title: Text(tr('앱을 다시 켤 때 동기화')),
         subtitle: Text(tr('바로 시작: 켜진 동기화를 모두 시작 · 골라서 시작: 켤 때 고르기 · 시작 안 함: 모니터링 > lsync 의 시작 버튼으로')),

@@ -27,6 +27,7 @@ import 'webdav_settings.dart';
 import 'explorer_look.dart' show ExplorerStyle;
 import 'theme.dart';
 import '../l10n/tr.dart';
+import 'setting_tile.dart';
 
 /// 동시 작업 수 고르기: 1 · 5 · 10 · 무한(0) · 직접 입력
 class CountSelector extends StatelessWidget {
@@ -82,6 +83,7 @@ class _CountInputDialogState extends State<_CountInputDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
+        scrollable: true,
         title: Text(tr('직접 입력')),
         content: TextField(
           controller: _ctrl,
@@ -122,7 +124,7 @@ class _ExternalPlayers extends StatelessWidget {
           : map.entries.map((e) => '${e.key}: ${e.value == 'system' ? tr('기본 프로그램') : e.value.split(RegExp(r'[\\/]')).last}').join(', ')),
       children: [
         for (final ext in videoExtensions)
-          ListTile(
+          SettingTile(
             dense: true,
             title: Text('.$ext'),
             trailing: DropdownButton<String>(
@@ -197,7 +199,7 @@ class _ContextMenuTileState extends State<_ContextMenuTile> {
   }
 
   @override
-  Widget build(BuildContext context) => ListTile(
+  Widget build(BuildContext context) => SettingTile(
         title: Text(tr('탐색기 오른쪽 클릭 메뉴')),
         subtitle: Text(_registered == true
             ? tr('등록됨: "JJ_MKVMaker 로 재생" · "JJ_MKVMaker 로 자막 만들기" (Windows 11: 더 많은 옵션 표시)')
@@ -255,36 +257,35 @@ class _SettingsPageState extends State<SettingsPage> {
         final desk = !Platform.isAndroid;
         return Scaffold(
           body: Column(children: [
-            Container(
-              height: appBarHeight,
-              color: JjColors.panel,
-              padding: const EdgeInsets.only(left: 8, right: appBarRightPadding),
-              child: Row(children: [
-                const AppNavButtons(),
-                const SizedBox(width: 8),
+            AppTopBar(
+              nav: const AppNavButtons(),
+              actions: AppActions(c: c, onSettingsPage: true),
+              middle: Row(children: [
                 Text(tr('환경 설정'), style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
                 const Spacer(),
-                Text(tr('바꾸면 바로 저장됩니다'), style: TextStyle(fontSize: 12, color: JjColors.textDim)),
+                Flexible(
+                  child: Text(tr('바꾸면 바로 저장됩니다'),
+                      maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: JjColors.textDim)),
+                ),
                 const SizedBox(width: 8),
-                AppActions(c: c, onSettingsPage: true),
               ]),
             ),
             // 묶음 바로가기 (누르면 그 묶음으로). 스크롤해도 위에 그대로
             Padding(
-              padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+              padding: EdgeInsets.fromLTRB(isCompact(context) ? 8 : 24, 12, isCompact(context) ? 8 : 24, 0),
               child: _groupBar(desk),
             ),
             Expanded(
               // 모든 묶음을 한 번에 그린다 (ListView 는 화면 밖 묶음을 그리지 않아 바로가기로 갈 수 없었음)
               child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(24, 4, 24, 16),
+                padding: EdgeInsets.fromLTRB(isCompact(context) ? 4 : 24, 4, isCompact(context) ? 4 : 24, 16),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                   _group('general', Icons.tune, tr('일반'), [
                     // 화면 언어 (읽을 수 없는 언어를 골라도 바로 찾아 되돌릴 수 있게 맨 위)
                     const LanguageSettings(),
                     _appIconTile(c, desk),
                     if (c.services.updater != null) ...[
-                      ListTile(
+                      SettingTile(
                         leading: const Icon(Icons.system_update_alt, color: JjColors.accent),
                         title: FutureBuilder<String>(
                           future: c.services.updater!.currentVersion(),
@@ -311,7 +312,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         title: Text(tr('시작할 때 새 버전 확인 (하루 한 번)')),
                       ),
                     ],
-                    ListTile(
+                    SettingTile(
                       title: Text(tr('홈 화면')),
                       subtitle: Text(tr('프로그램을 켰을 때, 그리고 위쪽 왼쪽 JJ 아이콘을 눌렀을 때 보일 화면')),
                       trailing: DropdownButton<String>(
@@ -327,7 +328,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   ]),
                   _group('display', Icons.aspect_ratio, tr('화면'), [
                     if (!desk)
-                      ListTile(
+                      SettingTile(
                         title: Text(tr('화면 방향')),
                         subtitle: Text(tr('가로 고정 · 세로 고정, 또는 자동 (기기를 돌리는 대로, 기기의 자동 회전 설정을 따름)')),
                         trailing: DropdownButton<String>(
@@ -343,7 +344,7 @@ class _SettingsPageState extends State<SettingsPage> {
                           },
                         ),
                       ),
-                    ListTile(
+                    SettingTile(
                       title: Text(tr('기본 화면 크기')),
                       subtitle: Text(trf('글자 · 버튼 크기입니다. 위쪽 막대의 − · + 로 그때그때 바꿀 수 있고, 가운데 숫자를 누르면 이 크기로 돌아갑니다 ' '(지금 {0}%)', [(s.uiScale * 100).round()])),
                       trailing: DropdownButton<double>(
@@ -366,7 +367,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     ),
                   ]),
                   _group('mkv', Icons.movie_creation_outlined, tr('MKV 만들기'), [
-                    ListTile(
+                    SettingTile(
                       title: Text(tr('동시 MKV 변환 수')),
                       subtitle: Text(tr('여러 동영상을 MKV 로 만들 때 동시에 처리할 개수 (재인코딩은 CPU 를 많이 씁니다)')),
                       trailing: CountSelector(
@@ -374,7 +375,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         onChanged: (n) => c.updateSettings((x) => x.maxParallelJobs = n),
                       ),
                     ),
-                    ListTile(
+                    SettingTile(
                       title: Text(tr('마지막 인코딩 설정을 기억합니다')),
                       subtitle: Text(trf('{0} · {1}' '{2}  (메인 화면 상단에서 변경)', [c.encode.resolution.label, c.encode.codec.label, c.encode.reencode ? ' · ${c.encode.quality.label}' : ''])),
                     ),
@@ -432,7 +433,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         (v) => c.updateSettings((x) => x.openSubtitlesPassword = v), obscure: true),
                   ]),
                   _group('play', Icons.play_circle_outline, tr('재생'), [
-                    ListTile(
+                    SettingTile(
                       title: Text(tr('동영상 하나를 재생할 때')),
                       subtitle: Text(tr('시리즈: file_001 · file_002, S01E01 · S01E02 처럼 번호만 다른 파일')),
                       trailing: DropdownButton<PlaylistMode>(
@@ -443,7 +444,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         onChanged: (m) => c.updateSettings((x) => x.playlistMode = m!),
                       ),
                     ),
-                    ListTile(
+                    SettingTile(
                       title: Text(desk ? tr('탐색기에서 동영상을 열 때') : tr('다른 앱에서 동영상을 열 때')),
                       subtitle: Text(desk
                           ? tr('더블클릭 · 연결 프로그램으로 JJ_MKVMaker 를 골랐을 때 (오른쪽 클릭 메뉴는 그대로)')
@@ -458,7 +459,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                     ),
                     if (desk) ...[
-                    ListTile(
+                    SettingTile(
                       title: Text(tr('탐색기에서 연 동영상을 재생할 창')),
                       subtitle: Text(tr('프로그램이 이미 켜져 있을 때. 새 창은 재생만 하는 창이며 닫으면 그 창만 끝납니다')),
                       trailing: DropdownButton<String>(
@@ -509,7 +510,7 @@ class _SettingsPageState extends State<SettingsPage> {
                               '끄면 페이지 번역 · 동영상 찾기도 멈춥니다.')),
                     ),
                     if (desk) ...[
-                    ListTile(
+                    SettingTile(
                       title: Text(tr('브라우저 엔진 (앱 안)')),
                       subtitle: Text(
                           trf('Edge: Windows 에 들어 있어 따로 설치하지 않습니다. 여기서 YouTube 에 로그인하면 다운로드에도 그 로그인이 쓰입니다.\n' 'Chrome: 고르면 약 {0}MB 를 내려받고 다시 시작한 뒤 쓸 수 있습니다 ' '(Google 로그인은 막힐 수 있음).' '{1}' '{2}', [CefRuntime.approxDownloadMb, CefRuntime.installed ? trf(' 지금 설치됨 ({0}MB)', [CefRuntime.installedMb()]) : '', s.browserEngine == 'chrome' && !CefRuntime.readyThisRun ? tr(' · 다시 시작해야 Chrome 으로 바뀝니다') : ''])),
@@ -544,7 +545,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         ),
                       ]),
                     ),
-                    ListTile(
+                    SettingTile(
                       title: Text(tr('외부 브라우저')),
                       subtitle: Text(tr('"외부 브라우저로 열기" 에 쓸 브라우저 (이 PC 에 설치된 것)')),
                       trailing: DropdownButton<String>(
@@ -566,7 +567,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     ],
                   ]),
                   _group('files', Icons.folder_copy_outlined, tr('파일 탐색기'), [
-                    ListTile(
+                    SettingTile(
                       title: Text(tr('누르기')),
                       subtitle: Text(tr('길게 누르기 · 오른쪽 클릭은 늘 기능 메뉴 (복사 · 이동 · 삭제 · 이름 변경 …). '
                           'Ctrl + 클릭: 여러 개 고르기')),
@@ -579,7 +580,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         onChanged: (v) => c.updateSettings((x) => x.explorerClick = v!),
                       ),
                     ),
-                    ListTile(
+                    SettingTile(
                       title: Text(tr('스타일')),
                       subtitle: Text(tr('아이콘 · 목록 모양: X-plore (썸네일 · 두 줄) · Windows 탐색기 (컬러 아이콘 · 열) · '
                           'Total Commander (촘촘한 목록 · [폴더])')),
@@ -592,7 +593,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         onChanged: (v) => c.updateSettings((x) => x.explorerStyle = v!),
                       ),
                     ),
-                    ListTile(
+                    SettingTile(
                       title: Text(tr('창 배치')),
                       subtitle: Text(tr('파일 탐색기 위쪽 ⋮ 메뉴에서도 바꿀 수 있습니다 (좌우 · 위아래 · 버튼 줄 위치 · 버튼 구성)')),
                       trailing: DropdownButton<String>(
@@ -628,7 +629,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       title: Text(tr('완료시 자동 동영상추가')),
                       subtitle: Text(tr('다 받는 대로 MKV 만들기의 동영상 목록에 넣고, 다운로드 목록에서는 뺍니다 (다운로드 화면의 체크 상자와 같음)')),
                     ),
-                    ListTile(
+                    SettingTile(
                       title: Text(tr('YouTube 받을 형식')),
                       subtitle: Text(tr('기본: MP4. 음성만 받으면 MP3 · M4A 로 저장')),
                       trailing: DropdownButton<YtContainer>(
@@ -637,7 +638,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         onChanged: (v) => c.updateSettings((x) => x.ytContainer = v!),
                       ),
                     ),
-                    ListTile(
+                    SettingTile(
                       enabled: !s.ytContainer.audioOnly,
                       title: Text(tr('YouTube 화질')),
                       subtitle: Text(tr('고른 크기 이하에서 가장 좋은 화질 (영상에 없는 크기면 가까운 것)')),
@@ -653,7 +654,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       title: Text(tr('재생목록 주소면 목록 전체 받기')),
                       subtitle: Text(tr('영상마다 한 줄씩 보여 주고 jj_yt-dlp\\재생목록 이름\\ 에 저장 (믹스 목록 제외)')),
                     ),
-                    ListTile(
+                    SettingTile(
                       title: Text(tr('YouTube 쿠키 (로봇 확인이 나올 때)')),
                       subtitle: Text(s.ytCookiesFile.isNotEmpty
                           ? 'cookies.txt: ${s.ytCookiesFile}'
@@ -694,7 +695,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         ),
                       ]),
                     ),
-                    ListTile(
+                    SettingTile(
                       title: Text(tr('동시 다운로드 수')),
                       subtitle: Text(tr('나머지는 대기했다가 차례로 받습니다')),
                       trailing: CountSelector(
@@ -715,7 +716,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   ]),
                   if (desk)
                   _group('run', Icons.power_settings_new, tr('실행 · 종료'), [
-                    ListTile(
+                    SettingTile(
                       title: Text(tr('종료 (창 닫기 ✕ · 종료 버튼) 를 누르면')),
                       subtitle: Text(trf('백그라운드: 창만 숨기고 다운로드 · 변환은 계속합니다. {0} 또는 트레이 아이콘으로 다시 엽니다.\n' '완전히 끝내려면 트레이 아이콘 오른쪽 클릭 > 종료 (어느 설정이든 항상 종료)', [s.showHotkey])),
                       isThreeLine: true,
@@ -735,7 +736,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       title: Text(tr('최소화하면 트레이로 (백그라운드 실행)')),
                       subtitle: Text(tr('트레이 아이콘을 누르거나 아래 단축키로 다시 엽니다')),
                     ),
-                    ListTile(
+                    SettingTile(
                       title: Text(tr('창 보이기 / 숨기기 단축키')),
                       subtitle: _hotkeyError == null
                           ? Text(tr('어디서나 누르면 JJ_MKVMaker 창이 나타납니다'))
@@ -757,7 +758,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     ),
                   ]),
                   _group('cleanup', Icons.cleaning_services_outlined, tr('저장 공간 정리'), [
-                    ListTile(
+                    SettingTile(
                       title: Text(tr('임시 파일 · 남은 조각 정리')),
                       subtitle: Text(tr('작업하다 남은 임시 파일 · 받다 만 다운로드 (.part 등) · 받다 만 AI 모델 · '
                           '업데이트하고 남은 파일 · 지난 작업 기록을 찾아 지웁니다. '
@@ -772,7 +773,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   ]),
                   _group('about', Icons.info_outline, tr('프로그램 정보'), [
                     if (desk) ...[
-                    ListTile(
+                    SettingTile(
                       title: Text(tr('필수 프로그램 점검')),
                       subtitle: Text(tr('FFmpeg · yt-dlp · aria2 · Deno 가 없으면 내려받아 설치합니다')),
                       trailing: OutlinedButton(
@@ -781,7 +782,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                     ),
                     ],
-                    ListTile(
+                    SettingTile(
                       title: Text(tr('오픈 소스 라이선스')),
                       subtitle: Text(tr('포함된 구성 요소와 라이선스 (THIRD_PARTY_NOTICES.txt)')),
                       trailing: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -813,7 +814,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final s = c.settings;
     void update(List<MoveTarget> Function(List<MoveTarget>) f) =>
         c.updateSettings((x) => x.moveTargets = f([...x.moveTargets]));
-    return ListTile(
+    return SettingTile(
       key: ValueKey('move_${i}_${t.dir}'),
       leading: const Icon(Icons.drive_file_move_outline, color: JjColors.accent),
       title: TextFormField(
@@ -916,7 +917,7 @@ class _SettingsPageState extends State<SettingsPage> {
   /// 앱 아이콘 고르기: 그림을 누르면 바로 바뀐다
   Widget _appIconTile(AppController c, bool desk) {
     final now = appIconOf(c.settings.appIcon);
-    return ListTile(
+    return SettingTile(
       title: Text(tr('앱 아이콘')),
       subtitle: Padding(
         padding: const EdgeInsets.only(top: 4),
@@ -969,7 +970,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Widget _textTile(String title, String value, String hint, ValueChanged<String> onSave,
           {bool obscure = false}) =>
-      ListTile(
+      SettingTile(
         title: Text(title),
         subtitle: Text(hint),
         trailing: SizedBox(
@@ -993,7 +994,7 @@ class _SettingsPageState extends State<SettingsPage> {
     required VoidCallback onPick,
     required VoidCallback onReset,
   }) =>
-      ListTile(
+      SettingTile(
         title: Text(title),
         subtitle: Text(value ?? defaultText, maxLines: 2, overflow: TextOverflow.ellipsis),
         trailing: Row(mainAxisSize: MainAxisSize.min, children: [

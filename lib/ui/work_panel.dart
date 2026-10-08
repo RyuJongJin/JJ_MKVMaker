@@ -57,16 +57,11 @@ class _WorkStatusPageState extends State<WorkStatusPage> {
   @override
   Widget build(BuildContext context) => Scaffold(
         body: Column(children: [
-          Container(
-            height: appBarHeight,
-            color: JjColors.panel,
-            padding: const EdgeInsets.only(left: 8, right: appBarRightPadding),
-            child: Row(children: [
-              const AppNavButtons(),
-              const SizedBox(width: 8),
+          AppTopBar(
+            nav: const AppNavButtons(),
+            actions: AppActions(c: widget.c),
+            middle: Row(children: [
               Text(tr('작업 현황'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-              const Spacer(),
-              AppActions(c: widget.c),
             ]),
           ),
           Expanded(

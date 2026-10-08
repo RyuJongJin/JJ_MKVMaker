@@ -263,6 +263,7 @@ Future<String?> _download(BuildContext context, Updater up, ReleaseInfo r) async
     context: context,
     barrierDismissible: false,
     builder: (_) => AlertDialog(
+        scrollable: true,
       title: Text(trf('v{0} 받는 중', [r.version])),
       content: ValueListenableBuilder<double>(
         valueListenable: progress,
@@ -317,6 +318,7 @@ Future<void> installRelease(BuildContext context, AppController c, ReleaseInfo r
   final go = await showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
+        scrollable: true,
       title: Text(tr('설치 준비 완료')),
       content: Text(trf('v{0} 을 받았고 파일 검증(SHA256)을 마쳤습니다.\n' '{1}', [
         r.version,
@@ -347,6 +349,7 @@ Future<void> installRelease(BuildContext context, AppController c, ReleaseInfo r
         final again = await showDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(
+        scrollable: true,
             title: Text(tr('설치 허용 필요')),
             content: Text(tr('설정 화면에서 "이 출처의 앱 설치 허용" 을 켠 뒤 돌아와 [설치 계속] 을 누르세요. '
                 '받은 파일을 그대로 씁니다 (다시 받지 않음).')),
@@ -395,6 +398,7 @@ Future<void> _androidRollback(BuildContext context, AppController c, Updater up,
   final ok = await showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
+        scrollable: true,
       title: Text(trf('예전 버전 v{0} 으로 되돌리기', [r.version])),
       content: SizedBox(
         width: 560,
@@ -432,6 +436,7 @@ Future<void> _androidRollback(BuildContext context, AppController c, Updater up,
   final go = await showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
+        scrollable: true,
       title: Text(tr('저장했습니다')),
       content: Text(trf('설치 파일: {0}\n이제 앱을 지운 뒤, 파일 앱에서 이 파일을 눌러 설치하세요.', [saved])),
       actions: [

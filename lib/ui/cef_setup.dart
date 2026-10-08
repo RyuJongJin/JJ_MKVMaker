@@ -12,6 +12,7 @@ Future<bool> chooseChromeEngine(BuildContext context, AppController c) async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
+        scrollable: true,
         title: Text(tr('내장 Chrome 엔진 내려받기')),
         content: SizedBox(
           width: 460,
@@ -40,6 +41,7 @@ Future<bool> chooseChromeEngine(BuildContext context, AppController c) async {
     final restart = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
+        scrollable: true,
         title: Text(tr('다시 시작')),
         content: Text(tr('Chrome 엔진은 프로그램을 다시 시작하면 쓸 수 있습니다. 지금 다시 시작할까요?')),
         actions: [
@@ -97,6 +99,7 @@ class _InstallProgressState extends State<_InstallProgress> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
+        scrollable: true,
         title: Text(tr('내장 Chrome 엔진')),
         content: SizedBox(
           width: 420,

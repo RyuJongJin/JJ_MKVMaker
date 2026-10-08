@@ -55,18 +55,34 @@ class HomePage extends StatelessWidget {
             _EncodeBar(c: c),
             const Divider(height: 1),
             Expanded(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  SizedBox(width: 320, child: _VideoList(c: c)),
-                  const VerticalDivider(width: 1),
-                  Expanded(
-                    child: c.selected == null
-                        ? const _EmptyHint()
-                        : _VideoDetail(c: c, v: c.selected!),
-                  ),
-                ],
-              ),
+              // 좁은 화면 (접은 폴드 · 휴대폰 세로): 목록을 위에, 자세히 보기를 아래에
+              child: isCompact(context)
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        SizedBox(
+                            height: (MediaQuery.sizeOf(context).height * 0.32).clamp(160.0, 420.0),
+                            child: _VideoList(c: c)),
+                        const Divider(height: 1),
+                        Expanded(
+                          child: c.selected == null
+                              ? const _EmptyHint()
+                              : _VideoDetail(c: c, v: c.selected!),
+                        ),
+                      ],
+                    )
+                  : Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        SizedBox(width: 320, child: _VideoList(c: c)),
+                        const VerticalDivider(width: 1),
+                        Expanded(
+                          child: c.selected == null
+                              ? const _EmptyHint()
+                              : _VideoDetail(c: c, v: c.selected!),
+                        ),
+                      ],
+                    ),
             ),
             const Divider(height: 1),
             if (c.settings.showLog)
@@ -121,6 +137,7 @@ class _TopBar extends StatelessWidget {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
+        scrollable: true,
         title: Text(tr('MKV 만들기')),
         content: Text(trf('선택한 동영상이 없습니다.\n목록 전체 {0}개 ' '(이미 만든 것을 빼면 {1}개) 를 MKV 로 만들까요?\n\n' '일부만 만들려면 취소하고 동영상 목록에서 체크하세요.', [c.videos.length, todo])),
         actions: [
@@ -145,6 +162,7 @@ class _TopBar extends StatelessWidget {
     final count = c.checked.isEmpty ? '' : ' (${c.checked.length})';
     // 창 너비에 맞춰 차례로 줄인다: 제목 글 → 왼쪽 버튼을 아이콘만 → 재생 · 브라우저를 아이콘만 → CPU · MEM 숨김.
     // (오른쪽의 화면 크기 · 환경 설정 · 종료 버튼은 어떤 너비에서도 밀려나지 않게)
+    final compact = isCompact(context);
     return LayoutBuilder(builder: (context, box) {
       final hasAi = c.aiAvailable;
       final hasPlayer = c.services.createMediaPlayer != null;
@@ -152,18 +170,20 @@ class _TopBar extends StatelessWidget {
       // 아주 좁을 때: 다운로드 상자 숨김 (왼쪽 공통 버튼으로 열 수 있음) → MKV 만들기도 아이콘만
       var dlBox = downloads != null, mkvText = true;
       // 각 부분의 너비 (실제 화면에서 잰 값)
+      // 좁은 화면: 이동 버튼 · 설정 · 종료는 첫 줄에 있으므로 둘째 줄 (가운데 도구) 만 잰다
       double need() =>
-          8 + appBarRightPadding + AppNavButtons.width + 8 + (title ? 126 : 0) + 24 +
+          (compact ? 0 : 8 + appBarRightPadding + AppNavButtons.width + 8) + (title ? 126 : 0) + 24 +
           (leftText ? 153 + (hasAi ? 161 + 298 : 0) : 40 + (hasAi ? 96 : 0)) + 8 +
           (c.busy ? (jobText ? 350 : 60) : 0) +
           (hasPlayer ? (rightText ? 201 : 48) : 0) +
           (mkvText ? 166 + (c.busy && jobText ? 60 : 0) : 48) +
           (rightText ? 166 : 48) + // 결과 폴더
           (dlBox ? 162 : 0) +
-          (usage ? 220 : 0) + 96 + 92 +
+          (compact ? 0 : (usage ? 220 : 0) + 96 + 92) +
           (c.checked.isEmpty ? 0 : 3 * 26) +
           8; // 여유
       final w = box.maxWidth;
+      if (compact) title = false;
       if (need() > w) title = false;
       if (need() > w) jobText = false;
       if (need() > w) leftText = false;
@@ -189,17 +209,15 @@ class _TopBar extends StatelessWidget {
         );
       }
 
-      return Container(
-        height: appBarHeight,
-        color: JjColors.panel,
-        padding: const EdgeInsets.only(left: 8, right: appBarRightPadding),
-        child: Row(
+      return AppTopBar(
+        // 모든 화면 공통: [JJ 홈] [MKV 화면] [뒤로] [다운로드 목록]
+        nav: const AppNavButtons(),
+        // 화면 크기 · 환경 설정 · 종료: 모든 화면에서 같은 자리
+        actions: AppActions(c: c, onExit: onExit, showUsage: usage),
+        middle: Row(
           children: [
-            // 모든 화면 공통: [JJ 홈] [MKV 화면] [뒤로] [다운로드 목록]
-            const AppNavButtons(),
-            const SizedBox(width: 8),
             if (title) const Text('JJ_MKVMaker', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
-            const SizedBox(width: 24),
+            SizedBox(width: compact ? 0 : 24),
             // 왼쪽 묶음: 그래도 모자라면 옆으로 밀어 볼 수 있게
             Expanded(
               child: SingleChildScrollView(
@@ -271,8 +289,6 @@ class _TopBar extends StatelessWidget {
               const SizedBox(width: 12),
               _DownloadBox(d: downloads!),
             ],
-            // 화면 크기 · 환경 설정 · 종료: 모든 화면에서 같은 자리
-            AppActions(c: c, onExit: onExit, showUsage: usage),
           ],
         ),
       );
@@ -369,11 +385,8 @@ class _EncodeBar extends StatelessWidget {
           onChanged: locked ? null : (v) => onChanged(v as T),
         );
 
-    return Container(
-      height: 44,
-      color: JjColors.panel,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(children: [
+    final compact = isCompact(context);
+    final row = Row(children: [
         label(tr('화면 크기')),
         drop(s.resolution, ResolutionChoice.values, (r) => r.label, c.setResolution),
         const SizedBox(width: 20),
@@ -396,7 +409,7 @@ class _EncodeBar extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 12),
-        Expanded(
+        if (!compact) Expanded(
           child: Text(
             s.adjusts
                 ? s.adjustSummary
@@ -408,7 +421,12 @@ class _EncodeBar extends StatelessWidget {
                 fontSize: 12, color: up > 0 && s.reencode ? JjColors.danger : JjColors.textDim),
           ),
         ),
-      ]),
+      ]);
+    return Container(
+      height: 44,
+      color: JjColors.panel,
+      padding: EdgeInsets.symmetric(horizontal: compact ? 8 : 16),
+      child: compact ? SingleChildScrollView(scrollDirection: Axis.horizontal, child: row) : row,
     );
   }
 }
@@ -751,8 +769,9 @@ class _VideoDetail extends StatelessWidget {
   }
 
   Widget _list(BuildContext context, MediaInfo? info, StreamInfo? video, int audioCount, bool locked) {
+    final side = isCompact(context) ? 12.0 : 20.0;
     return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 88),
+      padding: EdgeInsets.fromLTRB(side, side, side, 88),
       children: [
         Row(children: [
           Expanded(
@@ -799,30 +818,33 @@ class _VideoDetail extends StatelessWidget {
           ),
         ],
         const SizedBox(height: 24),
-        Row(children: [
-          Text(tr('자막'),
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-          const Spacer(),
-          if (c.aiAvailable) ...[
-            FilledButton.icon(
-              onPressed: locked || c.ffmpegVersion == null ? null : () => showAiDialog(context, c, v),
-              icon: const Icon(Icons.auto_awesome, size: 18),
-              label: Text(tr('AI 자막 만들기')),
-            ),
-            const SizedBox(width: 8),
-          ],
-          if (c.subtitleProvider != null) ...[
-            OutlinedButton.icon(
-              onPressed: locked ? null : () => showSubtitleSearch(context, c, v),
-              icon: const Icon(Icons.travel_explore, size: 18),
-              label: Text(tr('인터넷 자막 찾기')),
-            ),
-            const SizedBox(width: 8),
-          ],
-          OutlinedButton.icon(
-            onPressed: locked ? null : () => c.pickSubtitlesFor(v),
-            icon: const Icon(Icons.subtitles_outlined, size: 18),
-            label: Text(tr('자막 파일 추가')),
+        // 좁으면 버튼이 다음 줄로 (오른쪽 정렬)
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(tr('자막'), style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Wrap(alignment: WrapAlignment.end, spacing: 8, runSpacing: 8, children: [
+              if (c.aiAvailable)
+                FilledButton.icon(
+                  onPressed: locked || c.ffmpegVersion == null ? null : () => showAiDialog(context, c, v),
+                  icon: const Icon(Icons.auto_awesome, size: 18),
+                  label: Text(tr('AI 자막 만들기')),
+                ),
+              if (c.subtitleProvider != null)
+                OutlinedButton.icon(
+                  onPressed: locked ? null : () => showSubtitleSearch(context, c, v),
+                  icon: const Icon(Icons.travel_explore, size: 18),
+                  label: Text(tr('인터넷 자막 찾기')),
+                ),
+              OutlinedButton.icon(
+                onPressed: locked ? null : () => c.pickSubtitlesFor(v),
+                icon: const Icon(Icons.subtitles_outlined, size: 18),
+                label: Text(tr('자막 파일 추가')),
+              ),
+            ]),
           ),
         ]),
         const SizedBox(height: 8),

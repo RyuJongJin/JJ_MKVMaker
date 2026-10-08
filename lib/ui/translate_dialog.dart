@@ -52,6 +52,7 @@ class _TranslateDialogState extends State<_TranslateDialog> {
     final src = widget.s.language;
     final extra = languages.where((l) => !_targets.contains(l) && l.code != src.code).toList();
     return AlertDialog(
+        scrollable: true,
       title: Text(tr('자막 번역')),
       content: SizedBox(
         width: 480,

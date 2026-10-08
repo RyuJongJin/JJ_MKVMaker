@@ -5,6 +5,7 @@ import '../core/languages.dart';
 import '../l10n/tr.dart';
 import '../services/ai_services.dart';
 import 'theme.dart';
+import 'setting_tile.dart';
 
 /// 환경 설정 맨 위: 화면 언어 고르기 · 언어 추가 (AI 자동 번역) · 더한 언어 삭제
 class LanguageSettings extends StatelessWidget {
@@ -16,7 +17,7 @@ class LanguageSettings extends StatelessWidget {
         builder: (context, _) {
           final added = i18n.available.where((c) => !I18nController.builtIn.contains(c)).toList();
           return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            ListTile(
+            SettingTile(
               leading: const Icon(Icons.translate, color: JjColors.accent),
               // 읽을 수 없는 언어를 골라도 찾을 수 있게 영어를 함께
               title: Text(uiLanguage == 'en' ? 'Language' : '${tr('화면 언어')} · Language'),
@@ -45,7 +46,7 @@ class LanguageSettings extends StatelessWidget {
               ]),
             ),
             for (final code in added)
-              ListTile(
+              SettingTile(
                 dense: true,
                 contentPadding: const EdgeInsets.fromLTRB(72, 0, 16, 0),
                 title: Text(I18nController.nativeName(code)),
@@ -73,7 +74,7 @@ Future<void> addLanguageDialog(BuildContext context) async {
           height: 420,
           child: ListView(children: [
             for (final l in i18n.addable)
-              ListTile(
+              SettingTile(
                 title: Text(I18nController.nativeName(l.code)),
                 subtitle: Text('${l.name} (${l.code})'),
                 onTap: () => Navigator.pop(ctx, l),
@@ -91,6 +92,7 @@ Future<void> addLanguageDialog(BuildContext context) async {
     context: context,
     barrierDismissible: false,
     builder: (ctx) => AlertDialog(
+        scrollable: true,
       title: Text(trf('{0} 추가', [I18nController.nativeName(pick.code)])),
       content: ValueListenableBuilder<(String, double)>(
         valueListenable: state,

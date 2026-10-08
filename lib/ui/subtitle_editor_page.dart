@@ -186,6 +186,7 @@ class _SubtitleEditorPageState extends State<SubtitleEditorPage> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
+        scrollable: true,
         title: Text(tr('문자셋 경고')),
         content: Text(trf('{0} 로 표현할 수 없는 글자 {1}개가 ' '"?" 로 바뀝니다.\n계속 저장할까요? (UTF-8 을 권장합니다)', [saveCharsets[e.saveCharset], lost])),
         actions: [
@@ -236,6 +237,7 @@ class _SubtitleEditorPageState extends State<SubtitleEditorPage> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
+        scrollable: true,
         title: Text(tr('저장하지 않은 변경')),
         content: Text(tr('변경 내용을 저장하지 않고 나갈까요?')),
         actions: [
@@ -479,14 +481,11 @@ class _SubtitleEditorPageState extends State<SubtitleEditorPage> {
     );
   }
 
-  Widget _toolbar(BuildContext context) => Container(
-        height: appBarHeight,
-        color: JjColors.panel,
-        padding: const EdgeInsets.only(left: 8, right: appBarRightPadding),
-        child: Row(
+  Widget _toolbar(BuildContext context) => AppTopBar(
+        nav: const AppNavButtons(),
+        actions: const AppActions(),
+        middle: Row(
           children: [
-            const AppNavButtons(),
-            const SizedBox(width: 4),
             Expanded(
               child: Text(
                 trf('자막 편집 · {0}', [_entry.displayName]),
@@ -550,7 +549,6 @@ class _SubtitleEditorPageState extends State<SubtitleEditorPage> {
                 ]),
               ),
             ),
-            const AppActions(),
           ],
         ),
       );

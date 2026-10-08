@@ -37,6 +37,7 @@ Future<void> checkVersionRestore(
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
+        scrollable: true,
         title: Text(tr('설정 되살리기')),
         content: SizedBox(width: 520, child: Text(message!)),
         actions: [

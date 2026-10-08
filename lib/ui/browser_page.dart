@@ -516,15 +516,16 @@ class _BrowserPageState extends State<BrowserPage> with RouteAware {
           icon: Icon(i, size: 20, color: color),
           onPressed: f,
         );
-    return Container(
-      height: appBarHeight,
-      color: JjColors.panel,
-      padding: const EdgeInsets.only(left: 8, right: appBarRightPadding),
-      child: Row(children: [
-        const AppNavButtons(onBrowserPage: true),
-        const SizedBox(width: 8),
-        Container(width: 1, height: 24, color: JjColors.border),
-        const SizedBox(width: 4),
+    // 좁은 화면: 둘째 줄에 페이지 이동 · 주소 · 다운로드 (외부 브라우저 · 작업 현황은 빼고, 다운로드는 아이콘만)
+    final compact = isCompact(context);
+    return AppTopBar(
+      nav: const AppNavButtons(onBrowserPage: true),
+      actions: AppActions(c: widget.c),
+      middle: Row(children: [
+        if (!compact) ...[
+          Container(width: 1, height: 24, color: JjColors.border),
+          const SizedBox(width: 4),
+        ],
         // 웹 페이지 이동 (앱 화면 이동인 왼쪽 버튼과 구분되는 모양)
         btn(Icons.arrow_back_ios_new, tr('이전 페이지 (Alt+←)'), _canBack ? () => _nav?.back() : null),
         btn(Icons.arrow_forward_ios, tr('다음 페이지 (Alt+→)'), _canFwd ? () => _nav?.forward() : null),
@@ -565,14 +566,22 @@ class _BrowserPageState extends State<BrowserPage> with RouteAware {
             () => _setTranslate(!_trOn, force: true),
             color: _trOn ? JjColors.accent : null),
         const SizedBox(width: 4),
-        FilledButton.icon(
-          onPressed: _canDownload ? _download : null,
-          icon: const Icon(Icons.download, size: 18),
-          label: Text(tr('다운로드')),
-        ),
+        if (compact)
+          IconButton.filled(
+            tooltip: tr('다운로드'),
+            visualDensity: VisualDensity.compact,
+            onPressed: _canDownload ? _download : null,
+            icon: const Icon(Icons.download, size: 18),
+          )
+        else
+          FilledButton.icon(
+            onPressed: _canDownload ? _download : null,
+            icon: const Icon(Icons.download, size: 18),
+            label: Text(tr('다운로드')),
+          ),
         const SizedBox(width: 4),
-        btn(Icons.open_in_new, tr('외부 브라우저로 열기'), () => _openExternal(_url)),
-        if (widget.c.busy && !_work)
+        if (!compact) btn(Icons.open_in_new, tr('외부 브라우저로 열기'), () => _openExternal(_url)),
+        if (widget.c.busy && !_work && !compact)
           InkWell(
             onTap: _toggleWork,
             borderRadius: BorderRadius.circular(6),
@@ -581,11 +590,11 @@ class _BrowserPageState extends State<BrowserPage> with RouteAware {
               child: JobIndicator(c: widget.c, compact: true),
             ),
           ),
-        btn(_work ? Icons.view_sidebar : Icons.view_sidebar_outlined, tr('작업 현황 보기 · 화면 분할 (Ctrl+Shift+J)'),
-            _toggleWork, color: widget.c.busy ? JjColors.accent : null),
+        if (!compact)
+          btn(_work ? Icons.view_sidebar : Icons.view_sidebar_outlined, tr('작업 현황 보기 · 화면 분할 (Ctrl+Shift+J)'),
+              _toggleWork, color: widget.c.busy ? JjColors.accent : null),
         btn(_panel ? Icons.bookmarks : Icons.bookmarks_outlined, tr('즐겨찾기 관리 (Ctrl+Shift+B)'),
             () => setState(() => _panel = !_panel)),
-        AppActions(c: widget.c),
       ]),
     );
   }

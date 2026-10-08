@@ -272,25 +272,21 @@ class _PlayerPageState extends State<PlayerPage> {
     );
   }
 
-  Widget _header() => Container(
-        height: appBarHeight,
-        color: JjColors.panel,
-        padding: const EdgeInsets.only(left: 8, right: appBarRightPadding),
-        child: Row(children: [
-          const AppNavButtons(),
-          const SizedBox(width: 8),
-          Expanded(
-            child: ValueListenableBuilder<PlayerState>(
-              valueListenable: pl.state,
-              builder: (_, s, _) => Text(
-                '${p.basename(_currentFile)}   (${s.index + 1}/${pl.playlist.length})',
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 14),
-              ),
+  Widget _header() => AppTopBar(
+        nav: const AppNavButtons(),
+        actions: AppActions(c: c),
+        middle: Align(
+          alignment: Alignment.centerLeft,
+          child: ValueListenableBuilder<PlayerState>(
+            valueListenable: pl.state,
+            builder: (_, s, _) => Text(
+              '${p.basename(_currentFile)}   (${s.index + 1}/${pl.playlist.length})',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 14),
             ),
           ),
-          AppActions(c: c),
-        ]),
+        ),
       );
 
   Widget _videoArea() {

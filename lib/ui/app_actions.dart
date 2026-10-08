@@ -17,6 +17,46 @@ import '../l10n/tr.dart';
 const double appBarHeight = 56;
 const double appBarRightPadding = 12;
 
+/// 이보다 좁으면 (접은 폴드 · 휴대폰 세로 등) 위쪽 막대를 두 줄로: 위 = 화면 이동 · 설정 · 종료, 아래 = 화면의 도구
+const double compactWidth = 720;
+bool isCompact(BuildContext context) => MediaQuery.sizeOf(context).width < compactWidth;
+
+/// 모든 화면의 위쪽 막대: [nav] [middle (남는 너비)] [actions].
+/// 좁은 화면에서는 두 줄 - 위: [nav] … [actions], 아래: [middle] 이 한 줄을 다 쓴다.
+class AppTopBar extends StatelessWidget {
+  final Widget nav;
+  final Widget middle;
+  final Widget actions;
+  const AppTopBar({super.key, required this.nav, required this.middle, required this.actions});
+
+  @override
+  Widget build(BuildContext context) {
+    if (!isCompact(context)) {
+      return Container(
+        height: appBarHeight,
+        color: JjColors.panel,
+        padding: const EdgeInsets.only(left: 8, right: appBarRightPadding),
+        child: Row(children: [nav, const SizedBox(width: 8), Expanded(child: middle), actions]),
+      );
+    }
+    return Container(
+      color: JjColors.panel,
+      padding: const EdgeInsets.only(left: 4, right: 4),
+      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        // 아주 좁으면 왼쪽 이동 버튼 묶음을 줄여서라도 설정 · 종료가 밀려나지 않게
+        SizedBox(
+          height: 48,
+          child: Row(children: [
+            Expanded(child: Align(alignment: Alignment.centerLeft, child: FittedBox(fit: BoxFit.scaleDown, child: nav))),
+            actions,
+          ]),
+        ),
+        SizedBox(height: 48, child: Padding(padding: const EdgeInsets.only(left: 6), child: middle)),
+      ]),
+    );
+  }
+}
+
 /// 앱 전체에서 쓰는 것 (환경 설정을 열 컨트롤러 · 종료 동작) 을 화면들에 내려 준다
 class AppScope extends InheritedWidget {
   final AppController controller;
@@ -321,9 +361,10 @@ class AppActions extends StatelessWidget {
     final exit = onExit ?? scope?.onExit;
     if (controller == null && exit == null) return const SizedBox();
     final usage = controller?.usage;
+    final compact = isCompact(context);
     return Row(mainAxisSize: MainAxisSize.min, children: [
       // CPU · MEM: 변환 · AI 작업이 PC 를 얼마나 쓰는지 (PC 전체 기준)
-      if (usage != null && showUsage) UsageView(usage: usage),
+      if (usage != null && showUsage && !compact) UsageView(usage: usage),
       // 화면 크기: −  100%  +
       if (controller != null) ScaleButtons(c: controller),
       const SizedBox(width: 4),
