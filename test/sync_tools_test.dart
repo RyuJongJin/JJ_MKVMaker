@@ -78,6 +78,19 @@ void main() {
           ['src/sub/b.txt']);
     });
 
+    test('rsync 진행 줄의 전송 속도 (바이트/초)', () {
+      final o = RsyncOutput();
+      o.feed('     52,428,800  45%   12.50MB/s    0:00:05\r');
+      expect(o.currentPercent, 0.45);
+      expect(o.currentSpeed, 12.5 * 1024 * 1024);
+      o.feed('        512,000 100%  500.00kB/s    0:00:01 (xfr#2, to-chk=0/3)\n');
+      expect(o.currentSpeed, 500 * 1024);
+      // 폴더 전체: to-chk=남은/전체 → 확인한 수
+      expect([o.checked, o.checkTotal], [3, 3]);
+      o.feed('        100 100%  1.00kB/s    0:00:00 (xfr#3, ir-chk=1000/1250)\n');
+      expect([o.checked, o.checkTotal], [250, 1250]);
+    });
+
     test('robocopy 출력 읽기: New File 줄 · % 줄', () {
       final o = RobocopyOutput();
       expect(o.feed('\n\t    New File  \t\t       3\tC:\\t\\src\\a.txt\r\n45%  \r\n'), [r'C:\t\src\a.txt']);
@@ -109,6 +122,22 @@ void main() {
       expect(File(p.join(dst, 'src', '한글 폴더', '동영상 1.txt')).readAsStringSync(), 'ccc');
       expect(File(p.join(dst, 'single.txt')).readAsStringSync(), 's');
     }
+
+    test('현재 방식 복사: 전송 속도를 계산하고 끝나면 비움', () async {
+      final src = Directory(p.join(tmp.path, 'speed_src'))..createSync();
+      for (var i = 0; i < 4; i++) {
+        File(p.join(src.path, 'f$i.bin')).writeAsBytesSync(List.filled(256 * 1024, i));
+      }
+      final job = TransferJob(sources: [src.path], dest: Directory(p.join(tmp.path, 'speed_dst')).path, move: false, bandwidthKBps: 2048);
+      Directory(job.dest).createSync();
+      double? seen;
+      job.addListener(() => seen = job.speed ?? seen);
+      await job.run();
+      expect(job.error, isNull);
+      expect(seen, isNotNull);
+      expect(seen!, greaterThan(0));
+      expect(job.speed, isNull); // 끝나면 표시하지 않음
+    });
 
     test('현재 방식: 진행 (항목 2개 · 폴더 안 파일 3개) · 이동', () async {
       final job = TransferJob(sources: [src, p.join(tmp.path, 'single.txt')], dest: dst, move: false);

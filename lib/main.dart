@@ -10,6 +10,7 @@ import 'package:window_manager/window_manager.dart';
 
 import 'app/app_controller.dart';
 import 'app/live_sync.dart';
+import 'app/version_snapshot.dart';
 import 'app/bookmarks_controller.dart';
 import 'app/download_manager.dart';
 import 'app/settings.dart';
@@ -40,6 +41,7 @@ import 'ui/monitor_page.dart' show askLiveSyncStart;
 import 'ui/player_page.dart';
 import 'ui/setup_dialog.dart';
 import 'ui/update_dialog.dart';
+import 'ui/version_restore.dart';
 import 'ui/theme.dart';
 import 'ui/work_panel.dart';
 import 'l10n/tr.dart';
@@ -69,7 +71,8 @@ Future<void> main(List<String> args) async {
   if (!await instance.claim(request, waitForExit: args.contains('--restart'), forward: !newWindow)) {
     // 설정이 "새 창에서" 이고 이미 켜져 있으면: 재생만 하는 창으로 따로 뜬다
     if (newWindow) return runSecondWindow(request.files.where(isVideoFile).toList(), dataDir);
-    exit(0);
+    endProcessNow(); // exit(0) 은 막 뜬 엔진을 정리하다 coremessaging.dll 에서 꺼진다
+
   }
 
   final services = PlatformServices.create();
@@ -91,6 +94,9 @@ Future<void> main(List<String> args) async {
     String hm(DateTime t) => '${t.month}/${t.day} ${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
     controller.note(trf('⚠ 지난 실행이 정상적으로 끝나지 않았습니다 (시작 {0}, 마지막 확인 {1}). ' '그 전의 기록은 Logs 폴더의 app.log 에 있습니다.', [hm(crashed.$1), hm(crashed.$2)]));
   }
+  // 버전별 설정 보관 (업데이트 · 예전 버전으로 되돌리기): 시작할 때 설정 파일이 없었는지 (새로 설치)
+  final freshInstall = !File(p.join(dataDir, 'settings.json')).existsSync();
+  VersionSnapshot.instance = VersionSnapshot(dataDir);
   await controller.init();
   // 실시간 동기화 (환경 설정 > 파일 탐색기): 앱이 켜져 있는 동안. 다시 켤 때 바로 / 골라서 / 시작 안 함
   await findBundledRsync(); // 앱에 들어 있는 rsync
@@ -298,6 +304,11 @@ Future<void> main(List<String> args) async {
       if (nav != null) unawaited(ExplorerPage.open(nav, c: controller));
     }
     if (controller.settings.liveSyncOnStart == 'ask' && ctx.mounted) await askLiveSyncStart(ctx, live);
+    // 다른 버전을 쓰다가 이 버전으로 돌아왔으면 보관해 둔 이 버전의 설정을 되살릴지
+    final current = await _currentVersion(services);
+    if (ctx.mounted) {
+      await checkVersionRestore(ctx, controller, current: current, freshInstall: freshInstall, restart: services.shell.restart);
+    }
     if (!ctx.mounted) return;
     await checkRequiredTools(ctx, services.shell);
     final ctx2 = navigatorKey.currentContext;
@@ -362,6 +373,15 @@ extension on String {
   String ifEmptyText(String other) => isEmpty ? other : this;
 }
 
+/// 지금 실행 중인 버전 (예: 2026.10.05_003). 모르면 ''.
+Future<String> _currentVersion(PlatformServices services) async {
+  try {
+    return await services.updater?.currentVersion() ?? '';
+  } catch (_) {
+    return '';
+  }
+}
+
 /// 종료 창에 보일 "바로 전 작업": 하던 작업, 없으면 마지막 작업 기록 (시각 표시는 뺀다)
 String lastWorkText(AppController c) {
   if (c.currentJob != null) return c.currentJob!;
@@ -377,6 +397,14 @@ Future<void> runAndroid(String dataDir) async {
   final logs = Directory(p.join(dataDir, 'Logs'))..createSync(recursive: true);
   final controller = AppController(services, settingsStore: SettingsStore())..logFile = p.join(logs.path, 'app.log');
   controller.note(trf('── 시작 {0} (Android) ──', [appTitle]));
+  // 버전별 설정 보관: 앱을 지웠다 다시 설치해도 남도록 공용 Download/JJ_MKVMaker 에도 (예전 버전으로 되돌릴 때)
+  final freshInstall = !File(p.join(dataDir, 'settings.json')).existsSync();
+  String? sharedSnapshots;
+  try {
+    final root = await const MethodChannel('jj_mkvmaker/android').invokeMethod<String>('storageRoot');
+    if (root != null) sharedSnapshots = p.join(root, 'Download', 'JJ_MKVMaker', '설정 보관');
+  } catch (_) {}
+  VersionSnapshot.instance = VersionSnapshot(dataDir, sharedDir: sharedSnapshots);
   await controller.init();
   // 실시간 동기화 (환경 설정 > 파일 탐색기): 앱이 켜져 있는 동안. 다시 켤 때 바로 / 골라서 / 시작 안 함
   await findBundledRsync(); // 앱에 들어 있는 rsync
@@ -463,6 +491,17 @@ Future<void> runAndroid(String dataDir) async {
     // 다시 켤 때 실시간 동기화를 골라서 시작
     final ctx0 = navigatorKey.currentContext;
     if (controller.settings.liveSyncOnStart == 'ask' && ctx0 != null && ctx0.mounted) await askLiveSyncStart(ctx0, live);
+    // 다른 버전을 쓰다가 돌아왔거나 앱을 다시 설치했으면 보관해 둔 설정을 되살릴지 (되살리면 앱을 끝내고 다시 켜 달라고)
+    final current = await _currentVersion(services);
+    final ctxV = navigatorKey.currentContext;
+    if (ctxV != null && ctxV.mounted) {
+      await checkVersionRestore(ctxV, controller, current: current, freshInstall: freshInstall,
+          restart: () async {
+        messengerKey.currentState?.showSnackBar(SnackBar(content: Text(tr('설정을 되살렸습니다. 앱을 끝냅니다 - 다시 켜 주세요.'))));
+        await Future<void>.delayed(const Duration(seconds: 2));
+        await services.shell.quit();
+      });
+    }
     // 새 버전 확인 (하루 한 번, 환경 설정에서 끌 수 있음)
     final ctx = navigatorKey.currentContext;
     if (ctx != null && ctx.mounted) unawaited(checkForUpdate(ctx, controller));
@@ -523,7 +562,7 @@ Future<void> runSecondWindow(List<String> files, String dataDir) async {
   await i18n.apply(controller.settings.uiLanguage, save: false);
   controller.settings = await SettingsStore().load();
   final navigatorKey = GlobalKey<NavigatorState>();
-  runApp(JjMkvMakerApp(controller: controller, navigatorKey: navigatorKey, onExit: () => exit(0)));
+  runApp(JjMkvMakerApp(controller: controller, navigatorKey: navigatorKey, onExit: endProcessNow));
   WidgetsBinding.instance.addPostFrameCallback((_) async {
     await controller.shareVideoList(p.join(dataDir, 'videos.json'));
     unawaited(controller.addVideos(files, allowOutputFolder: true));

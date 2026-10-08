@@ -22,6 +22,9 @@ abstract class Updater {
   /// GitHub 최신 Release (없거나 읽을 수 없으면 null)
   Future<ReleaseInfo?> latest();
 
+  /// GitHub 에 올려 둔 모든 버전 (새 버전이 앞) - 예전 버전으로 되돌리기
+  Future<List<ReleaseInfo>> releases();
+
   /// 프로그램 폴더에 쓸 수 있어 자동 설치가 가능한지 (아니면 페이지 안내)
   Future<bool> canInstall();
 
@@ -33,6 +36,9 @@ abstract class Updater {
 
   /// 브라우저로 Release 페이지 열기
   Future<void> openPage(ReleaseInfo r);
+
+  /// 이 앱을 지우는 확인 창 (Android: 예전 버전으로 되돌릴 때. Windows 는 하지 않음)
+  Future<void> uninstallSelf();
 
   /// true 면 [scheduleInstall] 이 설치 화면을 열 뿐 앱을 끝낼 필요가 없다 (Android)
   bool get installsInPlace => false;

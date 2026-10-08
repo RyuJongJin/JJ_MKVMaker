@@ -13,6 +13,8 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <!-- 환경 설정 > 최신 버전 확인: 받은 새 APK 로 설치 화면 열기 -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
+    <!-- 예전 버전으로 되돌릴 때 이 앱을 지우는 확인 창 (Android 는 낮은 버전을 위에 설치하지 못함) -->
+    <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES"/>
     <application
         android:label="JJ_MKVMaker"
         android:name="${applicationName}"

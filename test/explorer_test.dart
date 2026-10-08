@@ -351,6 +351,22 @@ void main() {
     await tester.pumpAndSettle();
     // 고른 폴더는 기억 (다음에 열 때 그 폴더부터)
     expect(c.settings.rsyncPaths, [p.join(left, 'sub'), p.join(right, 'rsub')]);
+
+    // 새 폴더: 만든 폴더가 바로 그 창의 원본 · 대상으로 골라진다 (오른쪽 창 rsub 안에)
+    await act(tester, () => tester.tap(find.text('rsub')));
+    await settle(tester, () => false, rounds: 5); // rsub 를 다시 눌러 취소
+    await act(tester, () => tester.tap(find.text('rsub')));
+    await settle(tester, () => false, rounds: 5); // 다시 골라 지금 폴더로
+    await act(tester, () => tester.tap(find.text('새 폴더')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), '새로만든');
+    await act(tester, () => tester.tap(find.widgetWithText(FilledButton, '확인')));
+    await settle(tester, () => find.text('새로만든').evaluate().isNotEmpty);
+    expect(Directory(p.join(right, 'rsub', '새로만든')).existsSync(), isTrue);
+    final newRow = find.ancestor(of: find.text('새로만든'), matching: find.byType(Material)).first;
+    expect(find.descendant(of: newRow, matching: find.byTooltip('고르기 취소')), findsOneWidget);
+    expect(find.descendant(of: find.ancestor(of: find.text('rsub'), matching: find.byType(Material)).first,
+        matching: find.byTooltip('고르기 취소')), findsNothing); // 창마다 하나만
   });
 }
 

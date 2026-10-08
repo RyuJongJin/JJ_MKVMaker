@@ -4,6 +4,14 @@ import 'dart:io';
 
 import '../../core/playlist.dart';
 
+/// 이 프로세스를 바로 끝낸다. Dart 의 exit() 는 엔진 · 창 · 플러그인 DLL 을 정리하는 중에 Windows 의
+/// coremessaging.dll 등에서 접근 위반 (0xc0000005) 으로 꺼지기도 한다 - 특히 막 뜬 두 번째 실행이 바로 끝날 때
+/// (재현: 앱이 켜져 있을 때 한 번 더 실행 → APPCRASH). 저장할 것이 없는 경우에만 쓴다.
+Never endProcessNow() {
+  if (Platform.isWindows) Process.killPid(pid);
+  exit(0);
+}
+
 /// 프로그램을 하나만 실행하고, 나중에 실행된 것은 인수를 첫 번째 창에 넘기고 끝낸다.
 ///
 /// 탐색기에서 파일 여러 개를 골라 "재생" 하면 파일마다 프로그램이 실행되므로,

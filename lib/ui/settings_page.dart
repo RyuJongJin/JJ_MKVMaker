@@ -289,12 +289,20 @@ class _SettingsPageState extends State<SettingsPage> {
                           future: c.services.updater!.currentVersion(),
                           builder: (_, v) => Text('JJ_MKVMaker v${v.data ?? '…'}'),
                         ),
-                        subtitle: Text(tr('GitHub 의 최신 버전과 비교해, 새 버전이 있으면 받아서 설치합니다')),
-                        trailing: FilledButton.icon(
-                          onPressed: () => checkForUpdate(context, c, manual: true),
-                          icon: const Icon(Icons.refresh, size: 18),
-                          label: Text(tr('최신 버전 확인')),
-                        ),
+                        subtitle: Text(tr('GitHub 에 올려 둔 모든 버전 중에서 골라 설치합니다 (새 버전으로 · 예전 정상 버전으로 되돌리기). '
+                            '바꾸기 전 버전의 설정은 보관해 두었다가, 그 버전으로 돌아오면 되살립니다')),
+                        isThreeLine: true,
+                        trailing: Wrap(spacing: 8, children: [
+                          OutlinedButton(
+                            onPressed: () => checkForUpdate(context, c, manual: true),
+                            child: Text(tr('최신 버전 확인')),
+                          ),
+                          FilledButton.icon(
+                            onPressed: () => chooseVersion(context, c),
+                            icon: const Icon(Icons.system_update_alt, size: 18),
+                            label: Text(tr('업데이트 · 버전 고르기')),
+                          ),
+                        ]),
                       ),
                       SwitchListTile(
                         value: s.autoCheckUpdates,

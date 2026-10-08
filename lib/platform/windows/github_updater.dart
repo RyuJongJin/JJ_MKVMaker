@@ -54,6 +54,18 @@ class GitHubUpdater implements Updater {
   }
 
   @override
+  Future<List<ReleaseInfo>> releases() async {
+    final req = await _http.getUrl(Uri.parse('$apiBase/repos/$updateRepo/releases?per_page=100'));
+    req.headers.set('Accept', 'application/vnd.github+json');
+    final res = await req.close();
+    final body = await res.transform(utf8.decoder).join();
+    if (res.statusCode != 200) {
+      throw UpdateException(trf('버전 목록을 읽을 수 없습니다 ({0})', [res.statusCode]));
+    }
+    return parseReleaseList(jsonDecode(body) as List<dynamic>);
+  }
+
+  @override
   Future<bool> canInstall() async {
     try {
       final probe = File(p.join(appDir, '.jj_update_test'));
@@ -124,7 +136,17 @@ try { Wait-Process -Id $ParentPid -Timeout 90 -ErrorAction Stop } catch {}
 Start-Sleep -Milliseconds 800
 $log = Join-Path $env:TEMP 'jj_mkvmaker_update.log'
 # keep downloads, models and user data
-robocopy $Source $Target /E /R:10 /W:1 /XD jj_yt-dlp jj_aria2 models /NFL /NDL /NP /LOG:$log | Out-Null
+$lib = Join-Path $Source 'Lib'
+if (Test-Path $lib) {
+  # Lib layout: make the program folder exactly this version (also when going back to an older version),
+  # then copy the top files (launcher, readme). User folders are excluded (not copied, not deleted).
+  robocopy $lib (Join-Path $Target 'Lib') /MIR /R:10 /W:1 /XD jj_yt-dlp jj_aria2 models /NFL /NDL /NP /LOG:$log | Out-Null
+  if ($LASTEXITCODE -ge 8) { Start-Process notepad.exe $log; exit 1 }
+  robocopy $Source $Target /R:10 /W:1 /XD Lib /NFL /NDL /NP /LOG+:$log | Out-Null
+} else {
+  # old single-folder layout: copy over
+  robocopy $Source $Target /E /R:10 /W:1 /XD jj_yt-dlp jj_aria2 models /NFL /NDL /NP /LOG:$log | Out-Null
+}
 if ($LASTEXITCODE -ge 8) { Start-Process notepad.exe $log; exit 1 }
 if (-not $NoRestart) { Start-Process -FilePath $Exe }
 exit 0
@@ -150,6 +172,9 @@ exit 0
   Future<void> scheduleInstall(String extractedDir) async {
     await runInstallScript(extractedDir, waitPid: pid);
   }
+
+  @override
+  Future<void> uninstallSelf() async {}
 
   @override
   Future<void> openPage(ReleaseInfo r) =>

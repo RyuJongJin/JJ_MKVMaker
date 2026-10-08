@@ -124,6 +124,11 @@ class MainActivity : FlutterActivity() {
                     result.error("INSTALL", e.message ?: e.toString(), null)
                 }
                 "openFolder" -> result.success(openFolder(call.argument<String>("path") ?: ""))
+                // 예전 버전으로 되돌리기: Android 는 낮은 버전을 위에 설치하지 못해 앱을 지우는 확인 창을 연다
+                "uninstallSelf" -> {
+                    startActivity(Intent(Intent.ACTION_DELETE, Uri.parse("package:$packageName")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    result.success(null)
+                }
                 "diskSpace" -> result.success(
                     try {
                         val st = android.os.StatFs(call.argument<String>("path") ?: "")

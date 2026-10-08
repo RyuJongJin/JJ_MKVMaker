@@ -141,17 +141,26 @@ class TransferProgressLines extends StatelessWidget {
                       child: Text(right, textAlign: TextAlign.end, style: const TextStyle(fontSize: 12, color: JjColors.textDim))),
                 ]),
               );
+          final speed = !job.finished && job.speed != null ? '${formatSize(job.speed!.round())}/s' : '';
+          // 위: 지금 복사하는 파일 (그 파일의 진행률 · 속도) / 아래: 폴더 전체 (파일 수)
+          final fileLabel = job.counting
+              ? tr('파일 세는 중…')
+              : job.pruning
+                  ? (job.finished ? trf('빈 폴더 {0}개 지움', [job.pruned]) : tr('원본의 빈 폴더 정리 중…'))
+                  : job.finished
+                      ? tr('끝')
+                      : job.currentFile.isEmpty
+                          ? tr('시작하는 중…')
+                          : job.currentFile.split('/').last;
+          final fileValue = job.finished ? 1.0 : (job.filePercent ?? 0);
           return Column(children: [
-            line(trf('전체 {0}개 중 {1}번째', [job.total, cur + 1]), job.overall,
-                '${pct(job.overall)} · ${trf('파일 {0}/{1}', [job.allDone, job.allFiles])}'),
-            line(
-                job.counting
-                    ? tr('파일 세는 중…')
-                    : job.pruning
-                        ? (job.finished ? trf('빈 폴더 {0}개 지움', [job.pruned]) : tr('원본의 빈 폴더 정리 중…'))
-                        : trf('{0} 안의 파일', [p.basename(job.sources[cur])]),
-                job.current,
-                '${pct(job.current)} · ${trf('파일 {0}/{1}', [job.filesDone[cur], job.filesTotal[cur]])}'),
+            Tooltip(
+              message: job.currentFile,
+              child: line(fileLabel, fileValue,
+                  [if (job.filePercent != null && !job.finished) pct(fileValue), if (speed.isNotEmpty) speed].join(' · ')),
+            ),
+            line(trf('{0} 전체', [p.basename(job.sources[cur])]), job.folderProgress,
+                '${pct(job.folderProgress)} · ${job.checkTotal > 0 && !job.finished ? trf('항목 {0}/{1}', [job.checked, job.checkTotal]) : trf('파일 {0}/{1}', [job.allDone, job.allFiles])}'),
           ]);
         },
       );
@@ -290,7 +299,27 @@ class _CopyCardState extends State<_CopyCard> {
     await _run(t);
   }
 
+  /// lsync 로: 끝나지 않은 것 (실행 중 · 실패 · 취소 · 아직 안 함) 도 옮길 수 있다 - 남은 것은 lsync 가 이어서 맞춘다.
+  /// 실행 중이면 물어본 뒤 멈추고 옮긴다.
   Future<void> _toLive(CopyTask t) async {
+    if (center.isRunning(t.id)) {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(tr('lsync 로 이동')),
+          content: Text(tr('지금 실행 중입니다. 멈추고 lsync (실시간 동기화) 로 옮길까요? 남은 것은 lsync 가 이어서 맞춥니다.')),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('취소'))),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('멈추고 옮기기'))),
+          ],
+        ),
+      );
+      if (ok != true) return;
+      final job = center.jobs[t.id]!;
+      job.cancel();
+      await job.done;
+      if (!mounted) return;
+    }
     final n = await center.toLiveSync(t);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -419,7 +448,7 @@ class _CopyCardState extends State<_CopyCard> {
               ),
             const SizedBox(width: 6),
             TextButton.icon(
-              onPressed: running ? null : () => _toLive(t),
+              onPressed: () => _toLive(t),
               icon: const Icon(Icons.sync_alt, size: 18),
               label: Text(tr('lsync 로 이동')),
             ),

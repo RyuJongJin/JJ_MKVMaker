@@ -294,7 +294,8 @@ class _ExplorerPageState extends State<ExplorerPage> {
   void _reveal(_Pane pane, String path) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !pane.scroll.hasClients) return;
-      final i = _rows(pane, foldersOnly: _split).indexWhere((r) => samePath(r.entry.path, path));
+      // 화면의 트리와 같은 줄로 센다 (폴더 + 파일 목록 배치 · Rsync 화면은 폴더만)
+      final i = _rows(pane, foldersOnly: _split || widget.rsync).indexWhere((r) => samePath(r.entry.path, path));
       if (i < 0) return;
       final pos = pane.scroll.position;
       final want = (i * _look.rowHeight - pos.viewportDimension / 4).clamp(0.0, pos.maxScrollExtent);
@@ -659,10 +660,21 @@ class _ExplorerPageState extends State<ExplorerPage> {
         final name = await _askName(tr('새 폴더'), '');
         if (name == null) return;
         try {
-          final made = await FileOps.makeFolder(pane.current, name);
-          await _refreshAll([pane.current]);
+          final parent = pane.current;
+          final made = await FileOps.makeFolder(parent, name);
+          // 만든 폴더가 트리에 보이게: 부모를 펼치고 다시 읽은 뒤 그 줄까지 스크롤
+          pane.expanded.add(parent);
+          await _load(pane, parent, force: true);
+          await _refreshAll([parent]);
+          // Rsync 화면: 만든 폴더를 이 창의 원본 · 대상으로 바로 고른다
+          if (widget.rsync) {
+            pane.marked
+              ..clear()
+              ..add(made);
+          }
           pane.focused = made;
           pane.changed();
+          _reveal(pane, made);
         } catch (e) {
           _snack(trf('폴더를 만들 수 없습니다: {0}', [e]));
         }
@@ -1116,20 +1128,47 @@ class _ExplorerPageState extends State<ExplorerPage> {
         ),
         if (!job.finished) TextButton(onPressed: job.cancel, child: Text(tr('취소'))),
       ]),
-      line(
-        trf('전체 {0}개 중 {1}번째', [job.total, (cur + 1).clamp(1, job.total)]),
-        job.overall,
-        '${pct(job.overall)} · ${trf('파일 {0}/{1}', [job.allDone, job.allFiles])}',
-      ),
-      line(
-        job.counting
-            ? tr('파일 세는 중…')
-            : job.pruning
-                ? (job.finished ? trf('빈 폴더 {0}개 지움', [job.pruned]) : tr('원본의 빈 폴더 정리 중…'))
-                : trf('{0} 안의 파일', [job.currentName]),
-        job.current,
-        '${pct(job.current)} · ${trf('파일 {0}/{1}', [curDone, curFiles])}',
-      ),
+      // Rsync 화면 (폴더 하나를 맞춤): 위 = 지금 복사하는 파일 (그 파일의 진행률 · 속도), 아래 = 폴더 전체 (파일 수)
+      if (widget.rsync) ...[
+        line(
+          job.counting
+              ? tr('파일 세는 중…')
+              : job.pruning
+                  ? (job.finished ? trf('빈 폴더 {0}개 지움', [job.pruned]) : tr('원본의 빈 폴더 정리 중…'))
+                  : job.finished
+                      ? tr('끝')
+                      : job.currentFile.isEmpty
+                          ? tr('시작하는 중…')
+                          : job.currentFile.split('/').last,
+          job.finished ? 1.0 : (job.filePercent ?? 0),
+          [
+            if (job.filePercent != null && !job.finished) pct(job.filePercent!),
+            if (!job.finished && job.speed != null) '${formatSize(job.speed!.round())}/s',
+          ].join(' · '),
+        ),
+        line(
+          trf('{0} 전체', [job.currentName.isEmpty ? p.basename(job.sources.first) : job.currentName]),
+          job.folderProgress,
+          '${pct(job.folderProgress)} · ${job.checkTotal > 0 && !job.finished ? trf('항목 {0}/{1}', [job.checked, job.checkTotal]) : trf('파일 {0}/{1}', [job.allDone, job.allFiles])}',
+        ),
+      ] else ...[
+        // 파일 탐색기 (여러 항목): 위 = 전체 항목 중 · 아래 = 지금 폴더의 파일 중
+        line(
+          trf('전체 {0}개 중 {1}번째', [job.total, (cur + 1).clamp(1, job.total)]),
+          job.overall,
+          '${pct(job.overall)} · ${trf('파일 {0}/{1}', [job.allDone, job.allFiles])}'
+                  '${!job.finished && job.speed != null ? ' · ${formatSize(job.speed!.round())}/s' : ''}',
+        ),
+        line(
+          job.counting
+              ? tr('파일 세는 중…')
+              : job.pruning
+                  ? (job.finished ? trf('빈 폴더 {0}개 지움', [job.pruned]) : tr('원본의 빈 폴더 정리 중…'))
+                  : trf('{0} 안의 파일', [job.currentName]),
+          job.current,
+          '${pct(job.current)} · ${trf('파일 {0}/{1}', [curDone, curFiles])}',
+        ),
+      ],
     ]);
   }
 

@@ -367,6 +367,10 @@ class AppSettings {
   /// [lastUpdateCheck] 를 한 버전 (같은 설정 파일을 쓰는 다른 버전이 확인했으면 다시 확인)
   String lastUpdateCheckVersion = '';
 
+  /// 마지막으로 이 설정을 쓴 (실행한) 버전. 예전 버전은 이 항목을 몰라 저장하면서 지운다 →
+  /// 돌아온 버전이 자기 것이 아니면 보관해 둔 그 버전의 설정을 되살릴지 묻는다 (VersionSnapshot)
+  String lastRunVersion = '';
+
   /// "이 버전 건너뛰기" 한 버전
   String skippedVersion = '';
 
@@ -451,6 +455,7 @@ class AppSettings {
         'autoCheckUpdates': autoCheckUpdates,
         'lastUpdateCheck': lastUpdateCheck,
         'lastUpdateCheckVersion': lastUpdateCheckVersion,
+        'lastRunVersion': lastRunVersion,
         'skippedVersion': skippedVersion,
         'playlistMode': playlistMode.name,
         'externalPlayers': externalPlayers,
@@ -561,6 +566,7 @@ class AppSettings {
       ..autoCheckUpdates = j['autoCheckUpdates'] as bool? ?? true
       ..lastUpdateCheck = j['lastUpdateCheck'] as String? ?? ''
       ..lastUpdateCheckVersion = j['lastUpdateCheckVersion'] as String? ?? ''
+      ..lastRunVersion = j['lastRunVersion'] as String? ?? ''
       ..skippedVersion = j['skippedVersion'] as String? ?? ''
       ..playlistMode = pick(PlaylistMode.values, j['playlistMode'], PlaylistMode.series)
       ..externalPlayers = ((j['externalPlayers'] as Map?) ?? const {}).cast<String, String>()

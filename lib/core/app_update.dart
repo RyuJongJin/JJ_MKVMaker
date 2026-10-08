@@ -46,6 +46,10 @@ class ReleaseInfo {
   /// GitHub 가 계산한 zip 의 SHA256 (소문자 16진수). 없으면 null
   final String? sha256;
 
+  /// 올린 때 (모르면 null) · 시험판인지
+  final DateTime? published;
+  final bool prerelease;
+
   const ReleaseInfo({
     required this.version,
     required this.tag,
@@ -56,6 +60,8 @@ class ReleaseInfo {
     this.zipName,
     this.zipSize = 0,
     this.sha256,
+    this.published,
+    this.prerelease = false,
   });
 
   bool isNewerThan(String current) => compareVersions(version, current) > 0;
@@ -67,8 +73,22 @@ const androidAssetPattern = r'android_arm64\.apk$';
 
 /// GitHub API `releases/latest` 응답 → ReleaseInfo (초안 · 시험판은 null).
 /// [assetPattern]: 받을 설치 파일 (기본 Windows zip, Android 는 [androidAssetPattern]). zipUrl · zipName 등에 담는다.
-ReleaseInfo? parseLatestRelease(Map<String, dynamic> j, {String assetPattern = windowsAssetPattern}) {
-  if (j['draft'] == true || j['prerelease'] == true) return null;
+ReleaseInfo? parseLatestRelease(Map<String, dynamic> j, {String assetPattern = windowsAssetPattern}) =>
+    parseRelease(j, assetPattern: assetPattern, allowPrerelease: false);
+
+/// GitHub API `releases` 목록 → 올려 둔 모든 버전 (초안 빼고, 새 버전이 앞). 버전 고르기 (예전 버전으로 되돌리기) 에 쓴다.
+List<ReleaseInfo> parseReleaseList(List<dynamic> list, {String assetPattern = windowsAssetPattern}) {
+  final out = [
+    for (final j in list)
+      if (j is Map<String, dynamic>) parseRelease(j, assetPattern: assetPattern, allowPrerelease: true),
+  ].whereType<ReleaseInfo>().toList();
+  out.sort((a, b) => compareVersions(b.version, a.version));
+  return out;
+}
+
+/// Release 하나 → ReleaseInfo (초안은 null, [allowPrerelease] 가 false 면 시험판도 null)
+ReleaseInfo? parseRelease(Map<String, dynamic> j, {String assetPattern = windowsAssetPattern, bool allowPrerelease = false}) {
+  if (j['draft'] == true || (!allowPrerelease && j['prerelease'] == true)) return null;
   final tag = j['tag_name'] as String?;
   if (tag == null) return null;
   Map<String, dynamic>? zip;
@@ -100,6 +120,8 @@ ReleaseInfo? parseLatestRelease(Map<String, dynamic> j, {String assetPattern = w
     zipName: zip?['name'] as String?,
     zipSize: (zip?['size'] as num?)?.toInt() ?? 0,
     sha256: sha,
+    published: DateTime.tryParse(j['published_at'] as String? ?? ''),
+    prerelease: j['prerelease'] == true,
   );
 }
 

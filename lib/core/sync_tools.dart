@@ -137,6 +137,15 @@ class RsyncOutput {
   /// 지금 파일의 진행률 (-P 의 "  1,234  45%  1.2MB/s" 줄)
   double? currentPercent;
 
+  /// 지금 전송 속도 (바이트/초, 같은 줄의 "1.2MB/s")
+  double? currentSpeed;
+
+  /// 폴더 전체에서 확인한 항목 (진행 줄의 "to-chk=남은/전체" · "ir-chk=…"). 모르면 null.
+  int? checked, checkTotal;
+
+  static final _chkRx = RegExp(r'(?:to|ir)-chk=(\d+)/(\d+)');
+  static final _speedRx = RegExp(r'(\d+(?:\.\d+)?)([kKMGT]?)B/s');
+
   List<String> feed(String chunk) {
     _buf.write(chunk);
     final text = _buf.toString();
@@ -152,6 +161,16 @@ class RsyncOutput {
       if (line.startsWith(' ')) {
         final m = RegExp(r'\s(\d{1,3})%\s').firstMatch(line);
         if (m != null) currentPercent = int.parse(m[1]!) / 100;
+        final ck = _chkRx.firstMatch(line);
+        if (ck != null) {
+          checkTotal = int.parse(ck[2]!);
+          checked = checkTotal! - int.parse(ck[1]!);
+        }
+        final sp = _speedRx.firstMatch(line);
+        if (sp != null) {
+          const mul = {'': 1, 'k': 1024, 'K': 1024, 'M': 1024 * 1024, 'G': 1024 * 1024 * 1024, 'T': 1024 * 1024 * 1024 * 1024};
+          currentSpeed = double.parse(sp[1]!) * mul[sp[2]!]!;
+        }
         continue;
       }
       if (line.endsWith('/')) continue; // 폴더

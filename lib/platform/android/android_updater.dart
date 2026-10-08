@@ -55,6 +55,18 @@ class AndroidUpdater implements Updater {
   }
 
   @override
+  Future<List<ReleaseInfo>> releases() async {
+    final req = await _http.getUrl(Uri.parse('$apiBase/repos/$updateRepo/releases?per_page=100'));
+    req.headers.set('Accept', 'application/vnd.github+json');
+    final res = await req.close();
+    final body = await res.transform(utf8.decoder).join();
+    if (res.statusCode != 200) {
+      throw UpdateException(trf('버전 목록을 읽을 수 없습니다 ({0})', [res.statusCode]));
+    }
+    return parseReleaseList(jsonDecode(body) as List<dynamic>, assetPattern: androidAssetPattern);
+  }
+
+  @override
   Future<bool> canInstall() async => true;
 
   @override
@@ -99,6 +111,9 @@ class AndroidUpdater implements Updater {
       throw UpdateException(e.message ?? '$e');
     }
   }
+
+  @override
+  Future<void> uninstallSelf() => _ch.invokeMethod<void>('uninstallSelf');
 
   @override
   Future<void> openPage(ReleaseInfo r) async {
