@@ -31,6 +31,17 @@ class DesktopStorageService implements StorageService {
   }
 
   @override
+  Future<List<String>> pickFiles({required String title, required List<String> extensions, String? initialDirectory}) async {
+    final files = await FilePicker.pickFiles(
+      dialogTitle: title,
+      initialDirectory: initialDirectory,
+      type: FileType.custom,
+      allowedExtensions: extensions,
+    );
+    return files.map((f) => f.path).whereType<String>().toList();
+  }
+
+  @override
   Future<List<String>> listFiles(String directory) async {
     final dir = Directory(directory);
     if (!await dir.exists()) return [];

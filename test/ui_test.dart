@@ -42,6 +42,9 @@ class _FakeStorage implements StorageService {
   @override
   Future<List<String>> pickSubtitles({String? initialDirectory}) async => [];
   @override
+  Future<List<String>> pickFiles({required String title, required List<String> extensions, String? initialDirectory}) async =>
+      [];
+  @override
   Future<List<String>> listFiles(String directory) async =>
       [r'D:\m\영화.mkv', r'D:\m\영화.ko.srt'];
   @override

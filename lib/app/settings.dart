@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import 'components.dart';
+import '../core/reader_sources.dart' show defaultImageExtensions;
 import '../core/download_detect.dart';
 import '../core/encode_options.dart';
 import '../core/playlist.dart';
@@ -342,6 +343,21 @@ class AppSettings {
   /// 화면 가운데를 좌우로 밀어 다음 · 이전 화면으로
   bool swipeNav = true;
 
+  /// 그림 보기 (만화 보기) 대상 확장자 (파일 탐색기에서 두 번 누르면 보기로 연다)
+  List<String> imageExts = [...defaultImageExtensions];
+
+  /// 보기: 'page' 한 쪽 맞추기 · 'width' 좌우 맞추기 (세로로 밀어 봄)
+  String readerFit = 'page';
+
+  /// 보기: 오른쪽에서 왼쪽으로 넘김 (일본 만화)
+  bool readerRtl = false;
+
+  /// 보기: 밝기 (-0.7 어둡게 ~ 0.7 밝게)
+  double readerBrightness = 0;
+
+  /// ZIP · CBZ 를 두 번 누르면 안의 그림을 만화처럼 보기 (끄면 목록)
+  bool zipComic = true;
+
   /// WebDAV 서버 (파일 탐색기 · Rsync 화면 위쪽 "SD 카드" 옆 탭). 비밀번호는 이 설정 파일에만.
   List<DavServer> webdavServers = [];
 
@@ -457,6 +473,11 @@ class AppSettings {
         'components': components,
         'navOrder': navOrder,
         'swipeNav': swipeNav,
+        'imageExts': imageExts,
+        'readerFit': readerFit,
+        'readerRtl': readerRtl,
+        'readerBrightness': readerBrightness,
+        'zipComic': zipComic,
         'webdavServers': [for (final x in webdavServers) x.toJson()],
         'rsyncOptions': rsyncOptions,
         'robocopyOptions': robocopyOptions,
@@ -570,6 +591,13 @@ class AppSettings {
           ? [for (final x in j['navOrder'] as List) if (AppComponent.defaultOrder.contains('$x')) '$x']
           : AppComponent.defaultOrder
       ..swipeNav = j['swipeNav'] as bool? ?? true
+      ..imageExts = j['imageExts'] is List
+          ? [for (final x in j['imageExts'] as List) '$x'.toLowerCase()]
+          : [...defaultImageExtensions]
+      ..readerFit = j['readerFit'] == 'width' ? 'width' : 'page'
+      ..readerRtl = j['readerRtl'] as bool? ?? false
+      ..readerBrightness = ((j['readerBrightness'] as num?)?.toDouble() ?? 0).clamp(-0.7, 0.7)
+      ..zipComic = j['zipComic'] as bool? ?? true
       ..webdavServers = [
         for (final x in (j['webdavServers'] as List?) ?? const [])
           if (x is Map) DavServer.fromJson(x),

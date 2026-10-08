@@ -26,6 +26,9 @@ import 'player_page.dart';
 import 'rsync_setup.dart';
 import 'theme.dart';
 import 'webdav_settings.dart';
+import 'reader_page.dart';
+import 'zip_page.dart';
+import '../core/reader_sources.dart';
 import '../l10n/tr.dart';
 
 /// 파일 탐색기 (X-plore 참고): 두 창 (트리 목록) + 가운데 기능 버튼 줄.
@@ -510,7 +513,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
     }
     if (!list) pane.current = vDirname(e.path);
     pane.changed();
-    await _open(e.path);
+    await _open(e.path, pane: pane);
   }
 
   /// 트리 폴더 펼치기 · 접기 (› 화살표 · 열기)
@@ -533,10 +536,17 @@ class _ExplorerPageState extends State<ExplorerPage> {
   }
 
   /// 파일 열기 (기본 동작): 동영상은 내장 플레이어 (또는 확장자별 프로그램), 그 밖은 기본 연결 프로그램
-  Future<void> _open(String path) async {
+  Future<void> _open(String path, {_Pane? pane}) async {
     if (isVideoFile(path)) {
       await _play([path]);
       return;
+    }
+    // 이미지 · PDF · ZIP 보기 (컴포넌트를 켰을 때)
+    if (c.settings.components.contains('viewer')) {
+      final ext = extOf(path);
+      if (c.settings.imageExts.contains(ext)) return _viewImages(path, pane);
+      if (ext == 'pdf') return _viewPdf(path);
+      if (zipExtensions.contains(ext)) return _openZip(path, pane);
     }
     final local = await _fetch(path);
     if (local == null) return;
@@ -598,21 +608,93 @@ class _ExplorerPageState extends State<ExplorerPage> {
     await playFiles(context, c, paths, internal: internal, keepOrder: keepOrder);
   }
 
+  /// 그림 보기: 같은 폴더의 그림을 지금 정렬 순서대로 넘겨 본다
+  Future<void> _viewImages(String path, _Pane? pane) async {
+    final dir = vDirname(path);
+    final list = pane?.cache[dir] ?? _sorted(await listEntries(dir, showHidden: c.settings.explorerShowHidden));
+    final images = [
+      for (final e in list)
+        if (!e.isDir && c.settings.imageExts.contains(extOf(e.path))) e.path,
+    ];
+    if (!images.any((x) => samePath(x, path))) images.insert(0, path);
+    final start = images.indexWhere((x) => samePath(x, path));
+    final temp = await c.services.storage.tempDirectory();
+    if (!mounted) return;
+    await openReader(context, c, ImageFilesSource(images, tempDir: temp, title: vBasename(dir)), start: start);
+  }
+
+  Future<void> _viewPdf(String path) async {
+    final temp = await c.services.storage.tempDirectory();
+    PdfSource src;
+    try {
+      src = await PdfSource.open(path, tempDir: temp);
+    } catch (e) {
+      _snack(trf('PDF 를 열 수 없습니다: {0}', [e]));
+      return;
+    }
+    if (!mounted) return;
+    await openReader(context, c, src);
+    await _refreshAll([vDirname(path)]);
+  }
+
+  /// ZIP: 환경 설정이 "만화 보기" 면 안의 그림을 바로 보고 (그림이 없으면 목록), 아니면 목록
+  Future<void> _openZip(String path, _Pane? pane) async {
+    try {
+      if (c.settings.zipComic && await openZipComic(context, c, path)) return;
+    } catch (e) {
+      _snack(trf('열 수 없습니다: {0}', [e]));
+      return;
+    }
+    if (!mounted) return;
+    final other = pane == null || !_dual ? null : _panes[1 - _panes.indexOf(pane)].current;
+    final out = await openZip(context, c, path, otherDir: other);
+    if (out != null) await _refreshAll([out, vDirname(out)]);
+  }
+
+  /// 고른 그림들을 한 장씩 PDF 로 (같은 폴더에, 이름을 묻는다)
+  Future<void> _imagesToPdf(List<String> images) async {
+    if (images.isEmpty) return;
+    final dir = vDirname(images.first);
+    final first = vBasename(images.first);
+    final name = await _askName(tr('PDF 로 만들기'), '${first.contains('.') ? first.substring(0, first.lastIndexOf('.')) : first}.pdf');
+    if (name == null || name.trim().isEmpty) return;
+    final out = vJoin(dir, name.toLowerCase().endsWith('.pdf') ? name : '$name.pdf');
+    final temp = await c.services.storage.tempDirectory();
+    try {
+      await imagesToPdf(images, out, tempDir: temp);
+      _snack(trf('그림 {0}장으로 PDF 를 만들었습니다: {1}', [images.length, vBasename(out)]));
+    } catch (e) {
+      _snack(trf('PDF 를 만들지 못했습니다: {0}', [e]));
+    }
+    await _refreshAll([dir]);
+  }
+
   Future<void> _menu(_Pane pane, FileEntry e, Offset at) async {
     setState(() => _active = _panes.indexOf(pane));
     pane.focused = e.path;
     pane.changed();
     final video = !e.isDir && isVideoFile(e.path);
     final dav = isDav(e.path);
+    // 그림 → PDF: 표시한 것 중 그림 (누른 것이 표시에 없으면 누른 것만)
+    final viewer = c.settings.components.contains('viewer');
+    final picked = pane.marked.contains(e.path) ? pane.marked.toList() : [e.path];
+    final images = [for (final x in picked) if (c.settings.imageExts.contains(extOf(x))) x];
+    final ext = extOf(e.path);
+    final viewable = viewer && !e.isDir &&
+        (c.settings.imageExts.contains(ext) || ext == 'pdf' || zipExtensions.contains(ext));
     final dual = _dual;
     final items = <(String, IconData, String)>[
       if (e.isDir) ('open', Icons.folder_open, tr('열기')),
       if (e.isDir && dual) ('openOther', Icons.vertical_split_outlined, tr('다른 창에서 열기')),
       if (e.isDir) ('playFolder', Icons.play_circle_outline, tr('이 폴더의 동영상 재생')),
       if (video) ('playInternal', Icons.play_circle_outline, tr('내장 플레이어로 재생')),
+      if (viewable) ('view', Icons.visibility_outlined, tr('보기')),
       if (!e.isDir) ('openWith', Icons.open_in_new, tr('다른 앱으로 열기')),
       if (!e.isDir && !video) ('openDefault', Icons.launch, tr('기본 앱으로 열기')),
       if (video && !dav) ('addMkv', Icons.playlist_add, tr('MKV 목록에 추가')),
+      if (viewer && images.isNotEmpty)
+        ('toPdf', Icons.picture_as_pdf_outlined,
+            images.length == 1 ? tr('PDF 로 만들기') : trf('그림 {0}장을 PDF 로 만들기', [images.length])),
       ('select', Icons.check_circle_outline, tr('선택')),
       ('rename', Icons.drive_file_rename_outline, tr('이름 변경')),
       if (dual) ('copy', Icons.copy_outlined, tr('다른 창으로 복사')),
@@ -675,6 +757,10 @@ class _ExplorerPageState extends State<ExplorerPage> {
         await _paste(pane, e.isDir ? e.path : vDirname(e.path));
       case 'delete':
         await _delete(pane, [e.path]);
+      case 'view':
+        await _open(e.path, pane: pane);
+      case 'toPdf':
+        await _imagesToPdf(images);
       case 'reveal':
         await c.services.shell.revealFile(e.path);
       case 'info':

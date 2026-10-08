@@ -612,6 +612,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     CopySyncSettings(c: c),
                     // WebDAV 서버 (탐색기 · Rsync 화면 위쪽 탭)
                     WebDavSettings(c: c),
+                    ViewerSettings(c: c),
                   ]),
                   // Rsync 화면: rsync 옵션 · 가져오기 · 실시간 동기화 (lsync) · 백그라운드로 실행
                   _group('rsync', Icons.sync_alt, 'Rsync', [

@@ -9,6 +9,9 @@ abstract class StorageService {
 
   Future<List<String>> pickSubtitles({String? initialDirectory});
 
+  /// 확장자로 거른 파일 여러 개 고르기 (PDF 에 넣을 그림 등)
+  Future<List<String>> pickFiles({required String title, required List<String> extensions, String? initialDirectory});
+
   /// 폴더 안의 파일 경로 목록 (하위 폴더 제외)
   Future<List<String>> listFiles(String directory);
 

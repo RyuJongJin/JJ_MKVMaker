@@ -74,6 +74,10 @@ class AndroidStorageService extends DesktopStorageService {
   Future<List<String>> pickSubtitles({String? initialDirectory}) =>
       _pick(tr('자막 파일 선택'), subtitleExtensions, initialDirectory: initialDirectory);
 
+  @override
+  Future<List<String>> pickFiles({required String title, required List<String> extensions, String? initialDirectory}) =>
+      _pick(title, extensions, initialDirectory: initialDirectory);
+
   /// 임시 폴더: 캐시 폴더가 아니라 앱 데이터 폴더 아래 tmp.
   /// 저장 공간이 모자라면 Android 가 캐시 폴더를 마음대로 비워, 쓰는 중인 임시 파일 (AI 음성 · 자막 사본) 이
   /// 사라질 수 있다. 대신 앱을 켤 때 (처음 쓸 때) 지난 실행의 임시 파일을 지운다.
