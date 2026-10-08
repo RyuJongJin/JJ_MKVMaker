@@ -10,6 +10,7 @@ import '../core/charset_detector.dart';
 import '../core/encode_options.dart';
 import '../core/languages.dart';
 import '../core/mkv_command_builder.dart';
+import '../core/vfs.dart';
 import '../core/webdav.dart';
 import '../core/models.dart';
 import '../core/output_paths.dart';
@@ -1125,7 +1126,8 @@ class AppController extends ChangeNotifier {
     final ext = p.extension(videos.first).replaceFirst('.', '').toLowerCase();
     final program = settings.externalPlayers[ext];
     if (!internal && program != null && program.isNotEmpty) {
-      await services.shell.openExternal(program, videos);
+      // WebDAV 는 스트리밍 주소 (아이디 포함) 로 넘긴다
+      await services.shell.openExternal(program, videos.map(vPlayable).toList());
       _log(trf('외부 프로그램으로 재생: {0} ← {1}개', [program == 'system' ? tr('기본 연결 프로그램') : p.basename(program), videos.length]));
       return null;
     }
@@ -1133,7 +1135,9 @@ class AppController extends ChangeNotifier {
       if (!keepOrder) videos.sort((a, b) => naturalCompare(p.basename(a), p.basename(b)));
       return (videos, 0);
     }
-    final siblings = await services.storage.listFiles(p.dirname(videos.first));
+    final siblings = isDav(videos.first)
+        ? [for (final e in await vList(vDirname(videos.first))) if (!e.isDir) e.path]
+        : await services.storage.listFiles(p.dirname(videos.first));
     return buildPlaylist(videos.first, siblings, settings.playlistMode);
   }
 
@@ -1167,6 +1171,17 @@ class AppController extends ChangeNotifier {
   Future<List<String>> externalSubtitlesFor(String video) async {
     final out = <String>[];
     final storage = services.storage;
+    if (isDav(video)) {
+      // WebDAV: 같은 폴더의 자막만 (작으므로 임시 폴더로 받아서 넘긴다)
+      try {
+        final files = [for (final e in await vList(vDirname(video))) if (!e.isDir) e.path];
+        final temp = await storage.tempDirectory();
+        for (final d in findSiblingSubtitles(video, files)) {
+          out.add(await vLocalCopy(d.path, temp));
+        }
+      } catch (_) {}
+      return out;
+    }
     out.addAll(findSiblingSubtitles(video, await storage.listFiles(p.dirname(video))).map((d) => d.path));
     final base = p.basenameWithoutExtension(video).toLowerCase();
     for (final f in await storage.listFiles(outputDirFor(video))) {

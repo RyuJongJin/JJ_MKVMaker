@@ -575,16 +575,10 @@ class _ExplorerPageState extends State<ExplorerPage> {
     }
   }
 
-  /// 동영상 재생 (WebDAV 는 받은 뒤)
+  /// 동영상 재생 (WebDAV 는 받지 않고 바로 스트리밍)
   Future<void> _play(List<String> paths, {bool internal = false, bool keepOrder = false}) async {
-    final local = <String>[];
-    for (final x in paths) {
-      final l = await _fetch(x);
-      if (l == null) return;
-      local.add(l);
-    }
-    if (!mounted || local.isEmpty) return;
-    await playFiles(context, c, local, internal: internal, keepOrder: keepOrder);
+    if (!mounted || paths.isEmpty) return;
+    await playFiles(context, c, paths, internal: internal, keepOrder: keepOrder);
   }
 
   Future<void> _menu(_Pane pane, FileEntry e, Offset at) async {
@@ -597,7 +591,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
     final items = <(String, IconData, String)>[
       if (e.isDir) ('open', Icons.folder_open, tr('열기')),
       if (e.isDir && dual) ('openOther', Icons.vertical_split_outlined, tr('다른 창에서 열기')),
-      if (e.isDir && !dav) ('playFolder', Icons.play_circle_outline, tr('이 폴더의 동영상 재생')),
+      if (e.isDir) ('playFolder', Icons.play_circle_outline, tr('이 폴더의 동영상 재생')),
       if (video) ('playInternal', Icons.play_circle_outline, tr('내장 플레이어로 재생')),
       if (!e.isDir) ('openWith', Icons.open_in_new, tr('다른 앱으로 열기')),
       if (!e.isDir && !video) ('openDefault', Icons.launch, tr('기본 앱으로 열기')),

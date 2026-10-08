@@ -9,6 +9,7 @@ import 'package:window_manager/window_manager.dart';
 
 import '../app/app_controller.dart';
 import '../core/playlist.dart';
+import '../core/vfs.dart';
 import '../core/srt.dart' show formatSrtTime;
 import '../services/media_player.dart';
 import 'app_actions.dart';
@@ -377,8 +378,8 @@ class _PlayerPageState extends State<PlayerPage> {
       ], child: Text(tr('재생 속도'))),
       item(tr('재생 목록'), () => setState(() => _showList = !_showList), key: 'L', checked: _showList),
       const Divider(height: 1),
-      if (vlc != null) item(tr('VLC 로 열기'), () => c.services.shell.openExternal(vlc, [_currentFile])),
-      item(tr('기본 프로그램으로 열기'), () => c.services.shell.openExternal('system', [_currentFile])),
+      if (vlc != null) item(tr('VLC 로 열기'), () => c.services.shell.openExternal(vlc, [vPlayable(_currentFile)])),
+      item(tr('기본 프로그램으로 열기'), () => c.services.shell.openExternal('system', [vPlayable(_currentFile)])),
     ];
   }
 

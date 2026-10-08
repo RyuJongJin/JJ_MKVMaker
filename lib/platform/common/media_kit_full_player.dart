@@ -5,6 +5,7 @@ import 'package:media_kit/media_kit.dart' as mk;
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:path/path.dart' as p;
 
+import '../../core/vfs.dart';
 import '../../services/media_player.dart';
 import '../../l10n/tr.dart';
 
@@ -104,7 +105,7 @@ class MediaKitFullPlayer implements MediaPlayer {
   Future<void> open(List<String> files, {int start = 0}) async {
     _files = List.of(files);
     _externalSub = null;
-    await _p.open(mk.Playlist([for (final f in files) mk.Media(f)], index: start));
+    await _p.open(mk.Playlist([for (final f in files) await _media(f)], index: start));
   }
 
   @override
@@ -112,9 +113,20 @@ class MediaKitFullPlayer implements MediaPlayer {
     if (_files.isEmpty) return open(files);
     for (final f in files) {
       _files.add(f);
-      await _p.add(mk.Media(f));
+      await _p.add(await _media(f));
     }
     _emit();
+  }
+
+  /// WebDAV 는 받지 않고 바로 스트리밍 (주소 + 인증 헤더, 자체 서명 인증서면 확인 안 함)
+  Future<mk.Media> _media(String f) async {
+    if (!isDav(f)) return mk.Media(f);
+    final s = davStream(f);
+    if (s.insecure) {
+      final native = _p.platform;
+      if (native is mk.NativePlayer) await native.setProperty('tls-verify', 'no');
+    }
+    return mk.Media(s.url, httpHeaders: s.headers);
   }
 
   @override

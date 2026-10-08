@@ -5,6 +5,7 @@ import 'package:jj_mkvmaker/app/app_controller.dart';
 import 'package:jj_mkvmaker/app/live_sync.dart';
 import 'package:jj_mkvmaker/app/settings.dart';
 import 'package:jj_mkvmaker/core/file_ops.dart';
+import 'package:jj_mkvmaker/core/playlist.dart' show PlaylistMode;
 import 'package:jj_mkvmaker/core/vfs.dart';
 import 'package:jj_mkvmaker/core/webdav.dart';
 import 'package:jj_mkvmaker/platform/windows/desktop_storage_service.dart';
@@ -158,5 +159,33 @@ void main() {
     expect(File(p.join(remote.path, 'mirror', 'old.txt')).existsSync(), isFalse);
     expect(live.pending[LiveSync.keyOf(pair)], isEmpty);
     live.dispose();
+  });
+
+  test('스트리밍 재생: 주소 · 인증 헤더, 같은 폴더 동영상 목록 · 자막 (받지 않고)', () async {
+    rf('영상/1화.mkv', 'v1');
+    rf('영상/2화.mkv', 'v2');
+    rf('영상/1화.ko.srt', '1\n00:00:01,000 --> 00:00:02,000\n안녕\n');
+    rf('영상/메모.txt', 't');
+    final s = davStream('dav://$id/영상/1화.mkv');
+    expect(s.url, '${server.url}/${Uri.encodeComponent('영상')}/${Uri.encodeComponent('1화.mkv')}');
+    expect(s.headers['Authorization'], startsWith('Basic '));
+    expect(vPlayable('dav://$id/영상/1화.mkv'), startsWith('http://user:pass@127.0.0.1:'));
+    expect(vPlayable(r'C:\a.mkv'), r'C:\a.mkv');
+    // 주소 + 헤더로 실제로 받을 수 있다 (플레이어와 같은 요청)
+    final http = HttpClient();
+    final req = await http.getUrl(Uri.parse(s.url));
+    s.headers.forEach(req.headers.set);
+    final res = await req.close();
+    expect(await res.transform(const SystemEncoding().decoder).join(), 'v1');
+    http.close();
+    final c = AppController(PlatformServices(mediaTool: ProcessMediaTool('x', 'y'), storage: DesktopStorageService()));
+    c.settings.playlistMode = PlaylistMode.folder;
+    final before = server.requests.where((r) => r.startsWith('GET')).length;
+    final plan = await c.preparePlayback(['dav://$id/영상/1화.mkv']);
+    expect(plan!.$1, ['dav://$id/영상/1화.mkv', 'dav://$id/영상/2화.mkv']);
+    expect(server.requests.where((r) => r.startsWith('GET')).length, before); // 동영상은 받지 않음
+    final subs = await c.externalSubtitlesFor('dav://$id/영상/1화.mkv');
+    expect(subs.map(p.basename), ['1화.ko.srt']);
+    expect(File(subs.single).readAsStringSync(), contains('안녕'));
   });
 }

@@ -91,6 +91,9 @@ class DavClient {
     return _base.replace(path: path);
   }
 
+  /// Authorization 헤더 값 (아이디 · 비밀번호가 없으면 null). 플레이어가 스트리밍할 때도 쓴다.
+  String? get authHeader => _auth;
+
   String? get _auth => server.user.isEmpty && server.password.isEmpty
       ? null
       : 'Basic ${base64Encode(utf8.encode('${server.user}:${server.password}'))}';

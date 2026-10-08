@@ -37,6 +37,27 @@ class DavPath {
   DavClient get client => DavRegistry.client(server);
 }
 
+/// WebDAV 파일을 받지 않고 바로 재생 (스트리밍) 할 주소 · 헤더. [withUserInfo] 면 주소에 아이디:비밀번호를 넣는다
+/// (헤더를 넘길 수 없는 외부 프로그램용).
+({String url, Map<String, String> headers, bool insecure}) davStream(String path, {bool withUserInfo = false}) {
+  final d = DavPath.parse(path);
+  final server = DavRegistry.server(d.server);
+  final client = d.client;
+  var uri = client.uriOf(d.rel);
+  if (withUserInfo && server != null && server.user.isNotEmpty) {
+    uri = uri.replace(userInfo: '${Uri.encodeComponent(server.user)}:${Uri.encodeComponent(server.password)}');
+  }
+  final auth = client.authHeader;
+  return (
+    url: uri.toString(),
+    headers: {'Authorization': ?auth},
+    insecure: server?.insecure ?? false,
+  );
+}
+
+/// 플레이어 · 외부 프로그램에 넘길 주소: WebDAV 는 스트리밍 주소 (아이디 포함), 로컬은 그대로
+String vPlayable(String path) => isDav(path) ? davStream(path, withUserInfo: true).url : path;
+
 /// 경로를 한 모양으로 (dav:// 만 정리, 로컬은 그대로)
 String vNorm(String path) => isDav(path) ? DavPath.parse(path).full : path;
 String vJoin(String dir, String name) => isDav(dir) ? DavPath.parse(dir).child(name).full : p.join(dir, name);
