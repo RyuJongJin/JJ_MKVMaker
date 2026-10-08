@@ -384,10 +384,12 @@ class _PlayerPageState extends State<PlayerPage> {
         builder: (_, s, _) {
           final total = s.duration.inMilliseconds.toDouble();
           final pos = (_seekDrag ?? s.position.inMilliseconds.toDouble()).clamp(0.0, total <= 0 ? 1.0 : total);
+          // 9: 손가락 (Android) 은 버튼을 크게 · 넉넉하게 (작고 촘촘해 누르기 어려웠던 것)
+          final touch = Platform.isAndroid;
           IconButton btn(IconData i, String tip, VoidCallback onTap, {double size = 22}) => IconButton(
                 tooltip: tip,
-                iconSize: size,
-                visualDensity: VisualDensity.compact,
+                iconSize: touch ? size + 6 : size,
+                visualDensity: touch ? VisualDensity.standard : VisualDensity.compact,
                 color: Colors.white,
                 onPressed: onTap,
                 icon: Icon(i),
@@ -416,7 +418,19 @@ class _PlayerPageState extends State<PlayerPage> {
                 Text(formatSrtTime(s.duration).substring(0, 8),
                     style: const TextStyle(fontSize: 12, color: Colors.white70, fontFamily: 'Consolas')),
               ]),
+              // 손가락: 재생 버튼 줄과 나머지 (음량 · 자막 · 목록 · 전체 화면) 줄을 나눠 넉넉하게
+              if (touch)
+                Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
+                  btn(Icons.skip_previous, tr('이전 (P)'), () => pl.previous()),
+                  btn(Icons.replay_10, tr('10초 뒤로 (←)'), () => _seekBy(-10)),
+                  btn(s.playing ? Icons.pause_circle_filled : Icons.play_circle_fill, tr('재생/일시정지 (Space)'),
+                      () => pl.playOrPause(), size: 40),
+                  btn(Icons.stop, tr('정지'), () => pl.stop()),
+                  btn(Icons.forward_10, tr('10초 앞으로 (→)'), () => _seekBy(10)),
+                  btn(Icons.skip_next, tr('다음 (N)'), () => pl.next()),
+                ]),
               Row(children: [
+                if (!touch) ...[
                 btn(Icons.skip_previous, tr('이전 (P)'), () => pl.previous()),
                 if (!compact) btn(Icons.replay_10, tr('10초 뒤로 (←)'), () => _seekBy(-10)),
                 btn(s.playing ? Icons.pause_circle_filled : Icons.play_circle_fill, tr('재생/일시정지 (Space)'),
@@ -425,6 +439,7 @@ class _PlayerPageState extends State<PlayerPage> {
                 if (!compact) btn(Icons.forward_10, tr('10초 앞으로 (→)'), () => _seekBy(10)),
                 btn(Icons.skip_next, tr('다음 (N)'), () => pl.next()),
                 const SizedBox(width: 8),
+                ],
                 btn(s.volume == 0 ? Icons.volume_off : Icons.volume_up, tr('음소거 (M)'), _toggleMute),
                 if (!compact)
                   SizedBox(
@@ -463,7 +478,7 @@ class _PlayerPageState extends State<PlayerPage> {
           List<({String label, bool checked, VoidCallback onTap})> items) =>
       PopupMenuButton<int>(
         tooltip: tip,
-        icon: Icon(icon, color: Colors.white, size: 22),
+        icon: Icon(icon, color: Colors.white, size: Platform.isAndroid ? 28 : 22),
         itemBuilder: (_) => [
           for (var i = 0; i < items.length; i++)
             CheckedPopupMenuItem(value: i, checked: items[i].checked, child: Text(items[i].label)),

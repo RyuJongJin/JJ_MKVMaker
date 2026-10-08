@@ -291,7 +291,8 @@ class _BrowserPageState extends State<BrowserPage> with RouteAware {
   @override
   void didPushNext() {
     _visible = false;
-    _nav?.pauseMedia();
+    // 환경 설정 > 웹 브라우저 > "다른 화면으로 가면 페이지 소리 멈춤" (끄면 다른 화면에서도 계속 들림)
+    if (widget.c.settings.webPauseOnLeave) _nav?.pauseMedia();
   }
 
   /// 설정 화면 등에서 돌아왔다: 바뀐 광고 설정을 지금 페이지에 적용
@@ -312,7 +313,7 @@ class _BrowserPageState extends State<BrowserPage> with RouteAware {
   /// MKV 화면 등으로 가며 브라우저 화면이 닫힌다: 살려 둔 웹뷰에서 소리만 나지 않게 멈춘다
   @override
   void didPop() {
-    _nav?.pauseMedia();
+    if (widget.c.settings.webPauseOnLeave) _nav?.pauseMedia();
   }
 
   @override
@@ -519,12 +520,14 @@ class _BrowserPageState extends State<BrowserPage> with RouteAware {
           icon: Icon(i, size: 20, color: color),
           onPressed: f,
         );
-    // 좁은 화면: 둘째 줄에 페이지 이동 · 주소 · 다운로드 (외부 브라우저 · 작업 현황은 빼고, 다운로드는 아이콘만)
-    final compact = isCompact(context);
+    // 주소 칸이 좁아지면 (폰 세로 · 태블릿 세로 · 폰 가로 100%) 자주 안 쓰는 버튼은 ⋮ 메뉴로 - 주소가 "http" 만 보이거나
+    // 아예 사라지던 것. 버튼을 없애지는 않는다.
     return AppTopBar(
       nav: const AppNavButtons(onBrowserPage: true),
       actions: AppActions(c: widget.c),
-      middle: Row(children: [
+      middle: LayoutBuilder(builder: (context, box) {
+        final compact = box.maxWidth < 640;
+        return Row(children: [
         if (!compact) ...[
           Container(width: 1, height: 24, color: JjColors.border),
           const SizedBox(width: 4),
@@ -535,7 +538,7 @@ class _BrowserPageState extends State<BrowserPage> with RouteAware {
         _progress < 1
             ? btn(Icons.close, tr('중지'), () => _nav?.stop())
             : btn(Icons.refresh, tr('새로고침 (F5)'), () => _nav?.reload()),
-        btn(Icons.home_outlined, tr('홈'), () => _go(widget.c.settings.homeUrl)),
+        if (!compact) btn(Icons.home_outlined, tr('홈'), () => _go(widget.c.settings.homeUrl)),
         const SizedBox(width: 6),
         Expanded(
           child: TextField(
@@ -561,6 +564,7 @@ class _BrowserPageState extends State<BrowserPage> with RouteAware {
           ),
         ),
         const SizedBox(width: 4),
+        if (!compact)
         btn(
             Icons.translate,
             _trOn
@@ -596,9 +600,41 @@ class _BrowserPageState extends State<BrowserPage> with RouteAware {
         if (!compact)
           btn(_work ? Icons.view_sidebar : Icons.view_sidebar_outlined, tr('작업 현황 보기 · 화면 분할 (Ctrl+Shift+J)'),
               _toggleWork, color: widget.c.busy ? JjColors.accent : null),
-        btn(_panel ? Icons.bookmarks : Icons.bookmarks_outlined, tr('즐겨찾기 관리 (Ctrl+Shift+B)'),
-            () => setState(() => _panel = !_panel)),
-      ]),
+        if (!compact)
+          btn(_panel ? Icons.bookmarks : Icons.bookmarks_outlined, tr('즐겨찾기 관리 (Ctrl+Shift+B)'),
+              () => setState(() => _panel = !_panel))
+        else
+          PopupMenuButton<String>(
+            tooltip: tr('더 보기'),
+            icon: const Icon(Icons.more_vert, size: 20),
+            onSelected: (v) => switch (v) {
+              'home' => _go(widget.c.settings.homeUrl),
+              'translate' => _setTranslate(!_trOn, force: true),
+              'external' => _openExternal(_url),
+              'work' => _toggleWork(),
+              _ => setState(() => _panel = !_panel),
+            },
+            itemBuilder: (_) => [
+              PopupMenuItem(value: 'home', child: ListTile(dense: true, leading: const Icon(Icons.home_outlined), title: Text(tr('홈')))),
+              PopupMenuItem(
+                  value: 'translate',
+                  child: ListTile(
+                      dense: true,
+                      leading: Icon(Icons.translate, color: _trOn ? JjColors.accent : null),
+                      title: Text(_trOn ? tr('원문 보기 (번역 끄기)') : tr('이 페이지 번역')))),
+              PopupMenuItem(
+                  value: 'bookmarks',
+                  child: ListTile(dense: true, leading: const Icon(Icons.bookmarks_outlined), title: Text(tr('즐겨찾기 관리')))),
+              PopupMenuItem(
+                  value: 'work',
+                  child: ListTile(dense: true, leading: const Icon(Icons.view_sidebar_outlined), title: Text(tr('작업 현황')))),
+              PopupMenuItem(
+                  value: 'external',
+                  child: ListTile(dense: true, leading: const Icon(Icons.open_in_new), title: Text(tr('외부 브라우저로 열기')))),
+            ],
+          ),
+      ]);
+      }),
     );
   }
 }

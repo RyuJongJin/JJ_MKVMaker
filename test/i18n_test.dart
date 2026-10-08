@@ -120,13 +120,13 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     await tester.pumpWidget(MaterialApp(home: HomePage(c: c, onExit: () {})));
-    expect(find.text('동영상 추가'), findsOneWidget);
+    expect(find.text('동영상 추가'), findsWidgets);
     await tester.runAsync(() => i18n.apply('en'));
     await tester.pump();
-    expect(find.text('Add videos'), findsOneWidget);
+    expect(find.text('Add videos'), findsWidgets);
     expect(find.text('동영상 추가'), findsNothing);
     await tester.runAsync(() => i18n.apply('zh-Hans'));
     await tester.pump();
-    expect(find.text('添加视频'), findsOneWidget);
+    expect(find.text('添加视频'), findsWidgets);
   });
 }

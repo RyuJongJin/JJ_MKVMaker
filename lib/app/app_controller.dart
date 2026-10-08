@@ -177,11 +177,8 @@ class AppController extends ChangeNotifier {
       return;
     }
     encoders = await _tool.encoders();
-    final missing = [
-      for (final c in VideoCodecChoice.values)
-        if (c != VideoCodecChoice.copy && !isCodecAvailable(c)) c.label,
-    ];
-    _log(trf('FFmpeg 준비됨: {0}' '{1}', [ffmpegVersion, missing.isEmpty ? '' : trf(' ⚠ 사용할 수 없는 코덱: {0}', [missing.join(', ')])]));
+    // 이 기기에 없는 코덱은 코덱 고르기 목록에 "(사용 불가)" 로 보인다. 켤 때마다 경고처럼 남기지 않는다 (고장으로 보였음)
+    _log(trf('FFmpeg 준비됨: {0}' '{1}', [ffmpegVersion, '']));
   }
 
   bool isCodecAvailable(VideoCodecChoice c) =>

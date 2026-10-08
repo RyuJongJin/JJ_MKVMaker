@@ -203,23 +203,58 @@ class AppNavButtons extends StatelessWidget {
           'downloads' => here ? tr('다운로드 목록 (지금 여기)') : tr('다운로드 목록'),
           _ => id,
         };
-    Widget btn(Widget icon, String tip, VoidCallback? f, {bool here = false}) => SizedBox(
-          width: 40,
-          height: 40,
-          child: IconButton(
-            tooltip: tip,
-            padding: EdgeInsets.zero,
-            isSelected: here,
-            icon: icon,
-            onPressed: f,
-          ),
-        );
+    // 좁은 화면 (폰): 아이콘 아래에 짧은 이름 - 글자 없는 작은 아이콘만 늘어서 무엇인지 몰랐던 것
+    final labels = isCompact(context);
+    Widget btn(Widget icon, String tip, VoidCallback? f, {bool here = false, String label = ''}) => labels
+        ? Tooltip(
+            message: tip,
+            child: InkWell(
+              onTap: f,
+              borderRadius: BorderRadius.circular(8),
+              child: SizedBox(
+                width: 54,
+                height: 46,
+                child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  IconTheme(
+                    data: IconThemeData(
+                        size: 20, color: here ? JjColors.accent : (f == null ? JjColors.textDim : JjColors.text)),
+                    child: icon,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(label,
+                      maxLines: 1,
+                      overflow: TextOverflow.clip,
+                      style: TextStyle(fontSize: 10, color: here ? JjColors.accent : JjColors.textDim)),
+                ]),
+              ),
+            ),
+          )
+        : SizedBox(
+            width: 40,
+            height: 40,
+            child: IconButton(
+              tooltip: tip,
+              padding: EdgeInsets.zero,
+              isSelected: here,
+              icon: icon,
+              onPressed: f,
+            ),
+          );
+    String short(String id) => switch (id) {
+          'mkv' => 'MKV',
+          'browser' => tr('브라우저'),
+          'explorer' => tr('탐색기'),
+          'rsync' => 'Rsync',
+          'downloads' => tr('다운로드'),
+          _ => id,
+        };
     return Row(mainAxisSize: MainAxisSize.min, children: [
       btn(
         Image.asset(appIconButtonAsset(scope?.controller.settings.appIcon),
-            width: 26, height: 26, filterQuality: FilterQuality.medium),
+            width: labels ? 22 : 26, height: labels ? 22 : 26, filterQuality: FilterQuality.medium),
         trf('홈 화면 ({0}) · 환경 설정에서 바꿈', [homeName]),
         scope == null ? null : () => toHome(context),
+        label: tr('홈'),
       ),
       // 설치한 화면들 (환경 설정 > 컴포넌트 의 순서). 하나뿐이면 버튼 줄은 그것만.
       for (final p in pages)
@@ -228,10 +263,12 @@ class AppNavButtons extends StatelessWidget {
           tip(p.id, p.id == current),
           p.id == current ? null : () => open(context, p.id),
           here: p.id == current,
+          label: short(p.id),
         ),
       btn(const Icon(Icons.arrow_back), tr('뒤로'),
           // 브라우저 화면: 뒤로 키는 웹 페이지 뒤로 (PopScope) 이지만 이 버튼은 화면 이동이라 바로 닫는다
-          atRoot ? null : () => onBrowserPage ? Navigator.pop(context) : Navigator.maybePop(context)),
+          atRoot ? null : () => onBrowserPage ? Navigator.pop(context) : Navigator.maybePop(context),
+          label: tr('뒤로')),
     ]);
   }
 }
@@ -440,6 +477,62 @@ class AppActions extends StatelessWidget {
     if (controller == null && exit == null) return const SizedBox();
     final usage = controller?.usage;
     final compact = isCompact(context);
+    if (compact) {
+      return Row(mainAxisSize: MainAxisSize.min, children: [
+        if (controller != null)
+          IconButton(
+            tooltip: tr('환경 설정'),
+            icon: Icon(onSettingsPage ? Icons.settings : Icons.settings_outlined,
+                color: onSettingsPage ? JjColors.accent : null),
+            onPressed: onSettingsPage
+                ? null
+                : () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => SettingsPage(c: controller))),
+          ),
+        PopupMenuButton<String>(
+          tooltip: tr('화면 크기 · 종료'),
+          icon: const Icon(Icons.more_vert),
+          onSelected: (v) {
+            final s = controller?.settings;
+            switch (v) {
+              case 'bigger' when s != null:
+                controller!.updateSettings((x) => x.uiScale = AppSettings.clampUiScale(s.uiScale + 0.1));
+              case 'smaller' when s != null:
+                controller!.updateSettings((x) => x.uiScale = AppSettings.clampUiScale(s.uiScale - 0.1));
+              case 'default' when s != null:
+                controller!.updateSettings((x) => x.uiScale = s.uiScaleDefault);
+              case 'exit':
+                exit?.call();
+            }
+          },
+          itemBuilder: (_) => [
+            if (controller != null) ...[
+              PopupMenuItem(
+                  value: 'bigger',
+                  child: ListTile(leading: const Icon(Icons.zoom_in), title: Text(tr('화면 크게')), dense: true)),
+              PopupMenuItem(
+                  value: 'smaller',
+                  child: ListTile(leading: const Icon(Icons.zoom_out), title: Text(tr('화면 작게')), dense: true)),
+              PopupMenuItem(
+                  value: 'default',
+                  child: ListTile(
+                      leading: const Icon(Icons.fit_screen_outlined),
+                      title: Text(trf('기본 크기 ({0}%)', [(controller.settings.uiScaleDefault * 100).round()])),
+                      subtitle: Text(trf('지금 {0}%', [(controller.settings.uiScale * 100).round()])),
+                      dense: true)),
+            ],
+            if (exit != null) ...[
+              const PopupMenuDivider(),
+              PopupMenuItem(
+                  value: 'exit',
+                  child: ListTile(
+                      leading: const Icon(Icons.power_settings_new, color: JjColors.danger),
+                      title: Text(tr('종료')),
+                      dense: true)),
+            ],
+          ],
+        ),
+      ]);
+    }
     return Row(mainAxisSize: MainAxisSize.min, children: [
       // CPU · MEM: 변환 · AI 작업이 PC 를 얼마나 쓰는지 (PC 전체 기준)
       if (usage != null && showUsage && !compact) UsageView(usage: usage),

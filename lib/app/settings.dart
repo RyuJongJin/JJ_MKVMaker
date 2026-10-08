@@ -193,6 +193,9 @@ class AppSettings {
   /// YouTube 페이지의 광고 배너 · 광고 영역 숨기기
   bool youtubeAdHide = true;
 
+  /// 웹 브라우저 위에 다른 화면이 올라오거나 다른 화면으로 가면 페이지의 동영상 · 소리를 멈춤 (끄면 계속 들림)
+  bool webPauseOnLeave = true;
+
   /// 다운로드 위치 (아래에 jj_yt-dlp, jj_aria2 생성). null 이면 프로그램 폴더
   String? downloadRoot;
 
@@ -426,6 +429,7 @@ class AppSettings {
         'moveTargets': [for (final t in moveTargets) t.toJson()],
         'youtubeAdSkip': youtubeAdSkip,
         'youtubeAdHide': youtubeAdHide,
+        'webPauseOnLeave': webPauseOnLeave,
         'downloadRoot': downloadRoot,
         'clipboardWatch': clipboardWatch,
         'minimizeToTray': minimizeToTray,
@@ -542,6 +546,7 @@ class AppSettings {
       ]
       ..youtubeAdSkip = j['youtubeAdSkip'] as bool? ?? true
       ..youtubeAdHide = j['youtubeAdHide'] as bool? ?? true
+      ..webPauseOnLeave = j['webPauseOnLeave'] as bool? ?? true
       ..downloadRoot = j['downloadRoot'] as String?
       ..clipboardWatch = j['clipboardWatch'] as bool? ?? true
       ..minimizeToTray = j['minimizeToTray'] as bool? ?? true

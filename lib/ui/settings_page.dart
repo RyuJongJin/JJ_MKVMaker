@@ -493,6 +493,12 @@ class _SettingsPageState extends State<SettingsPage> {
                       subtitle: Text(tr('목록 · 영상 옆 · 영상 위에 나오는 광고 영역을 감춥니다')),
                     ),
                     SwitchListTile(
+                      value: s.webPauseOnLeave,
+                      onChanged: (v) => c.updateSettings((x) => x.webPauseOnLeave = v),
+                      title: Text(tr('다른 화면으로 가면 페이지 소리 멈춤')),
+                      subtitle: Text(tr('끄면 환경 설정 · 다운로드 목록 · 다른 화면을 보는 동안에도 웹 페이지의 소리가 계속 들립니다')),
+                    ),
+                    SwitchListTile(
                       value: s.webTranslate,
                       onChanged: (v) => c.updateSettings((x) => x.webTranslate = v),
                       title: Text(tr('웹 페이지 자동 번역')),

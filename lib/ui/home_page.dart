@@ -57,7 +57,10 @@ class HomePage extends StatelessWidget {
             const Divider(height: 1),
             Expanded(
               // 좁은 화면 (접은 폴드 · 휴대폰 세로): 목록을 위에, 자세히 보기를 아래에
-              child: isCompact(context)
+              child: isCompact(context) && c.videos.isEmpty
+                  // 8: 좁은 화면에 동영상이 없으면 빈 목록 · 안내로 나누지 않고 한 화면에 안내 + [동영상 추가]
+                  ? _EmptyHint(onAdd: c.pickVideos)
+                  : isCompact(context)
                   ? Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -67,7 +70,7 @@ class HomePage extends StatelessWidget {
                         const Divider(height: 1),
                         Expanded(
                           child: c.selected == null
-                              ? const _EmptyHint()
+                              ? _EmptyHint(onAdd: c.pickVideos)
                               : _VideoDetail(c: c, v: c.selected!),
                         ),
                       ],
@@ -75,11 +78,14 @@ class HomePage extends StatelessWidget {
                   : Row(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        SizedBox(width: 320, child: _VideoList(c: c)),
+                        // 13: 큰 화면 (태블릿 세로 등) 은 목록도 넓게 - 제목이 앞부분만 보여 구분이 안 되던 것
+                        SizedBox(
+                            width: (MediaQuery.sizeOf(context).width * 0.4).clamp(320.0, 640.0),
+                            child: _VideoList(c: c)),
                         const VerticalDivider(width: 1),
                         Expanded(
                           child: c.selected == null
-                              ? const _EmptyHint()
+                              ? _EmptyHint(onAdd: c.pickVideos)
                               : _VideoDetail(c: c, v: c.selected!),
                         ),
                       ],
@@ -193,6 +199,9 @@ class _TopBar extends StatelessWidget {
       if (need() > w) dlBox = false;
       if (need() > w) mkvText = false;
 
+      // 7: 폰에는 "탐색기에서 끌어다 놓기" 가 없다
+      final addTip = Platform.isAndroid ? tr('동영상 추가') : tr('동영상 추가 (탐색기에서 끌어다 놓아도 됩니다)');
+
       // 글이 있는 버튼, 또는 (좁을 때) 아이콘만 있는 버튼
       Widget action(IconData icon, String label, VoidCallback? onPressed,
           {required bool text, required String tip, Color? color}) {
@@ -207,6 +216,60 @@ class _TopBar extends StatelessWidget {
                   style: IconButton.styleFrom(
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                       side: const BorderSide(color: JjColors.border))),
+        );
+      }
+
+      // 2: 좁은 화면 (폰 세로) 에서는 버튼 글자를 숨기지 않고 옆으로 밀어 본다. 가장 많이 쓰는 [MKV 만들기] 를 맨 앞에.
+      if (compact) {
+        VoidCallback? build0() =>
+            !canBuild ? null : (batch.isEmpty ? () => _confirmBuildAll(context) : () => c.buildVideos(batch));
+        return AppTopBar(
+          nav: const AppNavButtons(),
+          actions: AppActions(c: c, onExit: onExit, showUsage: false),
+          middle: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(children: [
+              Tooltip(
+                message: trf('MKV 만들기{0}', [count]),
+                child: FilledButton.icon(
+                  onPressed: build0(),
+                  icon: Icon(c.busy ? Icons.playlist_add : Icons.play_arrow, size: 20),
+                  label: Text(trf('MKV 만들기{0}{1}', [count, c.busy ? tr(' (대기열)') : ''])),
+                ),
+              ),
+              const SizedBox(width: 8),
+              action(Icons.add, tr('동영상 추가'), c.pickVideos, text: true, tip: addTip),
+              if (hasPlayer) ...[
+                const SizedBox(width: 8),
+                action(
+                    Icons.playlist_play,
+                    trf('선택한 파일 재생{0}', [count]),
+                    batch.isEmpty ? null : () => playFiles(context, c, [for (final v in batch) v.path], keepOrder: true),
+                    text: true,
+                    tip: tr('선택한 파일 재생: 지금 보고 있는 동영상 (여러 개는 목록에서 체크)')),
+              ],
+              if (hasAi) ...[
+                const SizedBox(width: 8),
+                action(Icons.auto_awesome, trf('자막 만들기{0}', [count]),
+                    canBatch ? () => showAiDialog(context, c, batch.first, targets: batch) : null,
+                    text: true, tip: trf('자막 만들기: {0}', [_batchHint(c, tr('AI 자막을 만듭니다'))])),
+                const SizedBox(width: 8),
+                action(Icons.auto_mode, trf('자막 만들기 & MKV 만들기{0}', [count]),
+                    canBatch ? () => showAiDialog(context, c, batch.first, targets: batch, thenBuild: true) : null,
+                    text: true,
+                    tip: trf('자막 만들기 & MKV 만들기: {0}', [_batchHint(c, tr('AI 자막을 만들고 이어서 MKV 로 만듭니다'))])),
+              ],
+              const SizedBox(width: 8),
+              action(Icons.folder_special_outlined, tr('결과 폴더'), c.selected == null ? null : () => _openOutput(context),
+                  text: true, tip: tr('결과 폴더 열기')),
+              if (c.busy) ...[
+                const SizedBox(width: 8),
+                JobIndicator(c: c, compact: true, iconOnly: false),
+                const SizedBox(width: 8),
+                action(Icons.stop, tr('취소'), c.cancel, text: true, tip: tr('작업 취소'), color: JjColors.danger),
+              ],
+            ]),
+          ),
         );
       }
 
@@ -225,7 +288,7 @@ class _TopBar extends StatelessWidget {
                 scrollDirection: Axis.horizontal,
                 child: Row(children: [
                   action(Icons.add, tr('동영상 추가'), c.pickVideos,
-                      text: leftText, tip: tr('동영상 추가 (탐색기에서 끌어다 놓아도 됩니다)')),
+                      text: leftText, tip: addTip),
                   if (hasAi) ...[
                     const SizedBox(width: 8),
                     action(Icons.auto_awesome, trf('자막 만들기{0}', [count]),
@@ -423,11 +486,23 @@ class _EncodeBar extends StatelessWidget {
           ),
         ),
       ]);
+    if (compact) {
+      return Container(
+        width: double.infinity,
+        color: JjColors.panel,
+        padding: const EdgeInsets.fromLTRB(8, 4, 8, 6),
+        child: Wrap(
+          crossAxisAlignment: WrapCrossAlignment.center,
+          runSpacing: 6,
+          children: [for (final w in row.children) if (w is! Expanded) w],
+        ),
+      );
+    }
     return Container(
       height: 44,
       color: JjColors.panel,
-      padding: EdgeInsets.symmetric(horizontal: compact ? 8 : 16),
-      child: compact ? SingleChildScrollView(scrollDirection: Axis.horizontal, child: row) : row,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: row,
     );
   }
 }
@@ -697,21 +772,28 @@ class _StatusIcon extends StatelessWidget {
 // ───────── 오른쪽: 선택한 동영상 ─────────
 
 class _EmptyHint extends StatelessWidget {
-  const _EmptyHint();
+  final VoidCallback? onAdd;
+  const _EmptyHint({this.onAdd});
 
   @override
   Widget build(BuildContext context) => Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.video_library_outlined, size: 56, color: JjColors.textDim),
-            SizedBox(height: 12),
-            Text(tr('"동영상 추가" 로 파일을 선택하세요'),
-                style: TextStyle(color: JjColors.textDim)),
-            SizedBox(height: 4),
-            Text(tr('같은 폴더의 자막은 자동으로 추가됩니다'),
-                style: TextStyle(color: JjColors.textDim, fontSize: 12)),
-          ],
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.video_library_outlined, size: 56, color: JjColors.textDim),
+              const SizedBox(height: 12),
+              Text(tr('"동영상 추가" 로 파일을 선택하세요'), textAlign: TextAlign.center, style: const TextStyle(color: JjColors.textDim)),
+              const SizedBox(height: 4),
+              Text(tr('같은 폴더의 자막은 자동으로 추가됩니다'),
+                  textAlign: TextAlign.center, style: const TextStyle(color: JjColors.textDim, fontSize: 12)),
+              if (onAdd != null) ...[
+                const SizedBox(height: 16),
+                FilledButton.icon(onPressed: onAdd, icon: const Icon(Icons.add), label: Text(tr('동영상 추가'))),
+              ],
+            ],
+          ),
         ),
       );
 }
