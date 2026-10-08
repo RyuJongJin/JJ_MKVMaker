@@ -1544,7 +1544,9 @@ class _ExplorerPageState extends State<ExplorerPage> {
       child: Focus(
         autofocus: true,
         child: Scaffold(
-          body: ListenableBuilder(
+          body: SwipeNav(
+            current: widget.rsync ? 'rsync' : 'explorer',
+            child: ListenableBuilder(
             listenable: c,
             builder: (context, _) {
               _dropRemovedServers();
@@ -1559,6 +1561,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
                 ),
               ]);
             },
+          ),
           ),
         ),
       ),

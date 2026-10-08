@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import 'components.dart';
 import '../core/download_detect.dart';
 import '../core/encode_options.dart';
 import '../core/playlist.dart';
@@ -332,6 +333,15 @@ class AppSettings {
   /// Rsync 화면에서 마지막으로 연 폴더 (왼쪽 · 오른쪽)
   List<String> rsyncPaths = [];
 
+  /// 설치한 (켠) 컴포넌트 id (app/components.dart). 처음엔 기본으로 들어 있는 것 모두
+  List<String> components = AppComponent.defaultInstalled;
+
+  /// 화면 순서 (위쪽 이동 버튼 · 화면 가운데를 좌우로 밀어 이동): 마지막 다음은 처음으로
+  List<String> navOrder = AppComponent.defaultOrder;
+
+  /// 화면 가운데를 좌우로 밀어 다음 · 이전 화면으로
+  bool swipeNav = true;
+
   /// WebDAV 서버 (파일 탐색기 · Rsync 화면 위쪽 "SD 카드" 옆 탭). 비밀번호는 이 설정 파일에만.
   List<DavServer> webdavServers = [];
 
@@ -444,6 +454,9 @@ class AppSettings {
         'copyMethodFile': copyMethodFile,
         'copyMethodFolder': copyMethodFolder,
         'rsyncPaths': rsyncPaths,
+        'components': components,
+        'navOrder': navOrder,
+        'swipeNav': swipeNav,
         'webdavServers': [for (final x in webdavServers) x.toJson()],
         'rsyncOptions': rsyncOptions,
         'robocopyOptions': robocopyOptions,
@@ -550,6 +563,13 @@ class AppSettings {
       ..copyMethodFile = _method(j['copyMethodFile'])
       ..copyMethodFolder = _method(j['copyMethodFolder'])
       ..rsyncPaths = [for (final x in (j['rsyncPaths'] as List?) ?? const []) '$x']
+      ..components = j['components'] is List
+          ? [for (final x in j['components'] as List) if (AppComponent.byId('$x') != null) '$x']
+          : AppComponent.defaultInstalled
+      ..navOrder = j['navOrder'] is List
+          ? [for (final x in j['navOrder'] as List) if (AppComponent.defaultOrder.contains('$x')) '$x']
+          : AppComponent.defaultOrder
+      ..swipeNav = j['swipeNav'] as bool? ?? true
       ..webdavServers = [
         for (final x in (j['webdavServers'] as List?) ?? const [])
           if (x is Map) DavServer.fromJson(x),

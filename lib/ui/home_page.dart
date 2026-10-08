@@ -47,7 +47,8 @@ class HomePage extends StatelessWidget {
       listenable: c,
       builder: (context, _) => Scaffold(
         // 끌어다 놓기는 앱 전체에서 받는다 (ui/app_drop.dart 의 AppDropArea - 어느 화면에서 놓아도 이 목록에 추가)
-        body: SizedBox(
+        body: SwipeNav(
+          current: 'mkv',
           child: Column(
           children: [
             _TopBar(c: c, downloads: downloads, onExit: onExit, bookmarks: bookmarks),

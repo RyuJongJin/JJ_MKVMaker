@@ -34,7 +34,6 @@ import 'ui/app_actions.dart';
 import 'ui/app_drop.dart';
 import 'ui/browser_page.dart';
 import 'ui/downloads_page.dart';
-import 'ui/explorer_page.dart';
 import 'ui/exit_dialog.dart';
 import 'ui/home_page.dart';
 import 'ui/monitor_page.dart' show askLiveSyncStart;
@@ -295,13 +294,11 @@ Future<void> main(List<String> args) async {
         content: Text(trf('지난 실행이 정상적으로 끝나지 않았습니다 (마지막 확인 ' '{0}:{1}). ' '작업 기록에 남겨 두었습니다.', [crashed.$2.hour.toString().padLeft(2, '0'), crashed.$2.minute.toString().padLeft(2, '0')])),
       ));
     }
-    // 시작 화면을 "웹 브라우저" · "파일 탐색기" 로 정했으면 그 화면을 연다 (MKV 화면은 그 아래에 있음)
-    if (controller.settings.startScreen == 'browser') {
-      final nav = navigatorKey.currentState;
-      if (nav != null) unawaited(BrowserPage.open(nav, c: controller, downloads: downloads, bookmarks: bookmarks));
-    } else if (controller.settings.startScreen == 'files') {
-      final nav = navigatorKey.currentState;
-      if (nav != null) unawaited(ExplorerPage.open(nav, c: controller));
+    // 홈 화면이 MKV 화면이 아니면 (또는 MKV 만들기를 제거했으면) 그 화면을 연다 (MKV 화면은 그 아래에 있음)
+    final home = AppNavButtons.homeId(controller.settings);
+    final nav0 = navigatorKey.currentState;
+    if (home != 'mkv' && nav0 != null) {
+      unawaited(AppNavButtons.openPage(nav0, home, c: controller, downloads: downloads, bookmarks: bookmarks));
     }
     if (controller.settings.liveSyncOnStart == 'ask' && ctx.mounted) await askLiveSyncStart(ctx, live);
     // 다른 버전을 쓰다가 이 버전으로 돌아왔으면 보관해 둔 이 버전의 설정을 되살릴지
@@ -481,12 +478,10 @@ Future<void> runAndroid(String dataDir) async {
         return;
       }
     } catch (_) {}
-    if (controller.settings.startScreen == 'browser') {
-      final nav = navigatorKey.currentState;
-      if (nav != null) unawaited(BrowserPage.open(nav, c: controller, downloads: downloads, bookmarks: bookmarks));
-    } else if (controller.settings.startScreen == 'files') {
-      final nav = navigatorKey.currentState;
-      if (nav != null) unawaited(ExplorerPage.open(nav, c: controller));
+    final home = AppNavButtons.homeId(controller.settings);
+    final nav0 = navigatorKey.currentState;
+    if (home != 'mkv' && nav0 != null) {
+      unawaited(AppNavButtons.openPage(nav0, home, c: controller, downloads: downloads, bookmarks: bookmarks));
     }
     // 다시 켤 때 실시간 동기화를 골라서 시작
     final ctx0 = navigatorKey.currentContext;

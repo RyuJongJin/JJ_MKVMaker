@@ -62,9 +62,11 @@ class AndroidKeepAlive {
         _last = '';
         return;
       }
-      final key = '$text|$progress';
+      // 알림 아이콘: 받는 중이면 내려받기, 아니면 (동기화 · 작업) 좌우로 오가는 화살표
+      final icon = running > 0 ? 'download' : 'sync';
+      final key = '$text|$progress|$icon';
       if (_on && key == _last) return;
-      await _ch.invokeMethod<void>('keepAlive', {'text': text, 'progress': progress});
+      await _ch.invokeMethod<void>('keepAlive', {'text': text, 'progress': progress, 'icon': icon});
       _on = true;
       _last = key;
     } catch (_) {}

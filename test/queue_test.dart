@@ -215,8 +215,9 @@ void main() {
     for (final g in groups) {
       await tester.tap(find.widgetWithText(ActionChip, g));
       await tester.pumpAndSettle();
-      // 묶음 제목 (버튼이 아닌 카드 안의 글) 이 화면 위쪽에 보인다
-      final title = find.descendant(of: find.byType(Card), matching: find.text(g)).first;
+      // 묶음 제목 (버튼이 아닌 카드 머리의 글) 이 화면 위쪽에 보인다 (컴포넌트 묶음의 같은 이름 줄과 헷갈리지 않게 머리 글만)
+      final title = find.byWidgetPredicate((w) =>
+          w is Text && w.data == g && w.key is ValueKey<String> && (w.key as ValueKey<String>).value.startsWith('group-title:'));
       final y = tester.getTopLeft(title).dy;
       expect(y, inInclusiveRange(0, 400), reason: '$g 묶음 제목 위치 $y');
     }

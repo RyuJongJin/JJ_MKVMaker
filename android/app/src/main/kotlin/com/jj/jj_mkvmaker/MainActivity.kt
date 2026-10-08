@@ -142,7 +142,8 @@ class MainActivity : FlutterActivity() {
                 )
                 "setAppIcon" -> result.success(setAppIcon(call.argument<String>("id") ?: ""))
                 "keepAlive" -> {
-                    keepAlive(call.argument<String>("text") ?: "", call.argument<Int>("progress") ?: -1)
+                    keepAlive(call.argument<String>("text") ?: "", call.argument<Int>("progress") ?: -1,
+                        call.argument<String>("icon") ?: "")
                     result.success(null)
                 }
                 "stopKeepAlive" -> {
@@ -409,7 +410,7 @@ class MainActivity : FlutterActivity() {
     /// 작업 진행 알림 (포그라운드 서비스) 시작 · 갱신. 처음 한 번 알림 권한을 묻는다 (Android 13+, 거절해도 작업은 계속)
     private var askedNotifications = false
 
-    private fun keepAlive(text: String, progress: Int) {
+    private fun keepAlive(text: String, progress: Int, icon: String) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !askedNotifications && !isDestroyed &&
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
@@ -417,12 +418,13 @@ class MainActivity : FlutterActivity() {
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 2)
         }
         if (KeepAliveService.running) {
-            KeepAliveService.update(applicationContext, text, progress)
+            KeepAliveService.update(applicationContext, text, progress, icon)
             return
         }
         val i = Intent(applicationContext, KeepAliveService::class.java)
             .putExtra(KeepAliveService.EXTRA_TEXT, text)
             .putExtra(KeepAliveService.EXTRA_PROGRESS, progress)
+            .putExtra(KeepAliveService.EXTRA_ICON, icon)
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) applicationContext.startForegroundService(i)
             else applicationContext.startService(i)

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../app/app_controller.dart';
 import '../app/bookmarks_controller.dart';
+import '../app/components.dart';
 import '../app/download_manager.dart';
 import '../app/settings.dart';
 import '../services/app_shell.dart' show appIconButtonAsset;
@@ -100,37 +101,108 @@ class AppNavButtons extends StatelessWidget {
       this.onExplorerPage = false,
       this.onRsyncPage = false});
 
+  /// 버튼 줄의 가장 넓은 폭 (JJ · 화면 5개 · 뒤로)
   static const double width = 7 * 40;
 
   /// MKV 화면 (맨 처음 화면) 까지 돌아가기
   static void toMkv(BuildContext context) => Navigator.of(context).popUntil((r) => r.isFirst);
 
-  /// 홈 화면으로: MKV 화면까지 돌아간 뒤, 홈 화면이 웹 브라우저 · 파일 탐색기면 그 화면을 연다
+  /// 홈 화면 (환경 설정의 "홈 화면") 의 컴포넌트 id. 그 컴포넌트를 제거했으면 설치된 첫 화면.
+  static String homeId(AppSettings s) {
+    final want = switch (s.startScreen) { 'browser' => 'browser', 'files' => 'explorer', _ => 'mkv' };
+    final pages = AppComponent.pages(s.components, s.navOrder);
+    if (pages.any((p) => p.id == want)) return want;
+    return pages.isEmpty ? 'mkv' : pages.first.id;
+  }
+
+  /// 그 화면으로 (이미 열려 있으면 그 화면으로 돌아감). 'mkv' 는 맨 처음 화면.
+  static Future<void> openPage(NavigatorState nav, String id,
+      {required AppController c, DownloadManager? downloads, BookmarksController? bookmarks}) async {
+    switch (id) {
+      case 'mkv':
+        nav.popUntil((r) => r.isFirst);
+      case 'browser':
+        if (bookmarks != null) await BrowserPage.open(nav, c: c, downloads: downloads, bookmarks: bookmarks);
+      case 'explorer':
+        await ExplorerPage.open(nav, c: c);
+      case 'rsync':
+        await ExplorerPage.openRsync(nav, c: c);
+      case 'downloads':
+        if (downloads != null) await DownloadsPage.open(nav, downloads);
+    }
+  }
+
+  /// 이 창에서 열 수 있는 화면 (브라우저 · 다운로드가 없는 새 창에서는 그 둘을 뺀다)
+  static List<AppComponent> pagesOf(AppScope scope) => [
+        for (final p in AppComponent.pages(scope.controller.settings.components, scope.controller.settings.navOrder))
+          if ((p.id != 'browser' || scope.bookmarks != null) && (p.id != 'downloads' || scope.downloads != null)) p,
+      ];
+
+  static void open(BuildContext context, String id) {
+    final scope = AppScope.maybeOf(context);
+    if (scope == null) return;
+    openPage(Navigator.of(context), id, c: scope.controller, downloads: scope.downloads, bookmarks: scope.bookmarks);
+  }
+
+  /// 홈 화면으로: MKV 화면까지 돌아간 뒤, 홈 화면이 다른 화면이면 그 화면을 연다
   static void toHome(BuildContext context) {
     final scope = AppScope.maybeOf(context);
     final nav = Navigator.of(context);
     nav.popUntil((r) => r.isFirst);
     if (scope == null) return;
-    final start = scope.controller.settings.startScreen;
-    if (start == 'browser' && scope.bookmarks != null) {
-      BrowserPage.open(nav, c: scope.controller, downloads: scope.downloads, bookmarks: scope.bookmarks!);
-    } else if (start == 'files') {
-      ExplorerPage.open(nav, c: scope.controller);
-    }
+    final id = homeId(scope.controller.settings);
+    if (id != 'mkv') open(context, id);
+  }
+
+  /// 지금 화면에서 [step] 만큼 (−1 이전 · +1 다음) 옮긴 화면으로. 끝 다음은 처음으로.
+  static void step(BuildContext context, String current, int step) {
+    final scope = AppScope.maybeOf(context);
+    if (scope == null) return;
+    final pages = pagesOf(scope);
+    if (pages.length < 2) return;
+    var i = pages.indexWhere((p) => p.id == current);
+    if (i < 0) i = 0;
+    open(context, pages[(i + step) % pages.length].id);
   }
 
   @override
   Widget build(BuildContext context) {
     final scope = AppScope.maybeOf(context);
+    // 컴포넌트 설치 · 순서를 바꾸면 바로 다시 그린다 (이 위젯은 const 로 쓰여 부모가 다시 그려도 그대로이므로)
+    if (scope == null) return _build(context, null);
+    return ListenableBuilder(listenable: scope.controller, builder: (context, _) => _build(context, scope));
+  }
+
+  Widget _build(BuildContext context, AppScope? scope) {
     final nav = Navigator.maybeOf(context);
     final atRoot = !(nav?.canPop() ?? false);
-    final start = scope?.controller.settings.startScreen;
-    final homeName = start == 'browser' && scope?.bookmarks != null
-        ? tr('웹 브라우저')
-        : start == 'files'
-            ? tr('파일 탐색기')
-            : tr('MKV 화면');
-    final downloads = scope?.downloads;
+    final current = onDownloadsPage
+        ? 'downloads'
+        : onBrowserPage
+            ? 'browser'
+            : onExplorerPage
+                ? 'explorer'
+                : onRsyncPage
+                    ? 'rsync'
+                    : atRoot
+                        ? 'mkv'
+                        : '';
+    final pages = scope == null ? const <AppComponent>[] : pagesOf(scope);
+    final homeName = switch (scope == null ? 'mkv' : homeId(scope.controller.settings)) {
+      'browser' => tr('웹 브라우저'),
+      'explorer' => tr('파일 탐색기'),
+      'rsync' => 'Rsync',
+      'downloads' => tr('다운로드 목록'),
+      _ => tr('MKV 화면'),
+    };
+    String tip(String id, bool here) => switch (id) {
+          'mkv' => here ? tr('MKV 화면 (지금 여기)') : tr('MKV 화면으로'),
+          'browser' => here ? tr('웹 브라우저 (지금 여기)') : tr('웹 브라우저'),
+          'explorer' => here ? tr('파일 탐색기 (지금 여기)') : tr('파일 탐색기'),
+          'rsync' => here ? tr('Rsync (지금 여기)') : 'Rsync',
+          'downloads' => here ? tr('다운로드 목록 (지금 여기)') : tr('다운로드 목록'),
+          _ => id,
+        };
     Widget btn(Widget icon, String tip, VoidCallback? f, {bool here = false}) => SizedBox(
           width: 40,
           height: 40,
@@ -142,57 +214,60 @@ class AppNavButtons extends StatelessWidget {
             onPressed: f,
           ),
         );
-    return SizedBox(
-      width: width,
-      child: Row(children: [
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      btn(
+        Image.asset(appIconButtonAsset(scope?.controller.settings.appIcon),
+            width: 26, height: 26, filterQuality: FilterQuality.medium),
+        trf('홈 화면 ({0}) · 환경 설정에서 바꿈', [homeName]),
+        scope == null ? null : () => toHome(context),
+      ),
+      // 설치한 화면들 (환경 설정 > 컴포넌트 의 순서). 하나뿐이면 버튼 줄은 그것만.
+      for (final p in pages)
         btn(
-          Image.asset(appIconButtonAsset(scope?.controller.settings.appIcon),
-              width: 26, height: 26, filterQuality: FilterQuality.medium),
-          trf('홈 화면 ({0}) · 환경 설정에서 바꿈', [homeName]),
-          scope == null ? null : () => toHome(context),
+          Icon(p.icon, color: p.id == current ? JjColors.accent : null),
+          tip(p.id, p.id == current),
+          p.id == current ? null : () => open(context, p.id),
+          here: p.id == current,
         ),
-        btn(
-          Icon(Icons.video_library_outlined, color: atRoot ? JjColors.accent : null),
-          atRoot ? tr('MKV 화면 (지금 여기)') : tr('MKV 화면으로'),
-          atRoot ? null : () => toMkv(context),
-          here: atRoot,
-        ),
-        // 웹 브라우저: MKV 화면 버튼 다음 (모든 화면 같은 자리)
-        btn(
-          Icon(Icons.public, color: onBrowserPage ? JjColors.accent : null),
-          onBrowserPage ? tr('웹 브라우저 (지금 여기)') : tr('웹 브라우저'),
-          scope?.bookmarks == null || onBrowserPage
-              ? null
-              : () => BrowserPage.open(Navigator.of(context),
-                  c: scope!.controller, downloads: scope.downloads, bookmarks: scope.bookmarks!),
-          here: onBrowserPage,
-        ),
-        // 파일 탐색기: 웹 브라우저 다음
-        btn(
-          Icon(Icons.folder_copy_outlined, color: onExplorerPage ? JjColors.accent : null),
-          onExplorerPage ? tr('파일 탐색기 (지금 여기)') : tr('파일 탐색기'),
-          scope == null || onExplorerPage ? null : () => ExplorerPage.open(Navigator.of(context), c: scope.controller),
-          here: onExplorerPage,
-        ),
-        // Rsync: 파일 탐색기 다음 (좌우 두 창 · 폴더 하나씩 골라 → ← ↔)
-        btn(
-          Icon(Icons.sync_alt, color: onRsyncPage ? JjColors.accent : null),
-          onRsyncPage ? tr('Rsync (지금 여기)') : 'Rsync',
-          scope == null || onRsyncPage ? null : () => ExplorerPage.openRsync(Navigator.of(context), c: scope.controller),
-          here: onRsyncPage,
-        ),
-        btn(const Icon(Icons.arrow_back), tr('뒤로'),
-            // 브라우저 화면: 뒤로 키는 웹 페이지 뒤로 (PopScope) 이지만 이 버튼은 화면 이동이라 바로 닫는다
-            atRoot ? null : () => onBrowserPage ? Navigator.pop(context) : Navigator.maybePop(context)),
-        btn(
-          Icon(Icons.download_for_offline_outlined, color: onDownloadsPage ? JjColors.accent : null),
-          onDownloadsPage ? tr('다운로드 목록 (지금 여기)') : tr('다운로드 목록'),
-          downloads == null || onDownloadsPage
-              ? null
-              : () => DownloadsPage.open(Navigator.of(context), downloads),
-          here: onDownloadsPage,
-        ),
-      ]),
+      btn(const Icon(Icons.arrow_back), tr('뒤로'),
+          // 브라우저 화면: 뒤로 키는 웹 페이지 뒤로 (PopScope) 이지만 이 버튼은 화면 이동이라 바로 닫는다
+          atRoot ? null : () => onBrowserPage ? Navigator.pop(context) : Navigator.maybePop(context)),
+    ]);
+  }
+}
+
+/// 화면 가운데를 좌우로 밀면 다음 · 이전 화면으로 (환경 설정 > 컴포넌트 의 순서, 끝 다음은 처음).
+/// 안쪽의 옆으로 밀리는 것 (가로 목록 · 막대) 이 먼저 받고, 위 · 아래 가장자리 (1/5) 에서 시작한 것은 무시한다.
+class SwipeNav extends StatefulWidget {
+  final String current;
+  final Widget child;
+  const SwipeNav({super.key, required this.current, required this.child});
+
+  @override
+  State<SwipeNav> createState() => _SwipeNavState();
+}
+
+class _SwipeNavState extends State<SwipeNav> {
+  bool _middle = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final scope = AppScope.maybeOf(context);
+    if (scope == null) return widget.child;
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onHorizontalDragStart: (d) {
+        final h = context.size?.height ?? 0;
+        _middle = h > 0 && d.localPosition.dy > h * 0.2 && d.localPosition.dy < h * 0.8;
+      },
+      onHorizontalDragEnd: (d) {
+        final v = d.primaryVelocity ?? 0;
+        // 켜고 끄기는 밀 때 확인 (이 위젯은 설정이 바뀌어도 다시 그려지지 않을 수 있음)
+        if (!scope.controller.settings.swipeNav || !_middle || v.abs() < 500) return;
+        // 왼쪽으로 밀면 다음 화면, 오른쪽으로 밀면 이전 화면
+        AppNavButtons.step(context, widget.current, v < 0 ? 1 : -1);
+      },
+      child: widget.child,
     );
   }
 }

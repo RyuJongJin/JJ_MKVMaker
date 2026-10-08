@@ -28,6 +28,7 @@ import 'explorer_look.dart' show ExplorerStyle;
 import 'theme.dart';
 import '../l10n/tr.dart';
 import 'setting_tile.dart';
+import 'component_settings.dart';
 
 /// 동시 작업 수 고르기: 1 · 5 · 10 · 무한(0) · 직접 입력
 class CountSelector extends StatelessWidget {
@@ -326,6 +327,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                     ),
                   ]),
+                  _group('components', Icons.extension_outlined, tr('컴포넌트'), [ComponentSettings(c: c)]),
                   _group('display', Icons.aspect_ratio, tr('화면'), [
                     if (!desk)
                       SettingTile(
@@ -852,12 +854,13 @@ class _SettingsPageState extends State<SettingsPage> {
   final _groupKeys = <String, GlobalKey>{};
 
   static const _groupIds = [
-    'general', 'display', 'mkv', 'subtitle', 'play', 'browser', 'files', 'rsync', 'download', 'run', 'cleanup', 'about', //
+    'general', 'components', 'display', 'mkv', 'subtitle', 'play', 'browser', 'files', 'rsync', 'download', 'run', 'cleanup', 'about', //
   ];
 
   String _groupTitle(String id) => switch (id) {
         'general' => tr('일반'),
         'display' => tr('화면'),
+        'components' => tr('컴포넌트'),
         'mkv' => tr('MKV 만들기'),
         'subtitle' => tr('자막 (AI · 인터넷)'),
         'play' => tr('재생'),
@@ -905,7 +908,7 @@ class _SettingsPageState extends State<SettingsPage> {
               child: Row(children: [
                 Icon(icon, size: 20, color: JjColors.accent),
                 const SizedBox(width: 10),
-                Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                Text(title, key: ValueKey('group-title:$id'), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
               ]),
             ),
             ...children,

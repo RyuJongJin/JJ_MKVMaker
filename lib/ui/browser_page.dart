@@ -432,7 +432,10 @@ class _BrowserPageState extends State<BrowserPage> with RouteAware {
         child: Focus(
         autofocus: true,
         child: Scaffold(
-          body: ListenableBuilder(
+          // 웹 페이지 위에서의 밀기는 웹 페이지가 받으므로, 위쪽 막대 · 즐겨찾기 줄에서 좌우로 밀면 화면 이동
+          body: SwipeNav(
+            current: 'browser',
+            child: ListenableBuilder(
             listenable: Listenable.merge([bm, widget.c]),
             builder: (context, _) => Column(children: [
               _toolbar(),
@@ -501,6 +504,7 @@ class _BrowserPageState extends State<BrowserPage> with RouteAware {
               ],
               ])),
             ]),
+          ),
           ),
         ),
       ),

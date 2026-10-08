@@ -75,7 +75,9 @@ class _DownloadsPageState extends State<DownloadsPage> {
         final hasSel = d.selected.isNotEmpty;
         final allSel = d.tasks.isNotEmpty && d.selected.length == d.tasks.length;
         return Scaffold(
-          body: Column(children: [
+          body: SwipeNav(
+            current: 'downloads',
+            child: Column(children: [
             AppTopBar(
               nav: const AppNavButtons(onDownloadsPage: true),
               actions: const AppActions(),
@@ -182,6 +184,7 @@ class _DownloadsPageState extends State<DownloadsPage> {
                     ),
             ),
           ]),
+          ),
         );
       },
     );

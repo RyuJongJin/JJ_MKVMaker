@@ -23,7 +23,8 @@ class KeepAliveService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val text = intent?.getStringExtra(EXTRA_TEXT) ?: ""
         val progress = intent?.getIntExtra(EXTRA_PROGRESS, -1) ?: -1
-        val n = notification(this, text, progress)
+        val icon = intent?.getStringExtra(EXTRA_ICON) ?: ""
+        val n = notification(this, text, progress, icon)
         running = true
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             // 실시간 동기화는 앱이 켜져 있는 내내 지켜봐야 하므로 하루 6시간 제한이 있는 dataSync 대신 specialUse (Android 14+)
@@ -58,17 +59,18 @@ class KeepAliveService : Service() {
         const val NOTIFICATION_ID = 1
         const val EXTRA_TEXT = "text"
         const val EXTRA_PROGRESS = "progress"
+        const val EXTRA_ICON = "icon"
 
         /// 서비스가 떠 있는지 (떠 있으면 알림만 바꾼다 - 백그라운드에서는 서비스를 새로 시작할 수 없음)
         @Volatile
         var running = false
 
-        fun update(context: Context, text: String, progress: Int) {
+        fun update(context: Context, text: String, progress: Int, icon: String) {
             val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            nm.notify(NOTIFICATION_ID, notification(context, text, progress))
+            nm.notify(NOTIFICATION_ID, notification(context, text, progress, icon))
         }
 
-        private fun notification(context: Context, text: String, progress: Int): Notification {
+        private fun notification(context: Context, text: String, progress: Int, icon: String): Notification {
             val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && nm.getNotificationChannel(CHANNEL_ID) == null) {
                 nm.createNotificationChannel(
@@ -91,7 +93,8 @@ class KeepAliveService : Service() {
             } else {
                 @Suppress("DEPRECATION") Notification.Builder(context)
             }
-            b.setSmallIcon(android.R.drawable.stat_sys_download)
+            // 다운로드 중이면 내려받기 아이콘, 그 밖 (실시간 동기화 · MKV · AI 자막) 은 좌우로 오가는 화살표
+            b.setSmallIcon(if (icon == "download") android.R.drawable.stat_sys_download else R.drawable.ic_stat_sync_anim)
                 .setContentTitle("JJ_MKVMaker 작업 중")
                 .setContentText(text)
                 .setContentIntent(open)
