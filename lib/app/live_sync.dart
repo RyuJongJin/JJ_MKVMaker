@@ -10,6 +10,7 @@ import 'package:path/path.dart' as p;
 import '../core/cron_window.dart';
 import '../core/file_ops.dart';
 import '../core/sync_tools.dart';
+import '../core/vfs.dart';
 import '../l10n/tr.dart';
 import '../platform/windows/rsync_installer.dart';
 import 'app_controller.dart';
@@ -138,6 +139,7 @@ class LiveSync extends ChangeNotifier {
 
   /// 원본과 대상의 다른 점 (크기 · 바뀐 시각). [x.delete] 면 원본에 없는 대상 항목도 "− 이름" 으로.
   static Future<List<String>> diff(LiveSyncPair x, {int limit = 500}) async {
+    if (isDav(x.source) || isDav(x.target)) return _diffV(x, limit: limit);
     final out = <String>[];
     Future<void> walk(String src, String dst, String rel) async {
       if (out.length >= limit) return;
@@ -173,6 +175,43 @@ class LiveSync extends ChangeNotifier {
     return out;
   }
 
+  /// [diff] 의 WebDAV 판 (한쪽이라도 dav://): 크기가 다르거나, 대상이 원본보다 옛것이면
+  static Future<List<String>> _diffV(LiveSyncPair x, {int limit = 500}) async {
+    final out = <String>[];
+    Future<void> walk(String src, String dst, String rel) async {
+      if (out.length >= limit) return;
+      final there = <String, ({String path, bool isDir, int size, DateTime modified})>{};
+      try {
+        for (final e in await vList(dst)) {
+          there[vBasename(e.path)] = e;
+        }
+      } catch (_) {} // 대상 폴더가 아직 없음
+      final names = <String>{};
+      for (final e in await vList(src)) {
+        if (out.length >= limit) return;
+        final name = vBasename(e.path);
+        names.add(name);
+        final r = rel.isEmpty ? name : '$rel/$name';
+        if (e.isDir) {
+          await walk(e.path, vJoin(dst, name), r);
+          continue;
+        }
+        final t = there[name];
+        if (t == null || t.isDir || t.size != e.size || t.modified.isBefore(e.modified.subtract(const Duration(seconds: 2)))) {
+          out.add(r);
+        }
+      }
+      if (x.delete) {
+        for (final name in there.keys) {
+          if (!names.contains(name) && !name.endsWith('.jjsync')) out.add('− ${rel.isEmpty ? name : '$rel/$name'}');
+        }
+      }
+    }
+
+    if (await vExists(x.source)) await walk(x.source, x.target, '');
+    return out;
+  }
+
   Future<void> refreshPending(LiveSyncPair x) async {
     try {
       pending[keyOf(x)] = await diff(x);
@@ -204,7 +243,7 @@ class LiveSync extends ChangeNotifier {
     _stopAll();
     for (final x in pairs) {
       final k = keyOf(x);
-      if (!Directory(x.source).existsSync()) {
+      if (!isDav(x.source) && !Directory(x.source).existsSync()) {
         status[k] = (DateTime.now(), tr('원본 폴더가 없습니다'));
         continue;
       }
@@ -213,14 +252,14 @@ class LiveSync extends ChangeNotifier {
         status[k] = (DateTime.now(), tr('원본과 대상이 서로 안에 있습니다'));
         continue;
       }
-      if (Platform.isWindows) {
+      if (Platform.isWindows && !isDav(x.source)) {
         try {
           _watch[k] = Directory(x.source).watch(recursive: true).listen((_) => _schedule(x));
         } catch (_) {
           _timers[k] = Timer.periodic(Duration(seconds: s.liveSyncIntervalSec), (_) => _schedule(x));
         }
       } else {
-        // Android 등: 폴더 안쪽까지 감시가 안 되므로 정해진 간격으로 살핀다
+        // Android 등 · 원본이 WebDAV: 폴더 안쪽까지 감시가 안 되므로 정해진 간격으로 살핀다
         _timers[k] = Timer.periodic(Duration(seconds: s.liveSyncIntervalSec), (_) => _schedule(x));
       }
       _schedule(x); // 시작할 때 한 번
@@ -254,7 +293,8 @@ class LiveSync extends ChangeNotifier {
     notifyListeners();
     final s = c.settings;
     try {
-      final method = CopyMethod.of(x.method);
+      // 한쪽이라도 WebDAV 면 rsync · robocopy 대신 앱이 맞춘다 (크기 · 시각 비교)
+      final method = isDav(x.source) || isDav(x.target) ? CopyMethod.builtin : CopyMethod.of(x.method);
       final n = switch (method) {
         CopyMethod.builtin => await FileOps(bandwidthKBps: s.copyBandwidthKBps).mirror(x.source, x.target, delete: x.delete),
         CopyMethod.rsync => await _rsync(x, s),

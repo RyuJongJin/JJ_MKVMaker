@@ -23,6 +23,7 @@ import 'app_actions.dart';
 import 'cef_setup.dart';
 import 'cleanup_dialog.dart';
 import 'copy_sync_settings.dart';
+import 'webdav_settings.dart';
 import 'explorer_look.dart' show ExplorerStyle;
 import 'theme.dart';
 import '../l10n/tr.dart';
@@ -606,6 +607,8 @@ class _SettingsPageState extends State<SettingsPage> {
                     ),
                     // 복사 · 이동 방법 (현재 방식 · robocopy) · 속도 제한
                     CopySyncSettings(c: c),
+                    // WebDAV 서버 (탐색기 · Rsync 화면 위쪽 탭)
+                    WebDavSettings(c: c),
                   ]),
                   // Rsync 화면: rsync 옵션 · 가져오기 · 실시간 동기화 (lsync) · 백그라운드로 실행
                   _group('rsync', Icons.sync_alt, 'Rsync', [

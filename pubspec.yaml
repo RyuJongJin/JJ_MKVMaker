@@ -57,6 +57,8 @@ dependencies:
   screen_retriever: ^0.2.2
   package_info_plus: ^10.2.1
   crypto: ^3.0.7
+  # WebDAV 목록 (PROPFIND 응답) 읽기
+  xml: ^7.0.1
   flutter_inappwebview: ^6.1.5
   ffmpeg_kit_flutter_new_min_gpl: 2.6.2
 # Android 빌드 도구 (AGP 9) 에 맞게 고친 사본 (packages/flutter_inappwebview_android/JJ_PATCH.md)

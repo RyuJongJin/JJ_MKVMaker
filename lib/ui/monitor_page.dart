@@ -11,6 +11,7 @@ import '../app/settings.dart';
 import '../app/transfer_job.dart';
 import '../core/file_ops.dart';
 import '../core/sync_tools.dart';
+import '../core/vfs.dart';
 import '../l10n/tr.dart';
 import 'app_actions.dart';
 import 'copy_sync_settings.dart' show addLiveSyncPairDialog, LiveSyncRunOptions;
@@ -357,13 +358,13 @@ class _CopyCardState extends State<_CopyCard> {
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(
-                  '${t.sources.length == 1 ? t.sources.first : trf('{0} 외 {1}개', [p.basename(t.sources.first), t.sources.length - 1])}'
+                  '${t.sources.length == 1 ? vDisplay(t.sources.first) : trf('{0} 외 {1}개', [vBasename(t.sources.first), t.sources.length - 1])}'
                   '${t.contents ? '/' : ''}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
-                Text('→  ${t.dest}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
+                Text('→  ${vDisplay(t.dest)}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
               ]),
             ),
             Chip(
@@ -628,8 +629,8 @@ class _LiveTabState extends State<_LiveTab> {
             const SizedBox(width: 8),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('${x.source}/', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
-                Text('→  ${x.target}/', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
+                Text('${vDisplay(x.source)}/', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
+                Text('→  ${vDisplay(x.target)}/', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
               ]),
             ),
             Chip(
@@ -777,7 +778,7 @@ Future<void> askLiveSyncStart(BuildContext context, LiveSync live) async {
                     contentPadding: EdgeInsets.zero,
                     value: pick.contains(LiveSync.keyOf(x)),
                     onChanged: (v) => set(() => v == true ? pick.add(LiveSync.keyOf(x)) : pick.remove(LiveSync.keyOf(x))),
-                    title: Text('${x.source}  →  ${x.target}', maxLines: 2, overflow: TextOverflow.ellipsis),
+                    title: Text('${vDisplay(x.source)}  →  ${vDisplay(x.target)}', maxLines: 2, overflow: TextOverflow.ellipsis),
                     subtitle: Text(scheduleSummary(x.schedule)),
                   ),
               ]),

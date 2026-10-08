@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 
 import '../l10n/tr.dart';
 import 'playlist.dart' show naturalCompare;
+import 'vfs.dart';
 
 /// 파일 탐색기 (X-plore 참고) 의 화면과 상관없는 부분: 폴더 읽기 · 정렬 · 복사 / 이동 / 삭제 · 찾기.
 
@@ -44,6 +45,14 @@ List<FileEntry> sortEntries(List<FileEntry> list, SortBy by, {bool descending = 
 
 /// 폴더 읽기 (읽을 수 없는 항목은 건너뜀). [showHidden] 이 아니면 점으로 시작하는 항목을 뺀다.
 Future<List<FileEntry>> listEntries(String dir, {bool showHidden = false}) async {
+  if (isDav(dir)) {
+    // WebDAV: 네트워크 오류 · 인증 실패는 그대로 던진다 (화면이 "읽을 수 없음" 과 이유를 보여 줌)
+    return [
+      for (final e in await vList(dir))
+        if (showHidden || !vBasename(e.path).startsWith('.'))
+          FileEntry(e.path, isDir: e.isDir, size: e.size, modified: e.modified),
+    ];
+  }
   final out = <FileEntry>[];
   await for (final e in Directory(dir).list(followLinks: false).handleError((_) {})) {
     try {
@@ -76,12 +85,16 @@ String uniqueTarget(String dir, String name) {
 
 /// 같은 경로인지 (Windows 는 대소문자 무시)
 bool samePath(String a, String b) {
+  final dav = davSame(a, b);
+  if (dav != null) return dav;
   final x = p.normalize(p.absolute(a)), y = p.normalize(p.absolute(b));
   return Platform.isWindows ? x.toLowerCase() == y.toLowerCase() : x == y;
 }
 
 /// [a] 가 [b] 와 같거나 그 안에 있는지 (폴더를 자기 안으로 복사 · 이동하지 않게)
 bool isSameOrInside(String a, String b) {
+  final dav = davInside(a, b);
+  if (dav != null) return dav;
   final x = p.normalize(p.absolute(a)), y = p.normalize(p.absolute(b));
   return samePath(a, b) || p.isWithin(y, x) || (Platform.isWindows && p.isWithin(y.toLowerCase(), x.toLowerCase()));
 }
@@ -92,16 +105,17 @@ bool isSameOrInside(String a, String b) {
 /// - 폴더를 자기 자신 (또는 그 안) 으로 복사 · 이동
 /// - 이미 그 폴더에 있는 것을 같은 폴더로 이동
 String? transferProblem(List<String> sources, String dest, {required bool move}) {
-  final missing = [for (final s in sources) if (FileSystemEntity.typeSync(s) == FileSystemEntityType.notFound) s];
+  // WebDAV 경로는 네트워크라 여기서 있는지 확인하지 않는다 (없으면 복사할 때 알림)
+  final missing = [for (final s in sources) if (vMissingSync(s)) s];
   if (missing.isNotEmpty) {
-    return trf('원본이 없습니다 (다른 곳에서 지워졌거나 옮겨졌습니다): {0}', [missing.map(p.basename).join(', ')]);
+    return trf('원본이 없습니다 (다른 곳에서 지워졌거나 옮겨졌습니다): {0}', [missing.map(vBasename).join(', ')]);
   }
-  if (!Directory(dest).existsSync()) return trf('대상 폴더가 없습니다: {0}', [dest]);
+  if (!isDav(dest) && !Directory(dest).existsSync()) return trf('대상 폴더가 없습니다: {0}', [dest]);
   for (final s in sources) {
-    if (FileSystemEntity.isDirectorySync(s) && isSameOrInside(dest, s)) {
-      return trf('폴더를 자기 자신 안으로 {0} 수 없습니다: {1}', [move ? tr('옮길') : tr('복사할'), p.basename(s)]);
+    if ((isDav(s) || FileSystemEntity.isDirectorySync(s)) && isSameOrInside(dest, s)) {
+      return trf('폴더를 자기 자신 안으로 {0} 수 없습니다: {1}', [move ? tr('옮길') : tr('복사할'), vBasename(s)]);
     }
-    if (move && samePath(p.dirname(s), dest)) return trf('이미 이 폴더에 있습니다: {0}', [p.basename(s)]);
+    if (move && samePath(vDirname(s), dest)) return trf('이미 이 폴더에 있습니다: {0}', [vBasename(s)]);
   }
   return null;
 }
@@ -109,6 +123,7 @@ String? transferProblem(List<String> sources, String dest, {required bool move})
 /// [root] 안의 빈 폴더를 안쪽부터 지운다 (find root/ -type d -empty -delete 와 같음). 지운 폴더 수.
 /// [keepRoot] 면 [root] 자신은 비어도 남긴다. 파일 · 링크가 하나라도 있는 폴더는 그대로.
 Future<int> removeEmptyDirs(String root, {bool keepRoot = true}) async {
+  if (isDav(root)) return _removeEmptyDirsV(root, keepRoot: keepRoot);
   var n = 0;
   Future<bool> walk(Directory d) async {
     var empty = true;
@@ -142,6 +157,36 @@ Future<int> removeEmptyDirs(String root, {bool keepRoot = true}) async {
 /// 복사 · 이동 중 알림 (지금 파일, 지금까지 바이트, 전체 바이트)
 typedef CopyProgress = void Function(String current, int done, int total);
 
+/// [removeEmptyDirs] 의 WebDAV 판
+Future<int> _removeEmptyDirsV(String root, {bool keepRoot = true}) async {
+  var n = 0;
+  Future<bool> walk(String dir) async {
+    var empty = true;
+    for (final e in await vList(dir)) {
+      if (e.isDir && await walk(e.path)) {
+        try {
+          await vDelete(e.path);
+          n++;
+        } catch (_) {
+          empty = false;
+        }
+      } else {
+        empty = false;
+      }
+    }
+    return empty;
+  }
+
+  if (!await vExists(root)) return 0;
+  if (await walk(root) && !keepRoot) {
+    try {
+      await vDelete(root);
+      n++;
+    } catch (_) {}
+  }
+  return n;
+}
+
 class FileOpCancelled implements Exception {
   const FileOpCancelled();
 }
@@ -157,7 +202,13 @@ class FileOps {
   /// 파일 하나를 다 복사할 때마다 (원본 경로)
   final void Function(String source)? onFileDone;
 
-  FileOps({this.bandwidthKBps = 0, this.onFileDone});
+  /// 조각을 보낼 때마다 (바이트) - 전송 속도 계산용
+  final void Function(int bytes)? onBytes;
+
+  FileOps({this.bandwidthKBps = 0, this.onFileDone, this.onBytes});
+
+  /// 한쪽이라도 WebDAV 면 아래의 "V" (어느 저장소든) 판으로
+  static bool _anyDav(Iterable<String> paths) => paths.any(isDav);
 
   final _clock = Stopwatch();
   int _sent = 0;
@@ -178,6 +229,7 @@ class FileOps {
 
   /// 전체 크기 (진행률용)
   static Future<int> totalSize(List<String> paths) async {
+    if (_anyDav(paths)) return _totalSizeV(paths);
     var total = 0;
     for (final s in paths) {
       final t = FileSystemEntity.typeSync(s, followLinks: false);
@@ -198,6 +250,7 @@ class FileOps {
 
   /// [sources] 를 [destDir] 로 복사 (같은 이름이 있으면 "이름 (2)"). 만든 경로들을 돌려준다.
   Future<List<String>> copy(List<String> sources, String destDir, {CopyProgress? onProgress}) async {
+    if (_anyDav([...sources, destDir])) return _copyV(sources, destDir, onProgress: onProgress);
     final total = await totalSize(sources);
     var done = 0;
     final made = <String>[];
@@ -211,6 +264,7 @@ class FileOps {
             out.add(chunk);
             done += chunk.length;
             onProgress?.call(f.path, done, total);
+            onBytes?.call(chunk.length);
             await _throttle(chunk.length);
           }
         } finally {
@@ -254,6 +308,7 @@ class FileOps {
 
   /// 이동: 같은 드라이브면 이름 바꾸기, 아니면 복사한 뒤 원본 삭제
   Future<List<String>> move(List<String> sources, String destDir, {CopyProgress? onProgress}) async {
+    if (_anyDav([...sources, destDir])) return _moveV(sources, destDir, onProgress: onProgress);
     final made = <String>[];
     for (final s in sources) {
       _check();
@@ -283,7 +338,10 @@ class FileOps {
 
   /// 동기화 (실시간 동기화 · lsyncd 처럼): [srcDir] 의 내용을 [dstDir] 에 맞춘다.
   /// 크기나 바뀐 시각이 다른 파일만 복사, [delete] 면 원본에 없는 것을 대상에서 지운다. 복사한 파일 수를 돌려준다.
-  Future<int> mirror(String srcDir, String dstDir, {bool delete = false}) async {
+  ///
+  /// [update] (rsync -u): 대상이 더 새 파일이면 건너뛴다 (양쪽 ⇄ 을 함께 맞출 때 서로 덮어쓰지 않게).
+  Future<int> mirror(String srcDir, String dstDir, {bool delete = false, bool update = false}) async {
+    if (_anyDav([srcDir, dstDir])) return _mirrorV(srcDir, dstDir, delete: delete, update: update);
     var n = 0;
     Future<void> walk(String src, String dst) async {
       _check();
@@ -298,16 +356,19 @@ class FileOps {
         } else if (e is File) {
           final st = await e.stat();
           final t = File(target);
-          final same = await t.exists() &&
+          final exists = await t.exists();
+          final same = exists &&
               (await t.length()) == st.size &&
               ((await t.lastModified()).difference(st.modified).inSeconds.abs() <= 2);
           if (same) continue;
+          if (update && exists && (await t.lastModified()).isAfter(st.modified.add(const Duration(seconds: 2)))) continue;
           final tmp = '$target.jjsync';
           final out = File(tmp).openWrite();
           try {
             await for (final chunk in e.openRead()) {
               _check();
               out.add(chunk);
+              onBytes?.call(chunk.length);
               await _throttle(chunk.length);
             }
           } finally {
@@ -337,6 +398,10 @@ class FileOps {
   Future<void> delete(List<String> paths) async {
     for (final s in paths) {
       _check();
+      if (isDav(s)) {
+        await vDelete(s);
+        continue;
+      }
       final t = FileSystemEntity.typeSync(s, followLinks: false);
       if (t == FileSystemEntityType.directory) {
         await Directory(s).delete(recursive: true);
@@ -351,6 +416,13 @@ class FileOps {
     final name = newName.trim();
     if (name.isEmpty || name.contains(RegExp(r'[\\/:*?"<>|]'))) {
       throw FileSystemException('쓸 수 없는 이름입니다', name);
+    }
+    if (isDav(path)) {
+      final target = vJoin(vDirname(path), name);
+      if (target == vNorm(path)) return target;
+      if (await vExists(target)) throw FileSystemException('같은 이름이 이미 있습니다', target);
+      await vRename(path, target);
+      return target;
     }
     final target = p.join(p.dirname(path), name);
     if (target == path) return path;
@@ -367,11 +439,165 @@ class FileOps {
   static Future<String> makeFolder(String dir, String name) async {
     final n = name.trim();
     if (n.isEmpty || n.contains(RegExp(r'[\\/:*?"<>|]'))) throw FileSystemException('쓸 수 없는 이름입니다', n);
+    if (isDav(dir)) {
+      final target = vJoin(dir, n);
+      if (await vExists(target)) throw FileSystemException('같은 이름이 이미 있습니다', target);
+      await vMkdirs(target);
+      return target;
+    }
     final target = p.join(dir, n);
     if (FileSystemEntity.typeSync(target) != FileSystemEntityType.notFound) {
       throw FileSystemException('같은 이름이 이미 있습니다', target);
     }
     return (await Directory(target).create()).path;
+  }
+
+  // ───────── 어느 저장소든 (로컬 · WebDAV) ─────────
+
+  static Future<int> _totalSizeV(List<String> paths) async {
+    var total = 0;
+    Future<void> walk(String path) async {
+      final st = await vStat(path);
+      if (st == null) return;
+      if (!st.isDir) {
+        total += st.size;
+        return;
+      }
+      for (final e in await vList(path)) {
+        if (e.isDir) {
+          await walk(e.path);
+        } else {
+          total += e.size;
+        }
+      }
+    }
+
+    for (final s in paths) {
+      await walk(s);
+    }
+    return total;
+  }
+
+  /// 파일 하나: 읽어서 쓴다 (속도 제한 · 취소 · 진행)
+  Future<void> _copyFileV(String src, String target, int size, DateTime modified, void Function(int n)? onChunk) async {
+    _check();
+    final input = await vOpenRead(src);
+    final relay = StreamController<List<int>>();
+    final pump = () async {
+      try {
+        await for (final chunk in input) {
+          if (_cancel) break;
+          relay.add(chunk);
+          onBytes?.call(chunk.length);
+          onChunk?.call(chunk.length);
+          await _throttle(chunk.length);
+        }
+      } catch (e, st) {
+        relay.addError(e, st);
+      } finally {
+        await relay.close();
+      }
+    }();
+    try {
+      await vWrite(target, relay.stream, length: size, modified: modified);
+    } finally {
+      await pump;
+    }
+    if (_cancel) {
+      try {
+        await vDelete(target);
+      } catch (_) {}
+      throw const FileOpCancelled();
+    }
+    onFileDone?.call(src);
+  }
+
+  Future<List<String>> _copyV(List<String> sources, String destDir, {CopyProgress? onProgress}) async {
+    final total = await _totalSizeV(sources);
+    var done = 0;
+    final made = <String>[];
+    Future<void> copyAny(String src, String target) async {
+      _check();
+      final st = await vStat(src);
+      if (st == null) throw FileSystemException('원본이 없습니다', src);
+      if (st.isDir) {
+        await vMkdirs(target);
+        for (final e in await vList(src)) {
+          await copyAny(e.path, vJoin(target, vBasename(e.path)));
+        }
+      } else {
+        await _copyFileV(src, target, st.size, st.modified, (n) {
+          done += n;
+          onProgress?.call(src, done, total);
+        });
+      }
+    }
+
+    for (final s in sources) {
+      if (isSameOrInside(destDir, s) && await vIsDir(s)) throw FileSystemException('폴더를 자기 안으로 복사할 수 없습니다', s);
+      final target = await vUniqueTarget(destDir, vBasename(s));
+      await copyAny(s, target);
+      made.add(target);
+    }
+    return made;
+  }
+
+  Future<List<String>> _moveV(List<String> sources, String destDir, {CopyProgress? onProgress}) async {
+    final made = <String>[];
+    for (final s in sources) {
+      _check();
+      if (isSameOrInside(destDir, s)) throw FileSystemException('폴더를 자기 안으로 옮길 수 없습니다', s);
+      if (samePath(vDirname(s), destDir)) {
+        made.add(s);
+        continue;
+      }
+      final target = await vUniqueTarget(destDir, vBasename(s));
+      // 같은 WebDAV 서버 안이면 서버가 옮긴다 (빠름)
+      if (isDav(s) && isDav(destDir) && DavPath.parse(s).server == DavPath.parse(destDir).server) {
+        await vRename(s, target);
+        made.add(target);
+        continue;
+      }
+      made.addAll(await _copyV([s], destDir, onProgress: onProgress));
+      await vDelete(s);
+    }
+    return made;
+  }
+
+  Future<int> _mirrorV(String srcDir, String dstDir, {bool delete = false, bool update = false}) async {
+    var n = 0;
+    Future<void> walk(String src, String dst) async {
+      _check();
+      await vMkdirs(dst);
+      final there = {for (final e in await vList(dst)) vBasename(e.path): e};
+      final names = <String>{};
+      for (final e in await vList(src)) {
+        final name = vBasename(e.path);
+        names.add(name);
+        final target = vJoin(dst, name);
+        if (e.isDir) {
+          await walk(e.path, target);
+          continue;
+        }
+        final t = there[name];
+        if (t != null && !t.isDir && t.size == e.size) {
+          // 크기가 같고 대상이 원본보다 새것이거나 (올린 파일은 서버 시각) 거의 같으면 그대로
+          if (!t.modified.isBefore(e.modified.subtract(const Duration(seconds: 2)))) continue;
+        }
+        if (update && t != null && t.modified.isAfter(e.modified.add(const Duration(seconds: 2)))) continue;
+        if (t != null && t.isDir) await vDelete(target);
+        await _copyFileV(e.path, target, e.size, e.modified, null);
+        n++;
+      }
+      if (delete) {
+        for (final name in there.keys) {
+          if (!names.contains(name) && !name.endsWith('.jjsync')) await vDelete(vJoin(dst, name));
+        }
+      }
+    }
+
+    await walk(srcDir, dstDir);
+    return n;
   }
 }
 

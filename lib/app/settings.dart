@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import '../core/download_detect.dart';
 import '../core/encode_options.dart';
 import '../core/playlist.dart';
+import '../core/webdav.dart';
 import '../services/app_shell.dart' show appIconOf;
 
 /// MKV 세부 정보의 이동 버튼 하나: 표시 이름 · 옮길 폴더
@@ -331,6 +332,9 @@ class AppSettings {
   /// Rsync 화면에서 마지막으로 연 폴더 (왼쪽 · 오른쪽)
   List<String> rsyncPaths = [];
 
+  /// WebDAV 서버 (파일 탐색기 · Rsync 화면 위쪽 "SD 카드" 옆 탭). 비밀번호는 이 설정 파일에만.
+  List<DavServer> webdavServers = [];
+
   /// 실시간 동기화 확인 간격 (초). Windows 는 바뀌면 바로, 그 밖은 이 간격으로 살핀다.
   int liveSyncIntervalSec = 30;
 
@@ -440,6 +444,7 @@ class AppSettings {
         'copyMethodFile': copyMethodFile,
         'copyMethodFolder': copyMethodFolder,
         'rsyncPaths': rsyncPaths,
+        'webdavServers': [for (final x in webdavServers) x.toJson()],
         'rsyncOptions': rsyncOptions,
         'robocopyOptions': robocopyOptions,
         'copyRunMode': copyRunMode,
@@ -545,6 +550,10 @@ class AppSettings {
       ..copyMethodFile = _method(j['copyMethodFile'])
       ..copyMethodFolder = _method(j['copyMethodFolder'])
       ..rsyncPaths = [for (final x in (j['rsyncPaths'] as List?) ?? const []) '$x']
+      ..webdavServers = [
+        for (final x in (j['webdavServers'] as List?) ?? const [])
+          if (x is Map) DavServer.fromJson(x),
+      ]
       ..rsyncOptions = j['rsyncOptions'] as String? ?? '-avPog'
       ..robocopyOptions = j['robocopyOptions'] as String? ?? '/E /COPY:DAT /DCOPY:T /R:2 /W:2'
       ..copyRunMode = j['copyRunMode'] == 'once' ? 'once' : 'each'

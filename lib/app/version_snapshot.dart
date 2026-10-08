@@ -62,10 +62,18 @@ class VersionSnapshot {
   Future<void> restoreFrom(String from) async {
     final current = File(p.join(dataDir, 'settings.json'));
     Map<String, dynamic> secrets = {};
+    Map<String, Object?> davPasswords = {};
     if (await current.exists()) {
       try {
         final j = jsonDecode(await current.readAsString()) as Map<String, dynamic>;
         secrets = {for (final k in secretKeys) if (j[k] != null) k: j[k]};
+        final servers = j['webdavServers'];
+        if (servers is List) {
+          davPasswords = {
+            for (final s in servers)
+              if (s is Map && s['id'] != null && s['password'] != null) '${s['id']}': s['password'],
+          };
+        }
       } catch (_) {}
     }
     for (final f in files) {
@@ -75,6 +83,12 @@ class VersionSnapshot {
       if (f == 'settings.json') {
         final j = jsonDecode(await src.readAsString()) as Map<String, dynamic>;
         j.addAll(secrets);
+        final servers = j['webdavServers'];
+        if (servers is List) {
+          for (final s in servers) {
+            if (s is Map && davPasswords.containsKey('${s['id']}')) s['password'] = davPasswords['${s['id']}'];
+          }
+        }
         await dst.writeAsString(const JsonEncoder.withIndent('  ').convert(j));
       } else {
         await src.copy(dst.path);
@@ -103,6 +117,13 @@ class VersionSnapshot {
       final j = jsonDecode(settingsJson) as Map<String, dynamic>;
       for (final k in secretKeys) {
         j.remove(k);
+      }
+      // WebDAV 서버의 비밀번호
+      final servers = j['webdavServers'];
+      if (servers is List) {
+        for (final s in servers) {
+          if (s is Map) s.remove('password');
+        }
       }
       return const JsonEncoder.withIndent('  ').convert(j);
     } catch (_) {

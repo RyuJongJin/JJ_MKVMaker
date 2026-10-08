@@ -16,6 +16,8 @@ import '../app/transfer_job.dart';
 import '../core/sync_tools.dart';
 import '../core/file_ops.dart';
 import '../core/playlist.dart' show isVideoFile;
+import '../core/vfs.dart';
+import '../core/webdav.dart' show DavRegistry;
 import '../platform/android/android_storage.dart';
 import 'app_actions.dart';
 import 'explorer_look.dart';
@@ -23,6 +25,7 @@ import 'monitor_page.dart';
 import 'player_page.dart';
 import 'rsync_setup.dart';
 import 'theme.dart';
+import 'webdav_settings.dart';
 import '../l10n/tr.dart';
 
 /// 파일 탐색기 (X-plore 참고): 두 창 (트리 목록) + 가운데 기능 버튼 줄.
@@ -168,8 +171,14 @@ class _Row {
 class _ExplorerPageState extends State<ExplorerPage> {
   AppController get c => widget.c;
 
-  /// 저장 장치: (경로, 이름)
-  List<(String, String)> _volumes = [];
+  /// 이 기기의 저장 장치: (경로, 이름)
+  List<(String, String)> _local = [];
+
+  /// 저장 장치 + WebDAV 서버 (환경 설정 > 파일 탐색기 > WebDAV): (경로, 이름)
+  List<(String, String)> get _volumes => [
+        ..._local,
+        for (final s in c.settings.webdavServers) ('$davScheme${s.id}/', s.label),
+      ];
   late final List<_Pane> _panes = [_Pane(''), _Pane('')];
   int _active = 0;
   bool _ready = false;
@@ -206,11 +215,11 @@ class _ExplorerPageState extends State<ExplorerPage> {
   }
 
   Future<void> _init() async {
-    _volumes = await _loadVolumes();
-    if (_volumes.isEmpty) _volumes = [(Platform.isWindows ? r'C:\' : '/', Platform.isWindows ? 'C:' : '/')];
+    _local = await _loadVolumes();
+    if (_local.isEmpty) _local = [(Platform.isWindows ? r'C:\' : '/', Platform.isWindows ? 'C:' : '/')];
     final saved = widget.rsync ? c.settings.rsyncPaths : c.settings.explorerPaths;
     for (var i = 0; i < 2; i++) {
-      final want = i < saved.length && Directory(saved[i]).existsSync() ? saved[i] : _volumes[0].$1;
+      final want = i < saved.length && _reachable(saved[i]) ? saved[i] : _local[0].$1;
       await _goTo(_panes[i], want, remember: false);
     }
     if (!mounted) return;
@@ -229,10 +238,16 @@ class _ExplorerPageState extends State<ExplorerPage> {
     return [('/', '/')];
   }
 
+  /// 다시 열 수 있는 폴더: 로컬은 있으면, WebDAV 는 그 서버가 아직 설정에 있으면 (열 때 확인)
+  bool _reachable(String path) => isDav(path)
+      ? DavRegistry.server(DavPath.parse(path).server) != null
+      : Directory(path).existsSync();
+
   String _volumeOf(String path) {
-    String best = _volumes.first.$1;
+    if (isDav(path)) return '$davScheme${DavPath.parse(path).server}/';
+    String best = _local.first.$1;
     var len = -1;
-    for (final (v, _) in _volumes) {
+    for (final (v, _) in _local) {
       final inside = samePath(v, path) || p.isWithin(v, path) ||
           (Platform.isWindows && p.isWithin(v.toLowerCase(), path.toLowerCase()));
       if (inside && v.length > len) {
@@ -271,11 +286,12 @@ class _ExplorerPageState extends State<ExplorerPage> {
   Future<void> _goTo(_Pane pane, String dir, {bool remember = true}) async {
     pane.root = _volumeOf(dir);
     final chain = <String>[];
-    var d = p.normalize(dir);
+    dir = isDav(dir) ? vNorm(dir) : p.normalize(dir);
+    var d = dir;
     while (true) {
       chain.insert(0, d);
-      if (samePath(d, pane.root) || p.dirname(d) == d) break;
-      d = p.dirname(d);
+      if (samePath(d, pane.root) || vDirname(d) == d) break;
+      d = vDirname(d);
     }
     for (final x in chain) {
       pane.expanded.add(x);
@@ -385,7 +401,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
     }
     if (e.isDir || !_selectMode) return _onOpen(pane, row, list: list);
     pane.focused = e.path;
-    if (!list) pane.current = p.dirname(e.path);
+    if (!list) pane.current = vDirname(e.path);
     pane.changed();
   }
 
@@ -476,7 +492,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
       await _toggle(pane, e);
       return;
     }
-    if (!list) pane.current = p.dirname(e.path);
+    if (!list) pane.current = vDirname(e.path);
     pane.changed();
     await _open(e.path);
   }
@@ -503,11 +519,72 @@ class _ExplorerPageState extends State<ExplorerPage> {
   /// 파일 열기 (기본 동작): 동영상은 내장 플레이어 (또는 확장자별 프로그램), 그 밖은 기본 연결 프로그램
   Future<void> _open(String path) async {
     if (isVideoFile(path)) {
-      await playFiles(context, c, [path]);
+      await _play([path]);
       return;
     }
-    final ok = await c.services.shell.openWith(path);
+    final local = await _fetch(path);
+    if (local == null) return;
+    final ok = await c.services.shell.openWith(local);
     if (!ok) _snack(tr('이 파일을 열 수 있는 앱이 없습니다.'));
+  }
+
+  /// WebDAV 파일은 열거나 재생하려면 임시 폴더로 받는다 (받는 동안 진행 창 · 취소). 로컬은 그대로.
+  Future<String?> _fetch(String path) async {
+    if (!isDav(path)) return path;
+    final temp = await c.services.storage.tempDirectory();
+    if (!mounted) return null;
+    final progress = ValueNotifier<(int, int)>((0, 0));
+    var cancelled = false;
+    final dialog = showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('WebDAV 에서 받는 중')),
+        content: ValueListenableBuilder<(int, int)>(
+          valueListenable: progress,
+          builder: (_, v, _) => Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(vBasename(path)),
+            const SizedBox(height: 10),
+            LinearProgressIndicator(value: v.$2 > 0 ? v.$1 / v.$2 : null),
+            const SizedBox(height: 6),
+            Text('${formatSize(v.$1)}${v.$2 > 0 ? ' / ${formatSize(v.$2)}' : ''}',
+                style: const TextStyle(fontSize: 12, color: JjColors.textDim)),
+          ]),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              cancelled = true;
+              Navigator.pop(ctx);
+            },
+            child: Text(tr('취소')),
+          ),
+        ],
+      ),
+    );
+    try {
+      final local = await vLocalCopy(path, temp, onProgress: (d, t) => progress.value = (d, t));
+      return cancelled ? null : local;
+    } catch (e) {
+      if (!cancelled) _snack(trf('받지 못했습니다: {0}', [e]));
+      return null;
+    } finally {
+      if (!cancelled && mounted) Navigator.of(context).pop();
+      await dialog;
+      progress.dispose();
+    }
+  }
+
+  /// 동영상 재생 (WebDAV 는 받은 뒤)
+  Future<void> _play(List<String> paths, {bool internal = false, bool keepOrder = false}) async {
+    final local = <String>[];
+    for (final x in paths) {
+      final l = await _fetch(x);
+      if (l == null) return;
+      local.add(l);
+    }
+    if (!mounted || local.isEmpty) return;
+    await playFiles(context, c, local, internal: internal, keepOrder: keepOrder);
   }
 
   Future<void> _menu(_Pane pane, FileEntry e, Offset at) async {
@@ -515,15 +592,16 @@ class _ExplorerPageState extends State<ExplorerPage> {
     pane.focused = e.path;
     pane.changed();
     final video = !e.isDir && isVideoFile(e.path);
+    final dav = isDav(e.path);
     final dual = _dual;
     final items = <(String, IconData, String)>[
       if (e.isDir) ('open', Icons.folder_open, tr('열기')),
       if (e.isDir && dual) ('openOther', Icons.vertical_split_outlined, tr('다른 창에서 열기')),
-      if (e.isDir) ('playFolder', Icons.play_circle_outline, tr('이 폴더의 동영상 재생')),
+      if (e.isDir && !dav) ('playFolder', Icons.play_circle_outline, tr('이 폴더의 동영상 재생')),
       if (video) ('playInternal', Icons.play_circle_outline, tr('내장 플레이어로 재생')),
       if (!e.isDir) ('openWith', Icons.open_in_new, tr('다른 앱으로 열기')),
       if (!e.isDir && !video) ('openDefault', Icons.launch, tr('기본 앱으로 열기')),
-      if (video) ('addMkv', Icons.playlist_add, tr('MKV 목록에 추가')),
+      if (video && !dav) ('addMkv', Icons.playlist_add, tr('MKV 목록에 추가')),
       ('select', Icons.check_circle_outline, tr('선택')),
       ('rename', Icons.drive_file_rename_outline, tr('이름 변경')),
       if (dual) ('copy', Icons.copy_outlined, tr('다른 창으로 복사')),
@@ -532,9 +610,9 @@ class _ExplorerPageState extends State<ExplorerPage> {
       ('clipCopy', Icons.content_copy, dual ? tr('복사 (붙여넣기로)') : tr('복사')),
       ('clipMove', Icons.content_cut, dual ? tr('이동 (붙여넣기로)') : tr('이동')),
       if (_clip.isNotEmpty)
-        ('paste', Icons.content_paste, trf('{0} 에 붙여넣기 ({1}개)', [p.basename(e.isDir ? e.path : p.dirname(e.path)), _clip.length])),
+        ('paste', Icons.content_paste, trf('{0} 에 붙여넣기 ({1}개)', [vBasename(e.isDir ? e.path : vDirname(e.path)), _clip.length])),
       ('delete', Icons.delete_outline, tr('삭제')),
-      if (!Platform.isAndroid || e.isDir) ('reveal', Icons.folder_outlined, tr('파일 관리자에서 보기')),
+      if (!dav && (!Platform.isAndroid || e.isDir)) ('reveal', Icons.folder_outlined, tr('파일 관리자에서 보기')),
       ('info', Icons.info_outline, tr('정보')),
     ];
     final size = MediaQuery.sizeOf(context);
@@ -560,11 +638,13 @@ class _ExplorerPageState extends State<ExplorerPage> {
       case 'playFolder':
         await _playFolder(e.path);
       case 'playInternal':
-        await playFiles(context, c, [e.path], internal: true);
+        await _play([e.path], internal: true);
       case 'openWith':
-        if (!await c.services.shell.openWith(e.path, choose: true)) _snack(tr('이 파일을 열 수 있는 앱이 없습니다.'));
+        final local = await _fetch(e.path);
+        if (local != null && !await c.services.shell.openWith(local, choose: true)) _snack(tr('이 파일을 열 수 있는 앱이 없습니다.'));
       case 'openDefault':
-        if (!await c.services.shell.openWith(e.path)) _snack(tr('이 파일을 열 수 있는 앱이 없습니다.'));
+        final local = await _fetch(e.path);
+        if (local != null && !await c.services.shell.openWith(local)) _snack(tr('이 파일을 열 수 있는 앱이 없습니다.'));
       case 'addMkv':
         await _addMkv([e.path]);
       case 'select':
@@ -581,7 +661,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
       case 'clipMove':
         _toClipboard(_isMarked(pane, e.path) ? pane.marked.toList() : [e.path], move: true);
       case 'paste':
-        await _paste(pane, e.isDir ? e.path : p.dirname(e.path));
+        await _paste(pane, e.isDir ? e.path : vDirname(e.path));
       case 'delete':
         await _delete(pane, [e.path]);
       case 'reveal':
@@ -627,7 +707,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
     switch (b) {
       case ExplorerButton.up:
         if (samePath(pane.current, pane.root)) return;
-        final up = p.dirname(pane.current);
+        final up = vDirname(pane.current);
         pane.expanded.remove(pane.current);
         await _goTo(pane, up);
       case ExplorerButton.select:
@@ -647,11 +727,11 @@ class _ExplorerPageState extends State<ExplorerPage> {
         }
       case ExplorerButton.play:
         final t = _targets(pane);
-        final videos = t.where((x) => !FileSystemEntity.isDirectorySync(x) && isVideoFile(x)).toList();
+        final videos = t.where((x) => !vIsDirSync(x) && isVideoFile(x)).toList();
         if (videos.isNotEmpty) {
-          await playFiles(context, c, videos, keepOrder: pane.marked.isNotEmpty);
+          await _play(videos, keepOrder: pane.marked.isNotEmpty);
         } else {
-          await _playFolder(t.length == 1 && FileSystemEntity.isDirectorySync(t.first) ? t.first : pane.current);
+          await _playFolder(t.length == 1 && vIsDirSync(t.first) ? t.first : pane.current);
         }
       case ExplorerButton.addMkv:
         final t = _targets(pane);
@@ -722,13 +802,17 @@ class _ExplorerPageState extends State<ExplorerPage> {
       return;
     }
     if (!mounted) return;
-    await playFiles(context, c, list);
+    await _play(list);
   }
 
   Future<void> _addMkv(List<String> paths) async {
+    if (paths.any(isDav)) {
+      _snack(tr('WebDAV 의 동영상은 MKV 목록에 넣을 수 없습니다. 먼저 이 기기로 복사하세요.'));
+      return;
+    }
     final videos = <String>[];
     for (final x in paths) {
-      if (FileSystemEntity.isDirectorySync(x)) {
+      if (vIsDirSync(x)) {
         videos.addAll((await listEntries(x)).where((e) => !e.isDir && isVideoFile(e.path)).map((e) => e.path));
       } else if (isVideoFile(x)) {
         videos.add(x);
@@ -743,11 +827,11 @@ class _ExplorerPageState extends State<ExplorerPage> {
   }
 
   Future<void> _rename(_Pane pane, String path) async {
-    final name = await _askName(tr('이름 변경'), p.basename(path));
-    if (name == null || name == p.basename(path)) return;
+    final name = await _askName(tr('이름 변경'), vBasename(path));
+    if (name == null || name == vBasename(path)) return;
     try {
       final now = await FileOps.rename(path, name);
-      await _refreshAll([p.dirname(path)]);
+      await _refreshAll([vDirname(path)]);
       for (final x in _panes) {
         if (x.marked.remove(path)) x.marked.add(now);
       }
@@ -769,12 +853,12 @@ class _ExplorerPageState extends State<ExplorerPage> {
         title: Text(tr('삭제')),
         // 무엇을 지우는지 늘 보여 준다 (여러 개면 앞의 8개 이름 · 폴더)
         content: Text(paths.length == 1
-            ? '${trf('"{0}" 을(를) 지울까요? 되돌릴 수 없습니다.', [p.basename(paths.first)])}\n${p.dirname(paths.first)}'
+            ? '${trf('"{0}" 을(를) 지울까요? 되돌릴 수 없습니다.', [vBasename(paths.first)])}\n${vDirname(paths.first)}'
             : [
                 trf('{0}개 항목을 지울까요? 되돌릴 수 없습니다.', [paths.length]),
-                for (final x in paths.take(8)) '· ${p.basename(x)}',
+                for (final x in paths.take(8)) '· ${vBasename(x)}',
                 if (paths.length > 8) trf('… 외 {0}개', [paths.length - 8]),
-                {for (final x in paths) p.dirname(x)}.join('\n'),
+                {for (final x in paths) vDirname(x)}.join('\n'),
               ].join('\n')),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('취소'))),
@@ -796,7 +880,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
       x.marked.removeAll(paths);
       if (_selecting && x.marked.isEmpty) _selecting = false;
       x.expanded.removeWhere((d) => paths.any((s) => isSameOrInside(d, s)));
-      if (paths.any((s) => isSameOrInside(x.current, s))) x.current = p.dirname(paths.first);
+      if (paths.any((s) => isSameOrInside(x.current, s))) x.current = vDirname(paths.first);
     }
     await _refreshAll(paths.map(p.dirname));
   }
@@ -844,6 +928,9 @@ class _ExplorerPageState extends State<ExplorerPage> {
   /// (Rsync 화면의 ⇄ 는 둘이 함께)
   List<TransferJob> _jobs = const [];
 
+  /// 한쪽이라도 WebDAV 면 rsync 대신 앱이 직접 맞춘다 (rsync 는 WebDAV 를 모름)
+  bool _viaDav(Iterable<String> paths) => paths.any(isDav);
+
   /// rsync 가 없으면 (Windows · 내려받기 설정) 지금 내려받을지 묻는다. 쓸 수 있는 rsync 경로 (없으면 null)
   Future<String?> _ensureRsync() async {
     final s = c.settings;
@@ -871,7 +958,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
     final problem = transferProblem(sources, dest, move: move);
     if (problem != null) {
       _snack(problem);
-      pane.marked.removeWhere((m) => FileSystemEntity.typeSync(m) == FileSystemEntityType.notFound);
+      pane.marked.removeWhere((m) => vMissingSync(m));
       await _refreshAll([dest, ...sources.map(p.dirname)]);
       for (final x in _panes) {
         x.changed();
@@ -887,7 +974,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(move ? tr('이동') : tr('복사')),
-        content: Text('${trf('{0}개 항목을 다음 폴더로 {1}\n{2}', [sources.length, move ? tr('옮길까요?') : tr('복사할까요?'), dest])}'
+        content: Text('${trf('{0}개 항목을 다음 폴더로 {1}\n{2}', [sources.length, move ? tr('옮길까요?') : tr('복사할까요?'), vDisplay(dest)])}'
             '\n\n${trf('방법: {0}', [tr(method.label)])}'
             '${method == CopyMethod.builtin ? '' : ' · ${task.options}'}'
             '${task.bandwidthKBps > 0 ? ' · ${trf('속도 제한 {0} KB/s', [task.bandwidthKBps])}' : ''}'),
@@ -899,7 +986,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
     );
     if (go != true || !mounted) return false;
     String? rsync;
-    if (method == CopyMethod.rsync) {
+    if (method == CopyMethod.rsync && !_viaDav([...sources, dest])) {
       rsync = await _ensureRsync();
       if (rsync == null || !mounted) return false;
     }
@@ -954,9 +1041,9 @@ class _ExplorerPageState extends State<ExplorerPage> {
       if (problem != null) {
         _snack(problem);
         for (final x in _panes) {
-          x.marked.removeWhere((m) => FileSystemEntity.typeSync(m) == FileSystemEntityType.notFound);
+          x.marked.removeWhere((m) => vMissingSync(m));
         }
-        await _refreshAll([p.dirname(l), p.dirname(r)]);
+        await _refreshAll([vDirname(l), vDirname(r)]);
         return;
       }
     }
@@ -977,8 +1064,8 @@ class _ExplorerPageState extends State<ExplorerPage> {
           width: 560,
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             for (final t in tasks) ...[
-              Text('${t.sources.first}/', style: const TextStyle(fontWeight: FontWeight.w600)),
-              Text('→  ${t.dest}/', style: const TextStyle(fontWeight: FontWeight.w600)),
+              Text('${vDisplay(t.sources.first)}/', style: const TextStyle(fontWeight: FontWeight.w600)),
+              Text('→  ${vDisplay(t.dest)}/', style: const TextStyle(fontWeight: FontWeight.w600)),
               Text('rsync ${opts(t)}${removeSource ? ' --remove-source-files' : ''}'
                   '${t.bandwidthKBps > 0 ? ' · ${trf('속도 제한 {0} KB/s', [t.bandwidthKBps])}' : ''}',
                   style: const TextStyle(fontSize: 12, fontFamily: 'monospace', color: JjColors.textDim)),
@@ -986,6 +1073,9 @@ class _ExplorerPageState extends State<ExplorerPage> {
             ],
             Text(tr('폴더 안의 것을 맞춥니다 (대상에 같은 이름의 폴더를 새로 만들지 않음).'),
                 style: const TextStyle(fontSize: 12, color: JjColors.textDim)),
+            if (_viaDav([l, r]))
+              Text(tr('WebDAV: rsync 대신 앱이 직접 맞춥니다 (크기 · 바뀐 때 비교, 옵션 중 -u · --remove-source-files 만 따름).'),
+                  style: const TextStyle(fontSize: 12, color: JjColors.accent)),
             if (both)
               Text(tr('양쪽을 함께: 받는 쪽이 더 새 파일은 덮어쓰지 않습니다 (-u).'),
                   style: const TextStyle(fontSize: 12, color: JjColors.textDim))
@@ -1013,7 +1103,8 @@ class _ExplorerPageState extends State<ExplorerPage> {
       )),
     );
     if (go != true || !mounted) return;
-    final exe = await _ensureRsync();
+    final dav = _viaDav([l, r]);
+    final exe = dav ? '' : await _ensureRsync();
     if (exe == null || !mounted) return;
     tasks = [
       for (final (src, dst) in runs) await center.remember([src], dst, contents: true, method: 'rsync', move: removeSource),
@@ -1026,7 +1117,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
     }
     final jobs = <TransferJob>[];
     for (final t in tasks) {
-      final j = await center.start(t.copyWith(options: opts(t)), rsyncExe: exe);
+      final j = await center.start(t.copyWith(options: opts(t)), rsyncExe: dav ? null : exe);
       if (j != null) jobs.add(j);
     }
     if (jobs.isEmpty || !mounted) return;
@@ -1035,9 +1126,9 @@ class _ExplorerPageState extends State<ExplorerPage> {
     if (!mounted) return;
     // 원본 폴더까지 지웠으면 고른 표시도 뺀다
     for (final x in _panes) {
-      x.marked.removeWhere((m) => FileSystemEntity.typeSync(m) == FileSystemEntityType.notFound);
+      x.marked.removeWhere((m) => vMissingSync(m));
     }
-    await _refreshAll([l, r, p.dirname(l), p.dirname(r)]);
+    await _refreshAll([l, r, vDirname(l), vDirname(r)]);
     for (final x in _panes) {
       x.changed();
     }
@@ -1046,7 +1137,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
         ? tr('취소했습니다.')
         : error != null
             ? trf('끝나지 못했습니다: {0}', [error])
-            : trf('rsync 끝: {0}', [jobs.map((j) => '${p.basename(j.sources.first)} → ${p.basename(j.dest)}').join(' · ')]));
+            : trf('rsync 끝: {0}', [jobs.map((j) => '${vBasename(j.sources.first)} → ${vBasename(j.dest)}').join(' · ')]));
     await Future<void>.delayed(const Duration(milliseconds: 1200));
     if (mounted && identical(_jobs, jobs)) setState(() => _jobs = const []);
   }
@@ -1147,7 +1238,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
           ].join(' · '),
         ),
         line(
-          trf('{0} 전체', [job.currentName.isEmpty ? p.basename(job.sources.first) : job.currentName]),
+          trf('{0} 전체', [job.currentName.isEmpty ? vBasename(job.sources.first) : job.currentName]),
           job.folderProgress,
           '${pct(job.folderProgress)} · ${job.checkTotal > 0 && !job.finished ? trf('항목 {0}/{1}', [job.checked, job.checkTotal]) : trf('파일 {0}/{1}', [job.allDone, job.allFiles])}',
         ),
@@ -1198,7 +1289,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
 
   Future<void> _info(FileEntry e) async {
     final size = e.isDir ? await FileOps.totalSize([e.path]) : e.size;
-    final meta = !e.isDir && isVideoFile(e.path) ? await _Meta.of(c, e.path) : null;
+    final meta = !e.isDir && !isDav(e.path) && isVideoFile(e.path) ? await _Meta.of(c, e.path) : null;
     if (!mounted) return;
     await showDialog<void>(
       context: context,
@@ -1223,7 +1314,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
       builder: (ctx) => _SearchDialog(root: pane.current, query: q, showHidden: c.settings.explorerShowHidden),
     );
     if (found == null) return;
-    await _goTo(pane, found.isDir ? found.path : p.dirname(found.path));
+    await _goTo(pane, found.isDir ? found.path : vDirname(found.path));
     pane.focused = found.path;
     pane.changed();
   }
@@ -1269,7 +1360,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
   }
 
   Future<void> _historyDialog(_Pane pane) async {
-    final hist = c.settings.explorerHistory.where((h) => Directory(h).existsSync()).toList();
+    final hist = c.settings.explorerHistory.where(_reachable).toList();
     final pick = await showDialog<String>(
       context: context,
       builder: (ctx) => SimpleDialog(
@@ -1463,7 +1554,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
           Text(widget.rsync ? 'Rsync' : tr('파일 탐색기'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
           const SizedBox(width: 12),
           Expanded(
-            child: Text(_ready ? _pane.current : '',
+            child: Text(_ready ? vDisplay(_pane.current) : '',
                 maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: JjColors.textDim)),
           ),
           PopupMenuButton<ExplorerButton>(
@@ -1614,7 +1705,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
     final entries = pane.cache[dir] ?? const <FileEntry>[];
     final up = !samePath(dir, pane.root);
     final rows = [
-      if (up) _Row(FileEntry(p.dirname(dir), isDir: true, modified: DateTime(0)), 0, isUp: true),
+      if (up) _Row(FileEntry(vDirname(dir), isDir: true, modified: DateTime(0)), 0, isUp: true),
       for (final e in entries) _Row(e, 0),
     ];
     final look = _look;
@@ -1660,17 +1751,53 @@ class _ExplorerPageState extends State<ExplorerPage> {
                     backgroundColor: samePath(pane.root, path) ? JjColors.accent.withValues(alpha: 0.18) : null,
                     foregroundColor: samePath(pane.root, path) ? JjColors.accent : null,
                   ),
-                  icon: Icon(Platform.isWindows ? Icons.storage : Icons.sd_storage_outlined, size: 16),
+                  icon: Icon(
+                      isDav(path)
+                          ? Icons.cloud_outlined
+                          : Platform.isWindows
+                              ? Icons.storage
+                              : Icons.sd_storage_outlined,
+                      size: 16),
                   label: Text(label),
                   onPressed: () {
                     setState(() => _active = _panes.indexOf(pane));
                     _goTo(pane, path);
                   },
+                  onLongPress: isDav(path) ? () => _editDav(pane, path) : null,
                 ),
+              ),
+            if (c.settings.webdavServers.isEmpty)
+              TextButton.icon(
+                style: TextButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                ),
+                icon: const Icon(Icons.cloud_outlined, size: 16),
+                label: const Text('WebDAV'),
+                onPressed: () => _editDav(pane, null),
+              )
+            else
+              IconButton(
+                tooltip: tr('WebDAV 서버 추가'),
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.add, size: 16),
+                onPressed: () => _editDav(pane, null),
               ),
           ],
         ),
       );
+
+  /// WebDAV 서버 추가 (없으면 [root] 는 null) · 고치기 (탭 길게 누르기). 저장하면 그 서버로 간다.
+  Future<void> _editDav(_Pane pane, String? root) async {
+    setState(() => _active = _panes.indexOf(pane));
+    final old = root == null ? null : DavRegistry.server(DavPath.parse(root).server);
+    final saved = await editDavServer(context, c, old: old);
+    if (saved == null || !mounted) return;
+    for (final x in _panes) {
+      x.cache.removeWhere((k, _) => isDav(k) && DavPath.parse(k).server == saved.id);
+    }
+    await _goTo(pane, '$davScheme${saved.id}/');
+  }
 
   /// 한 줄. [list]: "폴더 + 파일 목록" 의 오른쪽 목록 (트리 아님). [compact]: 폴더 트리 (열 · 표시 버튼 없이)
   Widget _rowView(_Pane pane, _Row row, {bool list = false, bool compact = false}) {
@@ -1826,9 +1953,9 @@ class _ExplorerPageState extends State<ExplorerPage> {
   Widget _icon(FileEntry e, bool isRoot, bool open, {bool up = false}) {
     final look = _look;
     if (up) return Icon(Icons.arrow_upward, size: look.iconSize, color: JjColors.textDim);
-    if (isRoot) return Icon(Icons.sd_storage, color: JjColors.accent, size: look.iconSize - 2);
-    // X-plore: 동영상 썸네일 · 그림 미리 보기
-    if (look.rich && !e.isDir) {
+    if (isRoot) return Icon(isDav(e.path) ? Icons.cloud : Icons.sd_storage, color: JjColors.accent, size: look.iconSize - 2);
+    // X-plore: 동영상 썸네일 · 그림 미리 보기 (WebDAV 는 받아야 하므로 아이콘만)
+    if (look.rich && !e.isDir && !isDav(e.path)) {
       if (isVideoFile(e.path)) return _Thumb(c: c, entry: e);
       const images = {'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'};
       if (images.contains(e.ext)) {
@@ -1953,7 +2080,7 @@ class _SearchDialogState extends State<_SearchDialog> {
                       leading: Icon(e.isDir ? Icons.folder : Icons.insert_drive_file_outlined,
                           color: e.isDir ? Colors.amber : null),
                       title: Text(e.name),
-                      subtitle: Text(p.dirname(e.path), maxLines: 1, overflow: TextOverflow.ellipsis),
+                      subtitle: Text(vDirname(e.path), maxLines: 1, overflow: TextOverflow.ellipsis),
                       onTap: () => Navigator.pop(context, e),
                     );
                   },

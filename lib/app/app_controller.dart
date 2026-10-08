@@ -10,6 +10,7 @@ import '../core/charset_detector.dart';
 import '../core/encode_options.dart';
 import '../core/languages.dart';
 import '../core/mkv_command_builder.dart';
+import '../core/webdav.dart';
 import '../core/models.dart';
 import '../core/output_paths.dart';
 import '../core/playlist.dart';
@@ -128,6 +129,8 @@ class AppController extends ChangeNotifier {
   }
 
   void _applySettings() {
+    // WebDAV 서버 (파일 탐색기 · Rsync 화면 · 복사 · 동기화가 dav:// 경로로 쓴다)
+    DavRegistry.configure(settings.webdavServers);
     outputRootOverride =
         (settings.mkvOutputRoot?.isNotEmpty ?? false) ? settings.mkvOutputRoot : null;
   }

@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 
 import '../core/file_ops.dart';
 import '../core/sync_tools.dart';
+import '../core/vfs.dart';
 import '../l10n/tr.dart';
 import '../platform/windows/windows_usage.dart';
 import 'app_controller.dart';
@@ -35,7 +36,7 @@ class CopyCenter extends ChangeNotifier {
   /// 새 작업: 지금 설정의 방법 · 옵션으로
   CopyTask fresh(List<String> sources, String dest, {bool move = false, bool contents = false, String? method}) {
     final s = c.settings;
-    final hasDir = sources.any(FileSystemEntity.isDirectorySync);
+    final hasDir = sources.any((s) => isDav(s) || FileSystemEntity.isDirectorySync(s));
     var m = CopyMethod.of(method ?? (hasDir ? s.copyMethodFolder : s.copyMethodFile));
     if (!copyMethodAvailable(m, s)) m = CopyMethod.builtin;
     return CopyTask(
@@ -94,8 +95,10 @@ class CopyCenter extends ChangeNotifier {
       return null;
     }
     final method = CopyMethod.of(t.method);
-    final exe = method == CopyMethod.rsync ? (rsyncExe ?? await rsyncExecutable(c.settings)) : null;
-    if (method == CopyMethod.rsync && exe == null) return null;
+    // WebDAV 가 끼면 rsync 없이 앱이 직접 맞춘다
+    final dav = isDav(t.dest) || t.sources.any(isDav);
+    final exe = method == CopyMethod.rsync && !dav ? (rsyncExe ?? await rsyncExecutable(c.settings)) : null;
+    if (method == CopyMethod.rsync && !dav && exe == null) return null;
     final job = TransferJob(
       sources: t.sources,
       dest: t.dest,
@@ -135,7 +138,7 @@ class CopyCenter extends ChangeNotifier {
 
   /// lsync 로 옮기기: 원본 폴더마다 (원본 → 대상\이름) 실시간 동기화 쌍. 파일 원본은 넣을 수 없어 남긴다.
   Future<int> toLiveSync(CopyTask t) async {
-    final dirs = t.sources.where(FileSystemEntity.isDirectorySync).toList();
+    final dirs = t.sources.where((s) => isDav(s) ? vIsDirSync(s) : FileSystemEntity.isDirectorySync(s)).toList();
     if (dirs.isEmpty) return 0;
     final pairs = [
       for (final d in dirs) LiveSyncPair(d, t.contents ? t.dest : p.join(t.dest, p.basename(d)), method: t.method),
@@ -174,6 +177,11 @@ class CopyCenter extends ChangeNotifier {
 /// 디스크 남은 용량 · 전체 용량 (바이트). 알 수 없으면 null.
 Future<(int, int)?> diskSpace(String path) async {
   try {
+    // WebDAV: 서버가 알려 주는 남은 용량 · 쓴 용량 (전체 = 남은 + 쓴)
+    if (isDav(path)) {
+      final (free, used) = await DavPath.parse(path).client.quota();
+      return free == null ? null : (free, free + (used ?? 0));
+    }
     if (Platform.isWindows) return WindowsUsage().disk(path);
     if (Platform.isAndroid) {
       final r = await const MethodChannel('jj_mkvmaker/android').invokeMethod<List<Object?>>('diskSpace', {'path': path});

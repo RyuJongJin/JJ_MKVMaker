@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 
 import '../core/file_ops.dart';
 import '../core/sync_tools.dart';
+import '../core/vfs.dart';
 
 /// 복사 · 이동 한 번 (파일 탐색기). 방법 (현재 방식 · rsync · robocopy) 과 상관없이 같은 진행 상태를 알린다:
 /// - 위쪽: 고른 항목 (폴더) 중 몇 번째인지 · 전체 진행률
@@ -133,7 +134,14 @@ class TransferJob extends ChangeNotifier {
 
   void _tick() => notifyListeners();
 
+  /// 한쪽이라도 WebDAV 면 rsync · robocopy 대신 앱이 직접 (크기 · 시각 비교) 맞춘다
+  bool get viaWebDav => isDav(dest) || sources.any(isDav);
+
+  /// rsync -u (--update) 를 옵션에 넣었는지 (앱이 맞출 때도 같은 뜻으로: 대상이 더 새것이면 건너뜀)
+  bool get _update => splitOptions(options).any((o) => o == '--update' || (o.startsWith('-') && !o.startsWith('--') && o.contains('u')));
+
   static Future<int> countFiles(String path) async {
+    if (isDav(path)) return vCountFiles(path);
     if (!FileSystemEntity.isDirectorySync(path)) return 1;
     var n = 0;
     await for (final e in Directory(path).list(recursive: true, followLinks: false).handleError((_) {})) {
@@ -146,14 +154,14 @@ class TransferJob extends ChangeNotifier {
     try {
       for (var i = 0; i < sources.length; i++) {
         final s = sources[i];
-        if (FileSystemEntity.isDirectorySync(s) && isSameOrInside(dest, s)) {
+        if ((isDav(s) || FileSystemEntity.isDirectorySync(s)) && isSameOrInside(dest, s)) {
           throw FileSystemException('폴더를 자기 안으로 복사 · 이동할 수 없습니다', s);
         }
         filesTotal[i] = await countFiles(s);
       }
       counting = false;
       _tick();
-      switch (method) {
+      switch (viaWebDav ? CopyMethod.builtin : method) {
         case CopyMethod.builtin:
           await _runBuiltin();
         case CopyMethod.rsync:
@@ -167,7 +175,7 @@ class TransferJob extends ChangeNotifier {
         pruning = true;
         _tick();
         for (final s in sources) {
-          if (FileSystemEntity.isDirectorySync(s)) pruned += await removeEmptyDirs(s, keepRoot: prune == 'keep');
+          if (isDav(s) || FileSystemEntity.isDirectorySync(s)) pruned += await removeEmptyDirs(s, keepRoot: prune == 'keep');
         }
       }
     } catch (e) {
@@ -184,17 +192,21 @@ class TransferJob extends ChangeNotifier {
     for (index = 0; index < sources.length; index++) {
       if (cancelled) return;
       final i = index;
-      _ops = FileOps(bandwidthKBps: bandwidthKBps, onFileDone: (src) {
-        filesDone[i]++;
-        currentFile = p.basename(src);
-        // 옮긴 (이름 바꾼) 파일은 원본이 없어 0
-        final st = FileStat.statSync(src);
-        _addBytes(st.type == FileSystemEntityType.file ? st.size : 0);
-        _tick();
-      });
+      _ops = FileOps(
+        bandwidthKBps: bandwidthKBps,
+        onFileDone: (src) {
+          filesDone[i]++;
+          currentFile = vBasename(src);
+          _tick();
+        },
+        // 보낸 양으로 전송 속도 (WebDAV 포함)
+        onBytes: _addBytes,
+      );
       _tick();
-      if (contents && FileSystemEntity.isDirectorySync(sources[i])) {
-        await _ops!.mirror(sources[i], dest);
+      if (contents && (isDav(sources[i]) || FileSystemEntity.isDirectorySync(sources[i]))) {
+        // 폴더 "안의 것" 맞추기 (rsync 원본/ 대상/ 과 같은 뜻): -u · 원본 파일 지우기 (--remove-source-files) 도
+        await _ops!.mirror(sources[i], dest, update: _update);
+        if (move && !cancelled) await _deleteFilesIn(sources[i]);
         made.add(dest);
       } else {
         final r = move ? await _ops!.move([sources[i]], dest) : await _ops!.copy([sources[i]], dest);
@@ -203,6 +215,18 @@ class TransferJob extends ChangeNotifier {
       filesDone[i] = filesTotal[i]; // 이름 바꾸기로 옮긴 경우
     }
     index = sources.length;
+  }
+
+  /// 맞춘 뒤 원본의 파일만 지운다 (rsync --remove-source-files 처럼, 빈 폴더는 [prune] 이 정리)
+  Future<void> _deleteFilesIn(String dir) async {
+    for (final e in await vList(dir)) {
+      if (cancelled) return;
+      if (e.isDir) {
+        await _deleteFilesIn(e.path);
+      } else {
+        await vDelete(e.path);
+      }
+    }
   }
 
   void _addLog(String line) {
