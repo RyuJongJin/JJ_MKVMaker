@@ -802,6 +802,7 @@
  "영상 재생 오류: {0}": "Video playback error: {0}",
  "영상·음성을 그대로 복사합니다 (빠름, 화질 손실 없음)": "Copies video · audio as is (fast, no quality loss)",
  "영상마다 한 줄씩 보여 주고 jj_yt-dlp\\재생목록 이름\\ 에 저장 (믹스 목록 제외)": "Shows one line per video and saves to jj_yt-dlp\\playlist name\\ (mix lists excluded)",
+ "영상을 다시 인코딩합니다 (시간이 오래 걸림, 음성은 그대로)": "Re-encodes the video (takes a long time, audio unchanged)",
  "영상을 다시 인코딩합니다 (시간이 오래 걸림, 음성은 그대로){0}": "Re-encodes the video (takes a long time, audio unchanged){0}",
  "영상의 음성을 인식하고 선택한 언어로 번역합니다. 모든 처리는 이 {0}에서 이루어집니다.": "Recognizes the video's speech and translates it into the chosen languages. All processing happens on this {0}.",
  "영어": "English",

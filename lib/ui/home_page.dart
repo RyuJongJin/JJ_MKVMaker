@@ -473,14 +473,12 @@ class _EncodeBar extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 12),
-        if (!compact) Expanded(
+        Expanded(
+          // 화면 · 색 보정을 켜도 "⚠ 원본보다 커서" 경고는 함께 보인다 (31)
           child: Text(
-            s.adjusts
-                ? s.adjustSummary
-                : !s.reencode
-                ? tr('영상·음성을 그대로 복사합니다 (빠름, 화질 손실 없음)')
-                : trf('영상을 다시 인코딩합니다 (시간이 오래 걸림, 음성은 그대로)' '{0}', [up > 0 ? trf(' · ⚠ {0}개는 원본보다 커서 화질 향상 없이 용량만 늘어납니다', [up]) : '']),
-            overflow: TextOverflow.ellipsis,
+            '${s.adjusts ? s.adjustSummary : !s.reencode ? tr('영상·음성을 그대로 복사합니다 (빠름, 화질 손실 없음)') : tr('영상을 다시 인코딩합니다 (시간이 오래 걸림, 음성은 그대로)')}'
+            '${s.reencode && up > 0 ? trf(' · ⚠ {0}개는 원본보다 커서 화질 향상 없이 용량만 늘어납니다', [up]) : ''}',
+            overflow: compact ? null : TextOverflow.ellipsis,
             style: TextStyle(
                 fontSize: 12, color: up > 0 && s.reencode ? JjColors.danger : JjColors.textDim),
           ),
@@ -494,7 +492,11 @@ class _EncodeBar extends StatelessWidget {
         child: Wrap(
           crossAxisAlignment: WrapCrossAlignment.center,
           runSpacing: 6,
-          children: [for (final w in row.children) if (w is! Expanded) w],
+          // 31: 설명 · "⚠ 원본보다 커서 용량만 늘어납니다" 경고는 빼지 않고 한 줄을 다 써서 보여 준다
+          children: [
+            for (final w in row.children)
+              w is Expanded ? SizedBox(width: double.infinity, child: w.child) : w,
+          ],
         ),
       );
     }
