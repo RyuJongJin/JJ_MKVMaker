@@ -34,6 +34,9 @@ class AppComponent {
 
   static const all = [mkv, browser, explorer, rsync, downloads, viewer, docs];
 
+  /// 문서 미리보기 대상 (PDF 로 바꿔 봄)
+  static const docExtensions = ['doc', 'docx', 'hwp', 'hwpx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp', 'rtf'];
+
   /// 화면 있는 것의 기본 순서 (좌우로 밀기 · 위쪽 버튼)
   static const defaultOrder = ['mkv', 'browser', 'explorer', 'rsync', 'downloads'];
 

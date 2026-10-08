@@ -11,6 +11,7 @@ import 'package:window_manager/window_manager.dart';
 import 'app/app_controller.dart';
 import 'app/live_sync.dart';
 import 'app/version_snapshot.dart';
+import 'app/component_store.dart';
 import 'app/bookmarks_controller.dart';
 import 'app/download_manager.dart';
 import 'app/settings.dart';
@@ -95,6 +96,7 @@ Future<void> main(List<String> args) async {
   }
   // 버전별 설정 보관 (업데이트 · 예전 버전으로 되돌리기): 시작할 때 설정 파일이 없었는지 (새로 설치)
   final freshInstall = !File(p.join(dataDir, 'settings.json')).existsSync();
+  ComponentStore.dataDirectory = dataDir;
   VersionSnapshot.instance = VersionSnapshot(dataDir);
   await controller.init();
   // 실시간 동기화 (환경 설정 > 파일 탐색기): 앱이 켜져 있는 동안. 다시 켤 때 바로 / 골라서 / 시작 안 함
@@ -396,6 +398,7 @@ Future<void> runAndroid(String dataDir) async {
   controller.note(trf('── 시작 {0} (Android) ──', [appTitle]));
   // 버전별 설정 보관: 앱을 지웠다 다시 설치해도 남도록 공용 Download/JJ_MKVMaker 에도 (예전 버전으로 되돌릴 때)
   final freshInstall = !File(p.join(dataDir, 'settings.json')).existsSync();
+  ComponentStore.dataDirectory = dataDir;
   String? sharedSnapshots;
   try {
     final root = await const MethodChannel('jj_mkvmaker/android').invokeMethod<String>('storageRoot');

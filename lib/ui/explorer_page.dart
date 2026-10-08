@@ -27,6 +27,8 @@ import 'rsync_setup.dart';
 import 'theme.dart';
 import 'webdav_settings.dart';
 import 'reader_page.dart';
+import '../app/component_store.dart';
+import '../app/components.dart';
 import 'zip_page.dart';
 import '../core/reader_sources.dart';
 import '../l10n/tr.dart';
@@ -548,6 +550,11 @@ class _ExplorerPageState extends State<ExplorerPage> {
       if (ext == 'pdf') return _viewPdf(path);
       if (zipExtensions.contains(ext)) return _openZip(path, pane);
     }
+    // 문서 미리보기 (Windows: 설치한 변환기로 PDF 로 바꿔 봄)
+    if (c.settings.components.contains('docs') && Platform.isWindows &&
+        AppComponent.docExtensions.contains(extOf(path))) {
+      return _viewDoc(path);
+    }
     final local = await _fetch(path);
     if (local == null) return;
     final ok = await c.services.shell.openWith(local);
@@ -621,6 +628,46 @@ class _ExplorerPageState extends State<ExplorerPage> {
     final temp = await c.services.storage.tempDirectory();
     if (!mounted) return;
     await openReader(context, c, ImageFilesSource(images, tempDir: temp, title: vBasename(dir)), start: start);
+  }
+
+  /// 문서 → PDF (진행 창) → 보기
+  Future<void> _viewDoc(String path) async {
+    final temp = await c.services.storage.tempDirectory();
+    if (!mounted) return;
+    final dialog = showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        content: Row(children: [
+          const CircularProgressIndicator(),
+          const SizedBox(width: 16),
+          Expanded(child: Text(trf('PDF 로 바꾸는 중: {0}', [vBasename(path)]))),
+        ]),
+      ),
+    );
+    String? pdf;
+    Object? error;
+    try {
+      final local = await vLocalCopy(path, temp);
+      pdf = await ComponentStore.shared.convertToPdf(local, p.join(temp, 'jj_docs'));
+    } catch (e) {
+      error = e;
+    }
+    if (mounted) Navigator.of(context).pop();
+    await dialog;
+    if (pdf == null) {
+      _snack(trf('미리 볼 수 없습니다: {0}', [error]));
+      return;
+    }
+    PdfSource src;
+    try {
+      src = await PdfSource.open(pdf, tempDir: temp);
+    } catch (e) {
+      _snack(trf('PDF 를 열 수 없습니다: {0}', [e]));
+      return;
+    }
+    if (!mounted) return;
+    await openReader(context, c, src);
   }
 
   Future<void> _viewPdf(String path) async {

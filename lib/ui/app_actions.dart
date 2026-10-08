@@ -241,7 +241,10 @@ class AppNavButtons extends StatelessWidget {
 class SwipeNav extends StatefulWidget {
   final String current;
   final Widget child;
-  const SwipeNav({super.key, required this.current, required this.child});
+
+  /// 높이 어디서 시작해도 (위쪽 막대처럼 작은 곳에 씌울 때)
+  final bool anywhere;
+  const SwipeNav({super.key, required this.current, required this.child, this.anywhere = false});
 
   @override
   State<SwipeNav> createState() => _SwipeNavState();
@@ -258,7 +261,7 @@ class _SwipeNavState extends State<SwipeNav> {
       behavior: HitTestBehavior.translucent,
       onHorizontalDragStart: (d) {
         final h = context.size?.height ?? 0;
-        _middle = h > 0 && d.localPosition.dy > h * 0.2 && d.localPosition.dy < h * 0.8;
+        _middle = widget.anywhere || (h > 0 && d.localPosition.dy > h * 0.2 && d.localPosition.dy < h * 0.8);
       },
       onHorizontalDragEnd: (d) {
         final v = d.primaryVelocity ?? 0;

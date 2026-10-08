@@ -7,6 +7,7 @@ import 'package:jj_mkvmaker/platform/windows/desktop_storage_service.dart';
 import 'package:jj_mkvmaker/platform/windows/process_media_tool.dart';
 import 'package:jj_mkvmaker/services/platform_services.dart';
 import 'package:jj_mkvmaker/ui/app_actions.dart';
+import 'package:jj_mkvmaker/ui/component_settings.dart';
 import 'package:jj_mkvmaker/ui/home_page.dart';
 
 AppController _plain() =>
@@ -52,6 +53,30 @@ void main() {
     await tester.pump();
     expect(find.byTooltip('파일 탐색기'), findsNothing);
     expect(find.byTooltip('MKV 화면 (지금 여기)'), findsOneWidget);
+  });
+
+  testWidgets('화면 순서: ▲ ▼ 로 바꾸고 위쪽 버튼 줄도 그 순서', (tester) async {
+    tester.view.physicalSize = const Size(1200, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final c = _plain();
+    await tester.pumpWidget(MaterialApp(
+      builder: (context, child) => AppScope(controller: c, child: child!),
+      home: Scaffold(body: SingleChildScrollView(child: ListenableBuilder(
+          listenable: c, builder: (_, _) => ComponentSettings(c: c)))),
+    ));
+    // 2번째 (웹 브라우저) 를 위로 → 맨 앞
+    await tester.tap(find.byTooltip('위로').at(1));
+    await tester.pump();
+    expect(c.settings.navOrder.take(2), ['browser', 'mkv']);
+    // 맨 앞 (웹 브라우저) 를 아래로 → 다시 2번째
+    await tester.tap(find.byTooltip('아래로').first);
+    await tester.pump();
+    expect(c.settings.navOrder.take(2), ['mkv', 'browser']);
+    // 마지막 (다운로드) 를 위로 → 4번째
+    await tester.tap(find.byTooltip('위로').last);
+    await tester.pump();
+    expect(c.settings.navOrder, ['mkv', 'browser', 'explorer', 'downloads', 'rsync']);
   });
 
   testWidgets('화면 가운데를 좌우로 밀면 순서대로 다음 · 이전 화면 (끝 다음은 처음)', (tester) async {

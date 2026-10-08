@@ -432,10 +432,7 @@ class _BrowserPageState extends State<BrowserPage> with RouteAware {
         child: Focus(
         autofocus: true,
         child: Scaffold(
-          // 웹 페이지 위에서의 밀기는 웹 페이지가 받으므로, 위쪽 막대 · 즐겨찾기 줄에서 좌우로 밀면 화면 이동
-          body: SwipeNav(
-            current: 'browser',
-            child: ListenableBuilder(
+          body: ListenableBuilder(
             listenable: Listenable.merge([bm, widget.c]),
             builder: (context, _) => Column(children: [
               _toolbar(),
@@ -505,14 +502,16 @@ class _BrowserPageState extends State<BrowserPage> with RouteAware {
               ])),
             ]),
           ),
-          ),
         ),
       ),
       ),
     );
   }
 
-  Widget _toolbar() {
+  /// 위쪽 막대: 여기서 좌우로 밀면 화면 이동 (웹 페이지 위에서는 웹 페이지의 스크롤과 다투어 위 · 아래가 이상했음)
+  Widget _toolbar() => SwipeNav(current: 'browser', anywhere: true, child: _toolbarBar());
+
+  Widget _toolbarBar() {
     final starred = bm.tree.findByUrl(_url) != null;
     IconButton btn(IconData i, String tip, VoidCallback? f, {Color? color}) => IconButton(
           tooltip: tip,

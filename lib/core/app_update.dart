@@ -81,7 +81,8 @@ List<ReleaseInfo> parseReleaseList(List<dynamic> list, {String assetPattern = wi
   final out = [
     for (final j in list)
       if (j is Map<String, dynamic>) parseRelease(j, assetPattern: assetPattern, allowPrerelease: true),
-  ].whereType<ReleaseInfo>().toList();
+    // 이 기기용 설치 파일이 있는 버전 릴리스만 (컴포넌트 목록 릴리스 "components" 등은 빼고)
+  ].whereType<ReleaseInfo>().where((r) => r.zipUrl != null && RegExp(r'^v?\d').hasMatch(r.tag)).toList();
   out.sort((a, b) => compareVersions(b.version, a.version));
   return out;
 }
