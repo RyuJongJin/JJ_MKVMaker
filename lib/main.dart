@@ -389,9 +389,8 @@ String lastWorkText(AppController c) {
 }
 
 /// Android: 창 하나. 트레이 · 단축키 · 탐색기 연결 · 다운로드 (yt-dlp · aria2) · 업데이트는 없다.
-/// 데스크톱 화면을 그대로 쓰므로 기본은 가로 화면 (환경 설정 > 화면 방향에서 세로 · 자동으로 바꿀 수 있음).
+/// 화면 방향은 기본이 자동 (기기를 돌리는 대로). 환경 설정 > 화면 방향에서 가로 · 세로 고정.
 Future<void> runAndroid(String dataDir) async {
-  await applyScreenOrientation('landscape');
   final services = PlatformServices.create();
   final logs = Directory(p.join(dataDir, 'Logs'))..createSync(recursive: true);
   final controller = AppController(services, settingsStore: SettingsStore())..logFile = p.join(logs.path, 'app.log');

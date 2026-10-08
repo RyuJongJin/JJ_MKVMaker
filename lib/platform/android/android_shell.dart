@@ -5,11 +5,11 @@ import 'package:path/path.dart' as p;
 
 import '../../services/app_shell.dart';
 
-/// Android 화면 방향 적용: 'landscape' 가로 고정 / 'portrait' 세로 고정 / 'auto' 기기 방향 따라 (환경 설정 > 화면)
+/// Android 화면 방향 적용: 'landscape' 가로 고정 / 'portrait' 세로 고정 / 그 밖 (자동 · 모르는 값) 은 기기 방향 따라 (환경 설정 > 화면)
 Future<void> applyScreenOrientation(String mode) => SystemChrome.setPreferredOrientations(switch (mode) {
       'portrait' => [DeviceOrientation.portraitUp, DeviceOrientation.portraitDown],
-      'auto' => const <DeviceOrientation>[], // 빈 목록 = 기기 · 시스템 설정을 따름
-      _ => [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight],
+      'landscape' => [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight],
+      _ => const <DeviceOrientation>[], // 빈 목록 = 기기 · 시스템 설정을 따름
     });
 
 /// Android: 창 · 트레이 · 단축키 · 탐색기 연결은 없음. 종료 · 전체 화면 · 웹 주소 열기 · 폴더 열기 (파일 앱).

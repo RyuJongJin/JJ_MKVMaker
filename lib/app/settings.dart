@@ -254,8 +254,9 @@ class AppSettings {
   /// 탐색기에서 동영상을 열었을 때 (더블클릭 · 연결 프로그램): 'play' 바로 재생 / 'add' 편집 목록에 추가
   String openFileAction = 'play';
 
-  /// Android 화면 방향: 'landscape' 가로 고정 (기본) / 'portrait' 세로 고정 / 'auto' 기기 방향 따라
-  String screenOrientation = 'landscape';
+  /// Android 화면 방향: 'auto' 기기 방향 따라 (기본) / 'landscape' 가로 고정 / 'portrait' 세로 고정.
+  /// 값이 없거나 틀리면 자동 (제한 없는 쪽). 고정은 사용자가 환경 설정에서 고를 때만.
+  String screenOrientation = 'auto';
 
   /// 화면 언어 (ko · en · ja · zh-Hans, 또는 더한 언어)
   String uiLanguage = 'ko';
@@ -448,6 +449,8 @@ class AppSettings {
         'uiScaleDefault': uiScaleDefault,
         'openFileAction': openFileAction,
         'screenOrientation': screenOrientation,
+        // 기본이 가로 고정이던 때의 값은 한 번 자동으로 옮긴다 (사용자가 정한 적 없는 가로 고정)
+        'orientationV2': true,
         'uiLanguage': uiLanguage,
         'appIcon': appIcon,
         'uiLanguagesAdded': uiLanguagesAdded,
@@ -560,9 +563,9 @@ class AppSettings {
       ..uiLanguage = j['uiLanguage'] as String? ?? 'ko'
       ..appIcon = appIconOf(j['appIcon'] as String?)
       ..uiLanguagesAdded = [for (final x in (j['uiLanguagesAdded'] as List?) ?? const []) '$x']
-      ..screenOrientation = const ['portrait', 'auto'].contains(j['screenOrientation'])
+      ..screenOrientation = j['orientationV2'] == true && const ['landscape', 'portrait', 'auto'].contains(j['screenOrientation'])
           ? j['screenOrientation'] as String
-          : 'landscape'
+          : 'auto'
       ..openFileWindow = j['openFileWindow'] == 'new' ? 'new' : 'same'
       ..homeUrl = j['homeUrl'] as String? ?? 'https://www.youtube.com/'
       ..browserEngine = j['browserEngine'] as String? ?? 'edge'

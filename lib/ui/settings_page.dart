@@ -336,9 +336,9 @@ class _SettingsPageState extends State<SettingsPage> {
                         trailing: DropdownButton<String>(
                           value: s.screenOrientation,
                           items: [
-                            DropdownMenuItem(value: 'landscape', child: Text(tr('가로 고정 (기본)'))),
+                            DropdownMenuItem(value: 'auto', child: Text(tr('자동 (기본)'))),
+                            DropdownMenuItem(value: 'landscape', child: Text(tr('가로 고정'))),
                             DropdownMenuItem(value: 'portrait', child: Text(tr('세로 고정'))),
-                            DropdownMenuItem(value: 'auto', child: Text(tr('자동'))),
                           ],
                           onChanged: (v) {
                             c.updateSettings((x) => x.screenOrientation = v!);

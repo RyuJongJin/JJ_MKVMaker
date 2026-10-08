@@ -160,14 +160,16 @@ void main() {
       expect([back.openFileAction, back.openFileWindow], ['add', 'new']);
     });
 
-    test('Android 화면 방향: 기본 가로 고정, 세로 · 자동 저장, 모르는 값은 가로', () {
+    test('Android 화면 방향: 기본 자동, 가로 · 세로 고정 저장, 예전 기본 (가로 고정) 은 한 번 자동으로', () {
       final s = AppSettings();
-      expect(s.screenOrientation, 'landscape');
+      expect(s.screenOrientation, 'auto');
       for (final m in ['portrait', 'auto', 'landscape']) {
         s.screenOrientation = m;
         expect(AppSettings.fromJson(s.toJson()).screenOrientation, m);
       }
-      expect(AppSettings.fromJson({'screenOrientation': 'sideways'}).screenOrientation, 'landscape');
+      expect(AppSettings.fromJson({'screenOrientation': 'sideways', 'orientationV2': true}).screenOrientation, 'auto');
+      // 예전 설정 파일 (기본 가로 고정 시절) → 자동
+      expect(AppSettings.fromJson({'screenOrientation': 'landscape'}).screenOrientation, 'auto');
     });
   });
 
