@@ -31,6 +31,11 @@ class MediaKitFullPlayer implements MediaPlayer {
   final _errors = StreamController<String>.broadcast();
   List<String> _files = [];
 
+  /// 마지막으로 건너뛴 때 · 위치 (건너뛴 직후의 "끝" 이 진짜인지 가리기)
+  DateTime _seekAt = DateTime(0);
+  Duration _seekTo = Duration.zero;
+  bool _seekRetried = false;
+
   /// 외부 자막 파일로 켠 트랙 (mpv 목록에는 경로가 id 로 나타남)
   TrackInfo? _externalSub;
 
@@ -43,7 +48,10 @@ class MediaKitFullPlayer implements MediaPlayer {
       ..add(s.position.listen((_) => _emit()))
       ..add(s.duration.listen((_) => _emit()))
       ..add(s.playing.listen((_) => _emit()))
-      ..add(s.completed.listen((_) => _emit()))
+      ..add(s.completed.listen((done) {
+        _emit();
+        if (done) unawaited(_onEnd());
+      }))
       ..add(s.volume.listen((_) => _emit()))
       ..add(s.rate.listen((_) => _emit()))
       ..add(s.width.listen((_) => _emit()))
@@ -105,6 +113,7 @@ class MediaKitFullPlayer implements MediaPlayer {
   Future<void> open(List<String> files, {int start = 0}) async {
     _files = List.of(files);
     _externalSub = null;
+    await _keepOpen();
     await _p.open(mk.Playlist([for (final f in files) await _media(f)], index: start));
   }
 
@@ -148,8 +157,44 @@ class MediaKitFullPlayer implements MediaPlayer {
   }
 
   @override
-  Future<void> seek(Duration position) =>
-      _p.seek(position.isNegative ? Duration.zero : position);
+  Future<void> seek(Duration position) {
+    _seekAt = DateTime.now();
+    _seekTo = position.isNegative ? Duration.zero : position;
+    _seekRetried = false;
+    return _p.seek(_seekTo);
+  }
+
+  /// mpv 가 파일 끝에서 스스로 다음 파일로 넘어가지 않게 한다 (넘기기는 [_onEnd] 가 정한다).
+  /// 일부 파일 (AVI 에서 옮긴 MKV 등) 은 Android 에서 건너뛰기 직후 mpv 가 끝에 닿은 것으로 잘못 보고
+  /// 다음 편으로 넘어가 버렸다.
+  Future<void> _keepOpen() async {
+    final native = _p.platform;
+    if (native is mk.NativePlayer) await native.setProperty('keep-open', 'always');
+  }
+
+  /// 파일 끝: 건너뛴 직후 (3초 안) 이고 건너뛴 곳이 끝 근처가 아니면 잘못 본 끝 → 그 곳으로 다시 (키프레임 기준).
+  /// 다시 해도 끝이면 그 자리에 둔다. 진짜 끝이면 다음 파일로.
+  Future<void> _onEnd() async {
+    final st = _p.state;
+    final dur = st.duration;
+    final recent = DateTime.now().difference(_seekAt) < const Duration(seconds: 3);
+    if (recent && dur > Duration.zero && _seekTo < dur - const Duration(seconds: 5)) {
+      if (_seekRetried) return;
+      _seekRetried = true;
+      final native = _p.platform;
+      if (native is mk.NativePlayer) {
+        await native.command(['seek', (_seekTo.inMilliseconds / 1000).toStringAsFixed(3), 'absolute+keyframes']);
+      } else {
+        await _p.seek(_seekTo);
+      }
+      await _p.play();
+      return;
+    }
+    if (st.playlist.index < st.playlist.medias.length - 1) {
+      await _p.next();
+      await _p.play();
+    }
+  }
   @override
   Future<void> setVolume(double volume) => _p.setVolume(volume.clamp(0, 100).toDouble());
   @override

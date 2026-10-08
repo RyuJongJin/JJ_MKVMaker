@@ -238,6 +238,22 @@ class _ExplorerPageState extends State<ExplorerPage> {
     return [('/', '/')];
   }
 
+  /// 설정에서 지운 WebDAV 서버를 보던 창은 이 기기의 첫 저장 장치로
+  void _dropRemovedServers() {
+    if (!_ready) return;
+    for (final pane in _panes) {
+      if (isDav(pane.root) && DavRegistry.server(DavPath.parse(pane.root).server) == null) {
+        pane.marked.clear();
+        pane.cache.removeWhere((k, _) => isDav(k));
+        pane.expanded.removeWhere(isDav);
+        pane.root = _local.first.$1; // 다시 그릴 때 또 하지 않게
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _goTo(pane, _local.first.$1);
+        });
+      }
+    }
+  }
+
   /// 다시 열 수 있는 폴더: 로컬은 있으면, WebDAV 는 그 서버가 아직 설정에 있으면 (열 때 확인)
   bool _reachable(String path) => isDav(path)
       ? DavRegistry.server(DavPath.parse(path).server) != null
@@ -1522,16 +1538,19 @@ class _ExplorerPageState extends State<ExplorerPage> {
         child: Scaffold(
           body: ListenableBuilder(
             listenable: c,
-            builder: (context, _) => Column(children: [
-              _topBar(),
-              Expanded(
-                child: Stack(children: [
-                  Positioned.fill(child: _ready ? _body() : const Center(child: CircularProgressIndicator())),
-                  // 복사 · 이동 진행: 아래에서 올라오고 끝나면 내려간다
-                  Positioned(left: 8, right: 8, bottom: 0, child: _transferPanel()),
-                ]),
-              ),
-            ]),
+            builder: (context, _) {
+              _dropRemovedServers();
+              return Column(children: [
+                _topBar(),
+                Expanded(
+                  child: Stack(children: [
+                    Positioned.fill(child: _ready ? _body() : const Center(child: CircularProgressIndicator())),
+                    // 복사 · 이동 진행: 아래에서 올라오고 끝나면 내려간다
+                    Positioned(left: 8, right: 8, bottom: 0, child: _transferPanel()),
+                  ]),
+                ),
+              ]);
+            },
           ),
         ),
       ),
