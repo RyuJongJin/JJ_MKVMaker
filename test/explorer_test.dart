@@ -245,6 +245,7 @@ void main() {
     await act(tester, () => tester.tap(markOf('sub')));
     await settle(tester, () => find.text('inner.txt').evaluate().isNotEmpty); // 폴더를 고르면 펼쳐서 안의 것도 ✔
     await act(tester, () => tester.tap(markOf('doc.txt')));
+    await settle(tester, () => find.text('2개 표시함').evaluate().isNotEmpty);
     expect(find.text('2개 표시함'), findsOneWidget);
     await act(tester, () => tester.tap(find.text('삭제').first));
     await tester.pumpAndSettle();
@@ -438,7 +439,8 @@ Future<void> doubleTap(WidgetTester tester, Finder f) async {
 }
 
 /// 실제 파일 작업 (비동기 IO) 이 끝나기를 기다리며 화면을 갱신
-Future<void> settle(WidgetTester tester, bool Function() done, {int rounds = 100}) async {
+// 끝나면 바로 나온다 - 넉넉한 횟수는 전체 시험 중 PC 가 바쁠 때 (실제 파일 입출력이 느려짐) 흔들리지 않게
+Future<void> settle(WidgetTester tester, bool Function() done, {int rounds = 300}) async {
   for (var i = 0; i < rounds; i++) {
     await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 30)));
     await tester.pump();
