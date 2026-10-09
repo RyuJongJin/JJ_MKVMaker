@@ -1010,6 +1010,7 @@
  "상하 반전": "Flip vertically",
  "새 마스터 비밀번호 정하기": "Set a new master password",
  "새 버전 v{0}": "New version v{0}",
+ "새 버전 v{0} 이 있습니다": "New version v{0} is available",
  "새 버전 확인: 지금 v{0} · 최신 v{1}": "Update check: current v{0} · latest v{1}",
  "새 버전을 확인할 수 없습니다: {0}": "Cannot check for a new version: {0}",
  "새 버전이 예전 기본값을 바꿨으면 켤 때 한 번 무엇이 바뀌었는지 알려 줍니다": "If a new version changed old defaults, shows once at startup what changed",

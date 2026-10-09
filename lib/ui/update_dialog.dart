@@ -16,7 +16,8 @@ import '../l10n/tr.dart';
 /// 새 버전 확인 → 알림 → 받기 · 검증 → 종료 후 설치 · 다시 시작 (하루 한 번 자동 확인 · 최신 버전만)
 ///
 /// [manual]: "지금 확인" (최신이어도 알려 주고, 건너뛴 버전도 보여 줌)
-Future<void> checkForUpdate(BuildContext context, AppController c, {bool manual = false}) async {
+/// [onResult]: 164 - 직접 확인할 때 결과를 알림 대신 버튼 옆에 (최신 · 새 버전 · 확인 못 함)
+Future<void> checkForUpdate(BuildContext context, AppController c, {bool manual = false, void Function(String result)? onResult}) async {
   final up = c.services.updater;
   if (up == null) return;
   final s = c.settings;
@@ -33,6 +34,7 @@ Future<void> checkForUpdate(BuildContext context, AppController c, {bool manual 
   }
 
   void snack(String t) {
+    if (onResult != null) return onResult(t);
     if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(t)));
   }
 
@@ -54,6 +56,7 @@ Future<void> checkForUpdate(BuildContext context, AppController c, {bool manual 
     return;
   }
   if (!manual && s.skippedVersion == r.version) return;
+  onResult?.call(trf('새 버전 v{0} 이 있습니다', [r.version]));
   if (!context.mounted) return;
 
   final choice = await showDialog<String>(
@@ -120,6 +123,41 @@ Future<void> chooseVersion(BuildContext context, AppController c) async {
 /// 169: 버전 고르기 창에서 처음 고를 버전: 이 기기용 파일이 있는 것 중 가장 새것, 없으면 지금 버전 (목록은 새것이 앞)
 ReleaseInfo initialVersionPick(List<ReleaseInfo> all, String current) =>
     all.firstWhere((r) => r.zipUrl != null, orElse: () => all.firstWhere((r) => r.version == current, orElse: () => all.first));
+
+/// 164: [최신 버전 확인] 과 그 결과 (버튼 옆에 - 최신입니다 · 새 버전이 있습니다 · 확인할 수 없습니다)
+class UpdateCheckButton extends StatefulWidget {
+  final AppController c;
+  const UpdateCheckButton({super.key, required this.c});
+
+  @override
+  State<UpdateCheckButton> createState() => _UpdateCheckButtonState();
+}
+
+class _UpdateCheckButtonState extends State<UpdateCheckButton> {
+  bool _busy = false;
+  String? _result;
+
+  Future<void> _check() async {
+    setState(() {
+      _busy = true;
+      _result = null;
+    });
+    try {
+      await checkForUpdate(context, widget.c, manual: true, onResult: (r) {
+        if (mounted) setState(() => _result = r);
+      });
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Wrap(spacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+        OutlinedButton(onPressed: _busy ? null : _check, child: Text(tr('최신 버전 확인'))),
+        if (_busy) const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+        if (_result != null) Text(_result!, style: const TextStyle(fontSize: 12, color: JjColors.textDim)),
+      ]);
+}
 
 /// 버전 고르기 창
 class _VersionPicker extends StatefulWidget {

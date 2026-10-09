@@ -94,6 +94,34 @@ void main() {
           mediaTool: ProcessMediaTool('x', 'y'), storage: DesktopStorageService(), updater: up));
     });
 
+    testWidgets('164: [최신 버전 확인] 결과는 알림이 아니라 버튼 옆에 (최신 · 새 버전)', (tester) async {
+      tester.view.physicalSize = const Size(1200, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(MaterialApp(home: Scaffold(body: Center(child: UpdateCheckButton(c: c)))));
+      // 확인하는 동안 · 새 버전 창이 떠 있는 동안 도는 표시가 있어 pumpAndSettle 대신 될 때까지
+      Future<void> until(bool Function() ok) async {
+        for (var i = 0; i < 100 && !ok(); i++) {
+          await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+          await tester.pump(const Duration(milliseconds: 50));
+        }
+      }
+
+      await tester.tap(find.text('최신 버전 확인'));
+      await until(() => find.textContaining('최신 버전입니다').evaluate().isNotEmpty);
+      expect(find.text('최신 버전입니다 (v1.0.1)'), findsOneWidget);
+      expect(find.byType(SnackBar), findsNothing);
+      up.next = ReleaseInfo(version: '1.0.2', tag: 'v1.0.2', name: '', notes: '', pageUrl: '', zipUrl: 'https://x/a.zip');
+      await tester.tap(find.text('최신 버전 확인'));
+      await until(() => find.textContaining('새 버전 v1.0.2 이 있습니다').evaluate().isNotEmpty);
+      expect(find.text('새 버전 v1.0.2 이 있습니다'), findsOneWidget);
+      // 새 버전이 있으면 예전처럼 안내 창도 뜬다
+      expect(find.text('새 버전 v1.0.2'), findsWidgets);
+      await tester.tap(find.text('나중에').last);
+      await until(() => find.byType(CircularProgressIndicator).evaluate().isEmpty);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+    });
+
     Future<void> open(WidgetTester tester, {bool manual = true}) async {
       tester.view.physicalSize = const Size(1200, 900);
       tester.view.devicePixelRatio = 1;

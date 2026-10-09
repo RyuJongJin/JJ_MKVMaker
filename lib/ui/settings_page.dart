@@ -352,11 +352,8 @@ class _SettingsPageState extends State<SettingsPage> {
                         subtitle: Text(tr('GitHub 에 올려 둔 모든 버전 중에서 골라 설치합니다 (새 버전으로 · 예전 정상 버전으로 되돌리기). '
                             '바꾸기 전 버전의 설정은 보관해 두었다가, 그 버전으로 돌아오면 되살립니다')),
                         isThreeLine: true,
-                        trailing: Wrap(spacing: 8, children: [
-                          OutlinedButton(
-                            onPressed: () => checkForUpdate(context, c, manual: true),
-                            child: Text(tr('최신 버전 확인')),
-                          ),
+                        trailing: Wrap(spacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                          UpdateCheckButton(c: c),
                           FilledButton.icon(
                             onPressed: () => chooseVersion(context, c),
                             icon: const Icon(Icons.system_update_alt, size: 18),
@@ -989,6 +986,15 @@ class _SettingsPageState extends State<SettingsPage> {
                     ),
                   ]),
                   _group('about', Icons.info_outline, tr('프로그램 정보'), [
+                    // 164: 지금 버전과 [최신 버전 확인] (결과는 버튼 옆에)
+                    SettingTile(
+                      leading: const Icon(Icons.info_outline, color: JjColors.accent),
+                      title: FutureBuilder<String>(
+                        future: c.services.updater?.currentVersion() ?? Future.value(''),
+                        builder: (_, v) => Text(v.data == null || v.data!.isEmpty ? 'JJ_MKVMaker' : 'JJ_MKVMaker v${v.data}'),
+                      ),
+                      trailing: c.services.updater == null ? null : UpdateCheckButton(c: c),
+                    ),
                     if (desk) ...[
                     SettingTile(
                       title: Text(tr('필수 프로그램 점검')),
