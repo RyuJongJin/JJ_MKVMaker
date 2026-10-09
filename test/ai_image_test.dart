@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:archive/archive_io.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
 import 'package:jj_mkvmaker/app/ai_local.dart';
 import 'package:jj_mkvmaker/app/settings.dart';
 import 'package:jj_mkvmaker/core/ai_catalog.dart';
@@ -394,7 +395,8 @@ void main() {
       if (!Platform.isWindows) return markTestSkipped('Windows 전용 (가짜 sd-cli 가 .cmd)');
       final dir = Directory.systemTemp.createTempSync('jj_ai_local_');
       addTearDown(() => dir.deleteSync(recursive: true));
-      final png = File(p.join(dir.path, 'src.png'))..writeAsBytesSync(_png);
+      // 156-2: 정한 크기 (512×512) 여야 엔진이 그린 것으로 본다
+      final png = File(p.join(dir.path, 'src.png'))..writeAsBytesSync(img.encodePng(img.Image(width: 512, height: 512)));
       // 받은 인수의 -o (예: ...\ai_X_%d.png) 에 0 · 1 번을 만든다
       final fake = File(p.join(dir.path, 'fake-sd.cmd'))
         ..writeAsStringSync('@echo off\r\n'
@@ -419,6 +421,23 @@ void main() {
       expect(made.first.seed, (jsonDecode(File('${p.withoutExtension(made.first.path)}.json').readAsStringSync()) as Map)['seed']);
       expect(AiJobs.instance.busy, isFalse);
       expect(steps, isEmpty);
+    });
+
+    test('156-2: 정한 크기가 아닌 그림 (바탕 그림을 그대로 돌려줌 등) 은 실패 · 남기지 않음', () async {
+      if (!Platform.isWindows) return markTestSkipped('Windows 전용 (가짜 sd-cli 가 .cmd)');
+      final dir = Directory.systemTemp.createTempSync('jj_ai_local_');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final png = File(p.join(dir.path, 'src.png'))..writeAsBytesSync(_png); // 1×1
+      final fake = File(p.join(dir.path, 'fake-sd.cmd'))
+        ..writeAsStringSync('@echo off\r\n'
+            ':loop\r\nif "%~1"=="" goto done\r\nif "%~1"=="-o" (set OUT=%~2)\r\nshift\r\ngoto loop\r\n:done\r\n'
+            'setlocal enabledelayedexpansion\r\nset A=!OUT:%%d=0!\r\n'
+            'copy /y "${png.path}" "%A%" >nul\r\n');
+      final engine = LocalSdEngine(device: SdDevice(fake.path, 'cpu', 'CPU'), models: const SdModelPaths(model: 'm'));
+      final out = p.join(dir.path, 'out');
+      await expectLater(AiJobs.instance.run(engine, const ImageGenRequest(prompt: 'cat'), outDir: out),
+          throwsA(isA<ImageAiException>()));
+      expect(Directory(out).listSync().whereType<File>().where((f) => f.path.endsWith('.png')), isEmpty);
     });
 
     test('150 · 151: 취소하면 "취소했습니다" (실패 아님) · 그리는 동안 쓰는 파일 표시', () async {

@@ -109,12 +109,22 @@ List<String> sdCliArgs(ImageGenRequest r, SdModelPaths m, {required String out, 
 }
 
 /// 해상도 올리기 (121): sd-cli -M upscale
-List<String> sdUpscaleArgs({required String model, required String input, required String out, int repeats = 1, String? backend}) => [
+List<String> sdUpscaleArgs(
+        {required String model,
+        required String input,
+        required String out,
+        int repeats = 1,
+        String? backend,
+        int threads = 0,
+        int tileSize = 0}) =>
+    [
       '-M', 'upscale',
       '--upscale-model', model,
       '-i', input,
       if (repeats > 1) ...['--upscale-repeats', '$repeats'],
       if (backend != null && backend.isNotEmpty) ...['--backend', backend],
+      if (threads > 0) ...['-t', '$threads'],
+      if (tileSize > 0) ...['--upscale-tile-size', '$tileSize'],
       '-o', out,
     ];
 

@@ -482,6 +482,9 @@ class AppSettings {
   /// 모델 'auto' (GPU 면 사진용, CPU 뿐이면 가볍고 빠른 만화용) · 'photo' · 'anime'
   String aiUpModel = 'auto';
 
+  /// 156-2: 해상도 올리기에 걸린 시간 (처리 장치|모델 → 원본 100만 화소당 초) - "한 장 약 n초" 를 미리 알리려고
+  Map<String, double> aiUpSecPerMp = {};
+
   /// 배율 2 · 3 · 4
   int aiUpScale = 2;
 
@@ -668,6 +671,7 @@ class AppSettings {
         'aiSaveDir': aiSaveDir,
         'aiAgreed': aiAgreed,
         'aiUpModel': aiUpModel,
+        'aiUpSecPerMp': aiUpSecPerMp,
         'aiUpScale': aiUpScale,
         'aiUpFormat': aiUpFormat,
         'aiUpJpgQuality': aiUpJpgQuality,
@@ -855,6 +859,11 @@ class AppSettings {
       ..aiSaveDir = j['aiSaveDir'] as String? ?? ''
       ..aiAgreed = [for (final x in (j['aiAgreed'] as List?) ?? const []) '$x']
       ..aiUpModel = const ['photo', 'anime'].contains(j['aiUpModel']) ? j['aiUpModel'] as String : 'auto'
+      ..aiUpSecPerMp = {
+        if (j['aiUpSecPerMp'] case final Map m)
+          for (final e in m.entries)
+            if (e.value is num && (e.value as num) > 0) '${e.key}': (e.value as num).toDouble(),
+      }
       ..aiUpScale = const [3, 4].contains(j['aiUpScale']) ? j['aiUpScale'] as int : 2
       ..aiUpFormat = const ['png', 'jpg'].contains(j['aiUpFormat']) ? j['aiUpFormat'] as String : 'same'
       ..aiUpJpgQuality = ((j['aiUpJpgQuality'] as num?)?.toInt() ?? 92).clamp(50, 100)

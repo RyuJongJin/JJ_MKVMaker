@@ -148,6 +148,27 @@ Future<bool> _download(BuildContext context, AiStore store, List<AiFile> files) 
   return ok;
 }
 
+/// 156-2: 걸린 시간을 남긴다 (다음에 "한 장 약 n초" 로)
+Future<void> _recordSpeed(AppController c, AiUpscaler up, String input, Duration took) async {
+  try {
+    final mp = megapixels(await File(input).readAsBytes());
+    if (mp == null || mp <= 0) return;
+    final v = took.inMilliseconds / 1000 / mp;
+    await c.updateSettings((x) => x.aiUpSecPerMp = {...x.aiUpSecPerMp, upscaleSpeedKey(up): v});
+  } catch (_) {}
+}
+
+/// "이 기기에서 한 장 약 n초 (지난번 걸린 시간 기준)" (처음이면 null)
+Future<String?> _estimateText(AppController c, AiUpscaler up, String input) async {
+  try {
+    final mp = megapixels(await File(input).readAsBytes());
+    final d = mp == null ? null : upscaleEstimate(c.settings.aiUpSecPerMp, up, mp);
+    return d == null ? null : trf('이 기기에서 한 장 약 {0} (지난번 걸린 시간 기준)', [AiJobs.durationText(d)]);
+  } catch (_) {
+    return null;
+  }
+}
+
 /// 121: 한 장 올리기 → 진행 (취소) → [원본 / 올린 것] 비교 → [저장] (새 파일, 원본을 덮지 않음). 저장한 경로 (안 하면 null)
 Future<String?> upscaleOne(BuildContext context, AppController c, {required String input, required String nameFrom, required String outDir}) async {
   final up = await _prepare(context, c);
@@ -157,6 +178,8 @@ Future<String?> upscaleOne(BuildContext context, AppController c, {required Stri
   var toPhoto = false;
   // 관리자: CPU 뿐이라 자동이 만화용을 고르면 사진은 질감이 뭉개질 수 있다 - 알리고 바로 바꿀 수 있게
   final cpuAnime = c.settings.aiUpModel == 'auto' && up.device.backend == 'cpu' && up.modelId == 'esrgan-anime6b';
+  final estimate = await _estimateText(c, up, input);
+  if (!context.mounted) return null;
   final nav = Navigator.of(context);
   unawaited(showDialog<void>(
     context: context,
@@ -173,6 +196,7 @@ Future<String?> upscaleOne(BuildContext context, AppController c, {required Stri
             LinearProgressIndicator(value: v),
             const SizedBox(height: 4),
             Text(v == null ? tr('준비하는 중') : '${(v * 100).round()}%', style: const TextStyle(fontSize: 12)),
+            if (estimate != null) Text(estimate, style: const TextStyle(fontSize: 12, color: JjColors.textDim)),
             if (cpuAnime) ...[
               const SizedBox(height: 10),
               Text(tr("사진에는 '사진' 모델이 더 낫지만, 이 기기 (그래픽카드 없음) 에서는 한 장에 약 20분 걸립니다."),
@@ -202,8 +226,10 @@ Future<String?> upscaleOne(BuildContext context, AppController c, {required Stri
   ));
   String? four;
   Object? error;
+  final watch = Stopwatch()..start();
   try {
     four = await up.upscale4x(input, onProgress: (v) => progress.value = v);
+    await _recordSpeed(c, up, input, watch.elapsed);
   } catch (e) {
     error = e;
   }
@@ -242,16 +268,31 @@ Future<String?> upscaleOne(BuildContext context, AppController c, {required Stri
 /// 121: 폴더 · ZIP 의 모든 장을 올려 저장 (백그라운드 - 작업 알림 · 작업 현황에 남은 장 · 예상 시간)
 Future<void> upscaleAll(BuildContext context, AppController c, ReaderSource src) async {
   final n = src.length;
+  final up = await _prepare(context, c);
+  if (up == null || !context.mounted) return;
+  // 156-2: 첫 장 크기와 지난번 걸린 시간으로 한 장 · 모두의 예상 시간
+  String? estimate;
+  try {
+    final first = n == 0 ? null : await readerPageFile(c, src, 0);
+    final mp = first == null ? null : megapixels(await File(first.$1).readAsBytes());
+    final d = mp == null ? null : upscaleEstimate(c.settings.aiUpSecPerMp, up, mp);
+    if (d != null) {
+      estimate = trf('이 기기에서 한 장 약 {0} · 모두 약 {1} (지난번 걸린 시간 기준)',
+          [AiJobs.durationText(d), AiJobs.durationText(d * n)]);
+    }
+  } catch (_) {}
+  if (!context.mounted) return;
   final ok = await confirmAction(
     context,
     title: trf('{0}장 모두 해상도 올리기', [n]),
-    body: trf('{0}배로 올려 새 파일로 저장합니다. 원본 · ZIP 은 그대로입니다. 화면을 닫아도 계속하며 작업 알림에 남은 장과 예상 시간이 보입니다.', [c.settings.aiUpScale]),
+    body: [
+      trf('{0}배로 올려 새 파일로 저장합니다. 원본 · ZIP 은 그대로입니다. 화면을 닫아도 계속하며 작업 알림에 남은 장과 예상 시간이 보입니다.', [c.settings.aiUpScale]),
+      ?estimate,
+    ].join('\n\n'),
     ok: tr('시작'),
     danger: false,
   );
   if (!ok || !context.mounted) return;
-  final up = await _prepare(context, c);
-  if (up == null || !context.mounted) return;
   final messenger = ScaffoldMessenger.maybeOf(context);
   final failed = <String>[];
   String? lastDir;
@@ -259,7 +300,9 @@ Future<void> upscaleAll(BuildContext context, AppController c, ReaderSource src)
     final file = await readerPageFile(c, src, i);
     if (file == null) return;
     try {
+      final watch = Stopwatch()..start();
       final saved = await up.upscaleAndSave(file.$1, upscaleOptionsOf(c, outDir: file.$3), nameFrom: file.$2, onProgress: progress);
+      await _recordSpeed(c, up, file.$1, watch.elapsed);
       lastDir = p.dirname(saved);
     } catch (e) {
       failed.add('${src.pageName(i)}: $e');

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/foundation.dart' show LicenseEntryWithLineBreaks, LicenseRegistry;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
@@ -6,10 +8,12 @@ import '../core/ai_catalog.dart';
 import '../l10n/tr.dart';
 
 /// 62 · 63 · 64: 라이선스 원문 (assets/licenses - Windows 는 실행 파일 옆에도 같은 파일)
-const licenseNoticesAsset = 'assets/licenses/THIRD_PARTY_NOTICES.txt';
+/// 64: 고지 문서는 플랫폼마다 (Android 에는 Windows 파일 이름 · 경로를 보이지 않게)
+String get licenseNoticesAsset =>
+    Platform.isAndroid ? 'assets/licenses/THIRD_PARTY_NOTICES_ANDROID.txt' : 'assets/licenses/THIRD_PARTY_NOTICES.txt';
 
 /// 앱 안 라이선스 화면 (showLicensePage) 에 넣을 것: (구성 요소들, 원문 asset)
-const _licenseAssets = <(List<String>, String)>[
+List<(List<String>, String)> get _licenseAssets => [
   (['JJ_MKVMaker - THIRD_PARTY_NOTICES'], licenseNoticesAsset),
   (
     [
@@ -23,7 +27,7 @@ const _licenseAssets = <(List<String>, String)>[
     'assets/licenses/GPL-3.0.txt'
   ),
   (['aria2'], 'assets/licenses/GPL-2.0.txt'),
-  (['libmpv', 'LibreOffice 의 LGPL 구성 요소'], 'assets/licenses/LGPL-2.1.txt'),
+  (['libmpv (media_kit, LGPL-2.1+)'], 'assets/licenses/LGPL-2.1.txt'),
   (['yt-dlp (실행 파일에 묶인 구성 요소)'], 'assets/licenses/YT-DLP_THIRD_PARTY_LICENSES.txt'),
   (['rsync'], 'assets/licenses/RSYNC_COPYING.txt'),
   (['PDFium'], 'assets/licenses/PDFIUM_LICENSES.txt'),

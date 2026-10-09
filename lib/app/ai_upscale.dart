@@ -66,12 +66,46 @@ Uint8List _finish((Uint8List, int, int, int, String, int) a) {
   return ext == 'jpg' ? img.encodeJpg(im, quality: q) : img.encodePng(im);
 }
 
+/// 156-2: Android CPU 는 모든 코어와 큰 타일 (512) 을 쓴다. S10 실측 512×384 (만화 모델):
+/// 기본 (물리 코어 · 타일 128) 88~92초, -t 8 65~96초, 타일 512 60~65초, 타일 256 108~111초, -t 8 + 타일 512 45~48초.
+/// 그 밖 (Windows · GPU) 은 엔진 기본값
+bool _androidCpu(SdDevice d) => Platform.isAndroid && d.backend == 'cpu';
+int upscaleThreads(SdDevice d) => _androidCpu(d) ? Platform.numberOfProcessors : 0;
+int upscaleTileSize(SdDevice d) => _androidCpu(d) ? 512 : 0;
+
+/// 156-2: 걸린 시간을 기억할 열쇠 (처리 장치 · 모델이 같아야 비교가 된다)
+String upscaleSpeedKey(AiUpscaler up) => '${up.device.backend}|${up.modelId}';
+
+/// 그림의 화소 수 (백만 단위, 머리만 읽음 - 모르면 null)
+double? megapixels(Uint8List bytes) {
+  final info = img.findDecoderForData(bytes)?.startDecode(bytes);
+  if (info == null || info.width == 0) return null;
+  return info.width * info.height / 1e6;
+}
+
+/// 지난번 걸린 시간으로 이 그림 한 장의 예상 시간 (모르면 null)
+Duration? upscaleEstimate(Map<String, double> secPerMp, AiUpscaler up, double mp) {
+  final s = secPerMp[upscaleSpeedKey(up)];
+  return s == null ? null : Duration(seconds: (s * mp).round().clamp(1, 1 << 20));
+}
+
+/// 156-2: [result] 가 [input] 의 정확히 4배 크기인지 (그림 머리만 읽음)
+bool isFourTimes(Uint8List input, Uint8List result) {
+  final a = img.findDecoderForData(input)?.startDecode(input);
+  final b = img.findDecoderForData(result)?.startDecode(result);
+  if (a == null || b == null || a.width == 0) return false;
+  return b.width == a.width * 4 && b.height == a.height * 4;
+}
+
 /// 그림 한 장 올리기. [input] 은 이 기기의 파일 (ZIP · WebDAV 의 그림은 부르는 쪽이 임시 파일로).
 /// 결과를 [save] 가 true 면 저장하고 그 경로를, 아니면 임시 파일 경로를 돌려준다 (비교해 보고 저장할 때).
 class AiUpscaler {
-  AiUpscaler({required this.device, required this.modelPath, this.modelId = ''});
+  AiUpscaler({required this.device, required this.modelPath, this.modelId = '', this.runner = runSdCli});
   final SdDevice device;
   final String modelPath;
+
+  /// sd-cli 실행기 (시험에서 가짜 엔진)
+  final SdRunner runner;
 
   /// 카탈로그 id (자동이 CPU 에서 만화용을 골랐는지 알리려고)
   final String modelId;
@@ -89,7 +123,7 @@ class AiUpscaler {
     final tmp = await Directory.systemTemp.createTemp('jj_up_');
     final out = p.join(tmp.path, 'up.png');
     try {
-      await runSdCli(device.exe, sdUpscaleArgs(model: modelPath, input: input, out: out, backend: device.backend),
+      await runner(device.exe, sdUpscaleArgs(model: modelPath, input: input, out: out, backend: device.backend, threads: upscaleThreads(device), tileSize: upscaleTileSize(device)),
           onProgress: (prog) => onProgress?.call(prog.phase == 'done' ? 1 : (prog.steps == 0 ? null : prog.step / prog.steps)),
           onStart: (pr) => _proc = pr);
     } catch (_) {
@@ -98,6 +132,11 @@ class AiUpscaler {
     }
     if (_cancelled) throw ImageAiException(tr('취소했습니다'), cancelled: true);
     if (!File(out).existsSync()) throw ImageAiException(tr('해상도를 올리지 못했습니다'));
+    // 156-2: 엔진이 업스케일러를 만들지 못하면 (장치가 맞지 않는 등) 원본을 그대로 저장하고 정상으로 끝난다 -
+    // 크기가 정확히 4배가 아니면 AI 결과가 아니므로 보통 확대로 꾸며 보이지 않고 실패로 알린다
+    if (!isFourTimes(await File(input).readAsBytes(), await File(out).readAsBytes())) {
+      throw ImageAiException(tr('AI 엔진이 해상도를 올리지 못했습니다 (처리 장치를 바꿔 보세요)'));
+    }
     return out;
   }
 

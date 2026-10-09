@@ -6,6 +6,7 @@ import 'package:jj_mkvmaker/app/ai_local.dart';
 import 'package:jj_mkvmaker/app/ai_upscale.dart';
 import 'package:jj_mkvmaker/app/settings.dart';
 import 'package:jj_mkvmaker/core/ai_catalog.dart';
+import 'package:jj_mkvmaker/services/image_ai.dart';
 import 'package:path/path.dart' as p;
 
 void main() {
@@ -125,5 +126,60 @@ void main() {
         .toJson());
     expect(b.aiPrompt, 'a cat');
     expect(b.aiRecent, ['C:/a/ai_1.png', 'C:/a/ai_2.png']);
+  });
+
+  group('156-2: 가짜 AI 결과 막기', () {
+    // 그림 하나 (원본) 와 그 4배
+    late String input;
+    setUp(() {
+      input = p.join(tmp.path, 'in.png');
+      File(input).writeAsBytesSync(img.encodePng(img.Image(width: 8, height: 6)));
+    });
+
+    AiUpscaler fake(void Function(String input, String out) write, {List<String> log = const []}) => AiUpscaler(
+          device: const SdDevice('sd-cli', 'cpu', 'CPU'),
+          modelPath: 'm.pth',
+          modelId: 'esrgan-anime6b',
+          runner: (exe, args, {onProgress, onStart}) async {
+            write(args[args.indexOf('-i') + 1], args[args.indexOf('-o') + 1]);
+            for (final l in log) {
+              if (isSdFatalLine(l)) throw ImageAiException('fatal', detail: l);
+            }
+            return log;
+          },
+        );
+
+    test('엔진이 원본을 그대로 돌려주면 (업스케일러를 만들지 못함) 실패', () async {
+      final up = fake((i, o) => File(i).copySync(o));
+      await expectLater(up.upscale4x(input), throwsA(isA<ImageAiException>()));
+    });
+
+    test('정확히 4배면 통과', () async {
+      final up = fake((i, o) => File(o).writeAsBytesSync(img.encodePng(img.Image(width: 32, height: 24))));
+      final out = await up.upscale4x(input);
+      expect(File(out).existsSync(), true);
+    });
+
+    test('엔진 기록의 실패 줄을 알아챈다 (0 으로 끝나도)', () {
+      expect(isSdFatalLine('[E] new_upscaler_ctx failed --- main.cpp:966'), true);
+      expect(isSdFatalLine('[ERROR] upscaler backend config failed: unknown backend cuda0'), true);
+      expect(isSdFatalLine('[I] 1/1 images saved --- main.cpp:573'), false);
+    });
+
+    test('그림 만들기: 정한 크기인지', () {
+      final png = img.encodePng(img.Image(width: 512, height: 384));
+      expect(sizeMatches(png, 512, 384), true);
+      expect(sizeMatches(png, 512, 512), false);
+    });
+
+    test('지난번 걸린 시간으로 한 장 예상 · 설정에 남음', () {
+      final up = fake((i, o) {});
+      expect(upscaleSpeedKey(up), 'cpu|esrgan-anime6b');
+      expect(upscaleEstimate({}, up, 0.2), isNull);
+      // S10 실측: 512×384 (0.197MP) 에 약 87초 → 100만 화소당 약 442초
+      expect(upscaleEstimate({'cpu|esrgan-anime6b': 442}, up, 0.196608)!.inSeconds, 87);
+      final b = AppSettings.fromJson((AppSettings()..aiUpSecPerMp = {'cpu|esrgan-anime6b': 442.5}).toJson());
+      expect(b.aiUpSecPerMp, {'cpu|esrgan-anime6b': 442.5});
+    });
   });
 }

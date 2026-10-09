@@ -23,11 +23,14 @@ New-Item -ItemType Directory -Force $Target | Out-Null
 $lib = Join-Path $Target 'Lib'
 
 if ($Clean) {
-  robocopy $Release $lib /E /PURGE /XD jj_yt-dlp jj_aria2 models /NFL /NDL /NJH /NJS /NP | Out-Null
+  robocopy $Release $lib /E /PURGE /XD jj_yt-dlp jj_aria2 models Logs /XF *.log *.dmp /NFL /NDL /NJH /NJS /NP | Out-Null
+  # 166: run traces of a dev run in the build folder (Logs, *.log, crash dumps) never ship - robocopy /PURGE keeps excluded items
+  Remove-Item (Join-Path $lib 'Logs') -Recurse -Force -ErrorAction SilentlyContinue
+  Get-ChildItem $lib -Recurse -File -Include *.log, *.dmp | Remove-Item -Force
   # nothing else at the top
   Get-ChildItem $Target | Where-Object { $_.Name -notin 'Lib' } | Remove-Item -Recurse -Force
 } else {
-  robocopy $Release $lib /E /XD jj_yt-dlp jj_aria2 models /NFL /NDL /NJH /NJS /NP | Out-Null
+  robocopy $Release $lib /E /XD jj_yt-dlp jj_aria2 models Logs /XF *.log *.dmp /NFL /NDL /NJH /NJS /NP | Out-Null
   # old single-folder layout: program files at the top that now live in Lib
   Get-ChildItem $Target -File | Where-Object {
     ($_.Extension -eq '.dll' -or $_.Name -in 'THIRD_PARTY_NOTICES.txt', 'native_assets.json') -and (Test-Path (Join-Path $lib $_.Name))

@@ -6,6 +6,7 @@ import 'package:archive/archive_io.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:image/image.dart' as img;
 import 'package:path/path.dart' as p;
 
 import '../core/ai_catalog.dart';
@@ -434,9 +435,42 @@ class LocalSdEngine implements ImageAiEngine {
         .toList()
       ..sort((a, b) => a.path.compareTo(b.path));
     if (made.isEmpty) throw ImageAiException(trf('그림을 만들지 못했습니다: {0}', [lines.join('\n')]));
+    // 156-2: 정한 크기가 아니면 (바탕 그림을 그대로 돌려준 것 등) 엔진이 그리지 못한 것
+    for (final f in made) {
+      if (!sizeMatches(f.readAsBytesSync(), r.width, r.height)) {
+        for (final x in made) {
+          try {
+            x.deleteSync();
+          } catch (_) {}
+        }
+        throw ImageAiException(tr('AI 엔진이 그림을 그리지 못했습니다 (처리 장치를 바꿔 보세요)'), detail: lines.join('\n'));
+      }
+    }
     return [for (final (i, f) in made.indexed) GeneratedImage(f.path, seed + i)];
   }
 }
+
+/// 그림 [bytes] 가 [w]×[h] 인지 (머리만 읽음)
+bool sizeMatches(Uint8List bytes, int w, int h) {
+  final info = img.findDecoderForData(bytes)?.startDecode(bytes);
+  return info != null && info.width == w && info.height == h;
+}
+
+/// sd-cli 기록 중 결과를 믿을 수 없게 만드는 실패 (업스케일러 · 장치 · 모델을 만들지 못함)
+bool isSdFatalLine(String line) {
+  final l = line.toLowerCase();
+  return const [
+    'new_upscaler_ctx failed',
+    'upscale failed',
+    'backend config failed',
+    'failed to initialize',
+    'new_sd_ctx_t failed',
+  ].any(l.contains);
+}
+
+/// sd-cli 실행기 (시험에서 가짜 엔진으로 바꿀 수 있게)
+typedef SdRunner = Future<List<String>> Function(String exe, List<String> args,
+    {void Function(SdProgress)? onProgress, void Function(Process)? onStart});
 
 /// sd-cli 를 돌리고 진행을 알린다. 실패하면 마지막 출력 몇 줄로 [ImageAiException]
 Future<List<String>> runSdCli(String exe, List<String> args,
@@ -444,11 +478,13 @@ Future<List<String>> runSdCli(String exe, List<String> args,
   final proc = await Process.start(exe, args, workingDirectory: p.dirname(exe));
   onStart?.call(proc);
   final tail = <String>[];
+  final fatal = <String>[];
   var saved = false;
   void feed(String chunk) {
     if (chunk.contains('images saved')) saved = true;
     for (final piece in chunk.split(RegExp(r'[\r\n]+'))) {
       if (piece.trim().isEmpty) continue;
+      if (isSdFatalLine(piece)) fatal.add(piece.trim());
       final prog = parseSdProgress(piece);
       if (prog != null) {
         onProgress?.call(prog);
@@ -463,6 +499,10 @@ Future<List<String>> runSdCli(String exe, List<String> args,
   final b = proc.stderr.transform(const Utf8Decoder(allowMalformed: true)).listen(feed).asFuture<void>();
   final code = await proc.exitCode;
   await Future.wait([a, b]);
+  // 156-2: 업스케일러 · 장치를 만들지 못해도 sd-cli 는 원본을 저장하고 0 으로 끝난다 - 기록으로 실패를 알아챈다
+  if (fatal.isNotEmpty) {
+    throw ImageAiException(tr('AI 엔진이 해상도를 올리거나 그리지 못했습니다 (처리 장치를 바꿔 보세요)'), detail: fatal.join('\n'));
+  }
   // 그림을 다 저장한 뒤 끝내면서 0 이 아닌 코드로 끝나는 일이 있다 (이 판의 sd-cli) - 저장했으면 성공으로 본다
   if (code != 0 && !saved) {
     final err = tail.where((l) => l.contains('[E]') || l.toLowerCase().contains('error')).toList();

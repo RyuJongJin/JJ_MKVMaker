@@ -19,6 +19,7 @@ void main() {
     expect(find('aria2'), contains('Version 2'));
     expect(find('H2Orestart'), contains('Version 3, 29 June 2007'));
     expect(find('libmpv'), contains('LESSER GENERAL PUBLIC LICENSE'));
+    expect(entries.any((e) => e.packages.any((p) => p.contains('LibreOffice'))), false, reason: 'LGPL 은 libmpv 이름으로');
     expect(find('PDFium'), contains('The PDFium Authors'));
     expect(find('yt-dlp (실행 파일에 묶인'), contains('THIRD-PARTY LICENSES'));
     final notices = find('JJ_MKVMaker');
@@ -36,5 +37,14 @@ void main() {
     for (final f in ['THIRD_PARTY_NOTICES.txt', 'GPL-2.0.txt', 'GPL-3.0.txt', 'LGPL-2.1.txt', 'PDFIUM_LICENSES.txt']) {
       expect(File('assets/licenses/$f').existsSync(), true, reason: f);
     }
+  });
+
+  test('64: Android 고지 문서에는 Windows 파일 · 경로가 없고 [패키지 라이선스] 로 안내', () {
+    final a = File('assets/licenses/THIRD_PARTY_NOTICES_ANDROID.txt').readAsStringSync();
+    for (final w in ['libmpv-2.dll', 'flutter_assets', '.exe', r'tools\', r'ffmpeg\']) {
+      expect(a, isNot(contains(w)), reason: w);
+    }
+    expect(a, contains('[패키지 라이선스]'));
+    expect(a, contains('GPLv3'));
   });
 }
