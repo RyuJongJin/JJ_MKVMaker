@@ -268,7 +268,7 @@ void main() {
         expect(up.calls, ['download 1.0.0', 'uninstall']);
       });
 
-      testWidgets('P0 Android: 받은 AI 모델을 복사해 두기 (기본: 남은 공간이 2배 이상이면 켬) · 끄면 "다시 받아야" · 설정에 기억', (tester) async {
+      testWidgets('P0 Android: 받은 AI 모델을 복사해 두기 (기본: 남은 공간이 2배 이상이면 켬) · 끄면 "다시 받아야" · [저장하고 계속] 때만 설정에 기억', (tester) async {
         up.installsInPlace = true;
         up.downloaded = (File(p.join(data.path, 'dl.apk'))..writeAsStringSync('apk')).path;
         File(p.join(data.path, 'ai', 'models', 'esrgan.pth'))
@@ -292,13 +292,24 @@ void main() {
         await tester.tap(find.byType(Checkbox));
         await tester.pumpAndSettle();
         expect(find.textContaining('다시 받아야 합니다 (약 3MB)'), findsOneWidget);
-        expect(c.settings.rollbackKeepModels, 'off');
-        // 다시 켜고 진행 → 공용 폴더에 모델 사본과 목록
+        // 체크를 바꿔도 [취소] 하면 설정은 그대로 (자동)
+        await tester.tap(find.text('취소'));
+        await tester.pumpAndSettle();
+        expect(c.settings.rollbackKeepModels, '');
+        await openPicker(tester);
+        await tester.tap(find.text('v1.0.0').first);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('이 버전으로 되돌리기'));
+        await settleIo(tester, until: () => find.text('저장하고 계속').evaluate().isNotEmpty);
+        // 끄고 다시 켠 뒤 [저장하고 계속] 을 누를 때 설정에 → 공용 폴더에 모델 사본과 목록
         await tester.tap(find.byType(Checkbox));
         await tester.pumpAndSettle();
-        expect(c.settings.rollbackKeepModels, 'on');
+        await tester.tap(find.byType(Checkbox));
+        await tester.pumpAndSettle();
+        expect(c.settings.rollbackKeepModels, '');
         await tester.tap(find.text('저장하고 계속'));
         await tester.pumpAndSettle();
+        expect(c.settings.rollbackKeepModels, 'on');
         await tester.tap(find.text('되돌리기 계속'));
         await settleIo(tester, until: () => find.text('저장했습니다').evaluate().isNotEmpty);
         expect(find.text('저장했습니다'), findsOneWidget);

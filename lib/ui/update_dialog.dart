@@ -457,6 +457,7 @@ Future<void> _androidRollback(BuildContext context, AppController c, Updater up,
   final free = (await diskSpace(probe))?.$1;
   final setting = c.settings.rollbackKeepModels;
   var keep = modelSize > 0 && (setting == 'on' || (setting == '' && free != null && free >= modelSize * 2));
+  var keepTouched = false;
   // 옮겨 둔 모델을 되살리는 기능은 이 판 다음부터 들어 있다 (설정 되살리기는 v2026.10.08_001 부터)
   final targetRestoresModels = compareVersions(r.version, '2026.10.09_001') > 0;
   final targetRestoresSettings = compareVersions(r.version, '2026.10.08_001') >= 0;
@@ -499,10 +500,11 @@ Future<void> _androidRollback(BuildContext context, AppController c, Updater up,
                 CheckboxListTile(
                   contentPadding: EdgeInsets.zero,
                   value: keep,
-                  onChanged: (v) {
-                    setInner(() => keep = v ?? false);
-                    c.updateSettings((x) => x.rollbackKeepModels = keep ? 'on' : 'off');
-                  },
+                  // 고른 것은 [저장하고 계속] 을 누를 때만 설정에 남긴다 ([취소] 하면 그대로)
+                  onChanged: (v) => setInner(() {
+                    keep = v ?? false;
+                    keepTouched = true;
+                  }),
                   title: Text(trf('받은 AI 모델 ({0}) 을 Download/JJ_MKVMaker 에 복사해 두었다가 다시 설치한 뒤 되살리기 (잠시 {0} 더 필요)', [size])),
                   subtitle: Text([
                     if (free != null) trf('남은 공간 {0}', [gbText(free)]),
@@ -525,6 +527,9 @@ Future<void> _androidRollback(BuildContext context, AppController c, Updater up,
     ),
   );
   if (ok != true || !context.mounted) return;
+  // 체크를 바꿨으면 이제 설정에 (자동이던 것은 건드리지 않으면 자동 그대로)
+  if (keepTouched) await c.updateSettings((x) => x.rollbackKeepModels = keep ? 'on' : 'off');
+  if (!context.mounted) return;
   // 사라지는 것이 있으니 한 번 더 (비밀번호 · 로그인은 늘 사라진다)
   final sure = await showDialog<bool>(
     context: context,
