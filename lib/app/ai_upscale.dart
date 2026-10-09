@@ -69,9 +69,12 @@ Uint8List _finish((Uint8List, int, int, int, String, int) a) {
 /// 그림 한 장 올리기. [input] 은 이 기기의 파일 (ZIP · WebDAV 의 그림은 부르는 쪽이 임시 파일로).
 /// 결과를 [save] 가 true 면 저장하고 그 경로를, 아니면 임시 파일 경로를 돌려준다 (비교해 보고 저장할 때).
 class AiUpscaler {
-  AiUpscaler({required this.device, required this.modelPath});
+  AiUpscaler({required this.device, required this.modelPath, this.modelId = ''});
   final SdDevice device;
   final String modelPath;
+
+  /// 카탈로그 id (자동이 CPU 에서 만화용을 골랐는지 알리려고)
+  final String modelId;
   Process? _proc;
   bool _cancelled = false;
 
@@ -139,5 +142,5 @@ Future<AiUpscaler?> prepareUpscaler(AiStore store, {required String modelSetting
   final gpu = dev.backend != 'cpu';
   final id = pickUpscaleModel(modelSetting, gpu: gpu);
   if (!store.isInstalled(id)) return null;
-  return AiUpscaler(device: dev, modelPath: store.pathOf(aiFile(id)));
+  return AiUpscaler(device: dev, modelPath: store.pathOf(aiFile(id)), modelId: id);
 }

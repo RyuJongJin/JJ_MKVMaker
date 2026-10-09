@@ -68,6 +68,9 @@ Future<String?> upscaleOne(BuildContext context, AppController c, {required Stri
   if (up == null || !context.mounted) return null;
   final progress = ValueNotifier<double?>(null);
   var cancelled = false;
+  var toPhoto = false;
+  // 관리자: CPU 뿐이라 자동이 만화용을 고르면 사진은 질감이 뭉개질 수 있다 - 알리고 바로 바꿀 수 있게
+  final cpuAnime = c.settings.aiUpModel == 'auto' && up.device.backend == 'cpu' && up.modelId == 'esrgan-anime6b';
   final nav = Navigator.of(context);
   unawaited(showDialog<void>(
     context: context,
@@ -84,6 +87,19 @@ Future<String?> upscaleOne(BuildContext context, AppController c, {required Stri
             LinearProgressIndicator(value: v),
             const SizedBox(height: 4),
             Text(v == null ? tr('준비하는 중') : '${(v * 100).round()}%', style: const TextStyle(fontSize: 12)),
+            if (cpuAnime) ...[
+              const SizedBox(height: 10),
+              Text(tr("사진에는 '사진' 모델이 더 낫지만, 이 기기 (그래픽카드 없음) 에서는 한 장에 약 20분 걸립니다."),
+                  style: const TextStyle(fontSize: 12, color: JjColors.textDim)),
+              TextButton(
+                onPressed: () {
+                  toPhoto = true;
+                  cancelled = true;
+                  up.cancel();
+                },
+                child: Text(tr("'사진' 모델로 바꿔 다시")),
+              ),
+            ],
           ]),
         ),
       ),
@@ -107,6 +123,11 @@ Future<String?> upscaleOne(BuildContext context, AppController c, {required Stri
   }
   nav.pop(); // 진행 창
   if (!context.mounted) return null;
+  if (toPhoto) {
+    await c.updateSettings((x) => x.aiUpModel = 'photo');
+    if (!context.mounted) return null;
+    return upscaleOne(context, c, input: input, nameFrom: nameFrom, outDir: outDir);
+  }
   if (four == null) {
     if (!cancelled) ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text('$error')));
     return null;
