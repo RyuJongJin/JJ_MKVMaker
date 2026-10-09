@@ -415,10 +415,13 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), '새로만든');
     await act(tester, () => tester.tap(find.widgetWithText(FilledButton, '확인')));
-    await settle(tester, () => find.text('새로만든').evaluate().isNotEmpty);
+    // 만든 폴더가 보이고 골라질 때까지 (전체 시험 중 바쁠 때는 고르기가 조금 늦다)
+    Finder newRow() => find.ancestor(of: find.text('새로만든'), matching: find.byType(Material)).first;
+    await settle(tester, () =>
+        find.text('새로만든').evaluate().isNotEmpty &&
+        find.descendant(of: newRow(), matching: find.byTooltip('고르기 취소')).evaluate().isNotEmpty);
     expect(Directory(p.join(right, 'rsub', '새로만든')).existsSync(), isTrue);
-    final newRow = find.ancestor(of: find.text('새로만든'), matching: find.byType(Material)).first;
-    expect(find.descendant(of: newRow, matching: find.byTooltip('고르기 취소')), findsOneWidget);
+    expect(find.descendant(of: newRow(), matching: find.byTooltip('고르기 취소')), findsOneWidget);
     expect(find.descendant(of: find.ancestor(of: find.text('rsub'), matching: find.byType(Material)).first,
         matching: find.byTooltip('고르기 취소')), findsNothing); // 창마다 하나만
   });
