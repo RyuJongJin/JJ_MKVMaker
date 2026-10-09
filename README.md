@@ -104,9 +104,10 @@ Android 이식 시 `platform/android/` 구현과 `services/platform_services.dar
 ## 라이선스
 
 - JJ_MKVMaker 소스 코드: [MIT](LICENSE)
-- 포함 · 사용하는 구성 요소: [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt)
-  - FFmpeg (GPLv3) · aria2 (GPLv2) 는 수정하지 않은 별도 실행 파일로 함께 제공
-  - libmpv (LGPL), whisper.cpp · ONNX Runtime (MIT), yt-dlp (Unlicense), Deno (MIT)
+- 포함 · 사용하는 구성 요소: [THIRD_PARTY_NOTICES.txt](assets/licenses/THIRD_PARTY_NOTICES.txt) (라이선스 원문: [assets/licenses](assets/licenses))
+  - FFmpeg · yt-dlp 실행 파일 · rsync (GPLv3+) · aria2 (GPLv2+) 는 수정하지 않은 별도 실행 파일로 함께 제공
+  - libmpv (LGPL), PDFium (BSD), whisper.cpp · ONNX Runtime · stable-diffusion.cpp (MIT), Deno (MIT)
+  - **Android 판은 GPLv3 구성 요소 (FFmpegKit · youtubedl-android · rsync) 를 포함하며, 대응 소스는 같은 판 번호의 태그 (예: v1.2.3) 입니다.**
   - **NLLB-200 번역 모델은 CC-BY-NC 4.0 (비상업적 이용만)** — 이 프로그램은 무료 배포이며, 모델은 사용자가 직접 내려받습니다
 
 ## 주의

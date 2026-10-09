@@ -191,6 +191,13 @@ class WorkPanel extends StatelessWidget {
       Text('▶ $ai', style: const TextStyle(fontSize: 12, color: JjColors.accent)),
       LinearProgressIndicator(value: AiJobs.instance.progress),
     ],
+    // 157: 끝난 AI 일 - 어디에 저장했는지와 [열기]
+    if (!AiJobs.instance.busy && AiJobs.instance.lastDone != null)
+      Row(children: [
+        Expanded(child: Text('✓ ${AiJobs.instance.lastDone}', style: const TextStyle(fontSize: 12))),
+        if (AiJobs.instance.lastDoneDir case final dir?)
+          TextButton(onPressed: () => c.services.shell.revealFile(dir), child: Text(tr('열기'))),
+      ]),
     if (!c.busy && !AiJobs.instance.busy)
       _Dim(tr('쉬는 중'))
     else if (c.busy) ...[

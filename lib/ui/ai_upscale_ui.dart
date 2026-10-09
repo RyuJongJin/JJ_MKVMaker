@@ -2,16 +2,18 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show MethodChannel;
 import 'package:path/path.dart' as p;
 
 import '../app/ai_local.dart';
 import '../app/ai_upscale.dart';
 import '../app/app_controller.dart';
+import '../core/ai_catalog.dart';
 import '../core/reader_sources.dart';
 import '../core/vfs.dart';
 import '../l10n/tr.dart';
+import '../services/image_ai.dart' show ImageAiException;
 import 'ai_image_page.dart' show aiSaveDir;
-import 'ai_settings.dart';
 import 'confirm.dart';
 import 'theme.dart';
 
@@ -50,16 +52,100 @@ Future<(String input, String nameFrom, String outDir)?> readerPageFile(AppContro
   return null; // PDF 등은 아직
 }
 
-/// 준비: 모델 · 엔진이 없으면 받기 화면으로 (null)
+/// 준비: 모델 · 엔진이 없으면 그 자리에서 무엇을 받을지 고르고 받는다 (156 - 설정 화면으로 보내지 않음). 못 하면 null
 Future<AiUpscaler?> _prepare(BuildContext context, AppController c) async {
   final store = AiStore.instance ??= AiStore(Directory.systemTemp.path);
-  final up = await prepareUpscaler(store, modelSetting: c.settings.aiUpModel, device: c.settings.aiDevice, autoDevice: c.settings.aiAutoDevice);
-  if (up == null && context.mounted) {
-    ScaffoldMessenger.maybeOf(context)
-        ?.showSnackBar(SnackBar(content: Text(tr('해상도 올리기 모델을 받아 주세요 (환경 설정 > AI 그림)'))));
-    await openAiModels(context, c);
+  Future<AiUpscaler?> ready() =>
+      prepareUpscaler(store, modelSetting: c.settings.aiUpModel, device: c.settings.aiDevice, autoDevice: c.settings.aiAutoDevice);
+  final up = await ready();
+  if (up != null || !context.mounted) return up;
+  // 엔진 (Windows 는 받아야 함) · 모델 중 없는 것
+  final engine = await pickUpscaleDevice(store, device: c.settings.aiDevice) == null && Platform.isWindows ? aiFile('engine-vulkan') : null;
+  if (!context.mounted) return null;
+  final setting = c.settings.aiUpModel;
+  final anime = aiFile('esrgan-anime6b'), photo = aiFile('esrgan-x4plus');
+  final choices = setting == 'photo'
+      ? [photo]
+      : setting == 'anime'
+          ? [anime]
+          : [anime, photo];
+  final models = choices.any((f) => store.isFileInstalled(f)) ? <AiFile>[] : choices;
+  String label(AiFile f) =>
+      '${f.id == anime.id ? tr('만화 · 그림용') : tr('사진용')} (${AiStore.sizeText(f.size + (engine?.size ?? 0))})';
+  final picked = await showDialog<AiFile?>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Text(tr('AI 해상도 올리기')),
+      content: Text([
+        if (models.isNotEmpty) tr('해상도 올리기 모델을 받아야 합니다. 어느 것을 받을까요?'),
+        if (models.length > 1) tr('만화 · 그림용은 가볍고 빠르며, 사진용은 사진의 질감을 더 잘 살리지만 그래픽카드가 없으면 느립니다.'),
+        if (engine != null) trf('AI 엔진 ({0}) 도 함께 받습니다.', [engine.name]),
+      ].join('\n\n')),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('취소'))),
+        if (models.isEmpty && engine != null)
+          FilledButton(onPressed: () => Navigator.pop(ctx, engine), child: Text(trf('받기 ({0})', [AiStore.sizeText(engine.size)]))),
+        for (final f in models) FilledButton(onPressed: () => Navigator.pop(ctx, f), child: Text(label(f))),
+      ],
+    ),
+  );
+  if (picked == null || !context.mounted) return null;
+  final files = [?engine, if (picked != engine) picked];
+  final ok = await _download(context, store, files);
+  if (!ok || !context.mounted) return null;
+  return ready();
+}
+
+/// 받는 동안 진행 창 (취소). 다 받았으면 true
+Future<bool> _download(BuildContext context, AiStore store, List<AiFile> files) async {
+  final nav = Navigator.of(context);
+  var cancelled = false;
+  unawaited(showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    builder: (ctx) => AlertDialog(
+      title: Text(tr('받는 중')),
+      content: SizedBox(
+        width: 420,
+        child: ListenableBuilder(
+          listenable: store,
+          builder: (_, _) => Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            for (final f in files) ...[
+              Text(f.name, style: const TextStyle(fontSize: 13)),
+              Text(store.isFileInstalled(f) ? tr('받음') : store.progressText(f.id) ?? tr('준비하는 중'),
+                  style: const TextStyle(fontSize: 12, color: JjColors.textDim)),
+              const SizedBox(height: 8),
+            ],
+          ]),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () {
+            cancelled = true;
+            for (final f in files) {
+              store.cancel(f.id);
+            }
+          },
+          child: Text(tr('취소')),
+        ),
+      ],
+    ),
+  ));
+  String? error;
+  try {
+    await store.installAll(files);
+  } on ImageAiException catch (e) {
+    error = e.message;
+  } catch (_) {
+    error = tr('받지 못했습니다. 잠시 뒤 다시 해 주세요');
   }
-  return up;
+  nav.pop();
+  final ok = files.every(store.isFileInstalled);
+  if (!ok && !cancelled && context.mounted) {
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(error ?? tr('받지 못했습니다. 잠시 뒤 다시 해 주세요'))));
+  }
+  return ok;
 }
 
 /// 121: 한 장 올리기 → 진행 (취소) → [원본 / 올린 것] 비교 → [저장] (새 파일, 원본을 덮지 않음). 저장한 경로 (안 하면 null)
@@ -179,12 +265,25 @@ Future<void> upscaleAll(BuildContext context, AppController c, ReaderSource src)
       failed.add('${src.pageName(i)}: $e');
     }
   }, onCancel: up.cancel, uses: {'esrgan-x4plus', 'esrgan-anime6b', 'engine-vulkan', 'engine-cuda', 'engine-cudart'});
+  // 157: 끝나면 화면 · 작업 현황 · 알림 (Android) · 작업 기록에 "n장 저장: 폴더" 와 [열기]
+  final saved = done - failed.length;
+  final text = [
+    if (done < n) trf('{0}장 중 {1}장에서 멈췄습니다', [n, done]),
+    trf('{0}장 저장: {1}', [saved, lastDir ?? '-']),
+    if (failed.isNotEmpty) trf('{0}장은 실패했습니다', [failed.length]),
+  ].join(' · ');
+  AiJobs.instance.done(text, dir: lastDir);
+  c.note('${tr('AI 해상도 올리기')}: $text');
+  if (Platform.isAndroid) {
+    try {
+      await const MethodChannel('jj_mkvmaker/android').invokeMethod<void>('notifyDone', {'title': tr('AI 해상도 올리기'), 'text': text});
+    } catch (_) {}
+  }
+  final dir = lastDir;
   messenger?.showSnackBar(SnackBar(
-    duration: const Duration(seconds: 8),
-    content: Text([
-      trf('{0}장을 올려 저장했습니다{1}', [done - failed.length, lastDir == null ? '' : ': $lastDir']),
-      if (failed.isNotEmpty) trf('{0}장은 실패했습니다', [failed.length]),
-    ].join(' · ')),
+    duration: const Duration(seconds: 10),
+    content: Text(text),
+    action: dir == null ? null : SnackBarAction(label: tr('열기'), onPressed: () => c.services.shell.revealFile(dir)),
   ));
 }
 

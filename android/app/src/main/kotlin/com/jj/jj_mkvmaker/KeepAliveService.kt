@@ -81,6 +81,32 @@ class KeepAliveService : Service() {
         const val CHANNEL_ID = "jobs"
         const val NOTIFICATION_ID = 1
         const val STOPPED_ID = 2
+        const val DONE_ID = 3
+
+        /// 157: 끝난 작업 알림 (예: "4장 저장: 폴더"). 누르면 작업 현황으로
+        fun notifyDone(context: Context, title: String, text: String) {
+            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notification(context, "", -1, "") // 알림 채널을 만들어 둔다
+            val open = PendingIntent.getActivity(
+                context, 3,
+                Intent(context, MainActivity::class.java)
+                    .setAction(MainActivity.ACTION_SHOW_JOBS)
+                    .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            )
+            val b = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                Notification.Builder(context, CHANNEL_ID)
+            } else {
+                @Suppress("DEPRECATION") Notification.Builder(context)
+            }
+            b.setSmallIcon(android.R.drawable.stat_sys_download_done)
+                .setContentTitle(title)
+                .setContentText(text)
+                .setStyle(Notification.BigTextStyle().bigText(text))
+                .setContentIntent(open)
+                .setAutoCancel(true)
+            nm.notify(DONE_ID, b.build())
+        }
 
         /// 잠금을 다시 거는 간격 (1시간, 잠금은 그 두 배 동안)
         const val RENEW_MS = 60 * 60 * 1000L

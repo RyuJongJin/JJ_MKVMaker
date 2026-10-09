@@ -465,6 +465,10 @@ class AppSettings {
   double aiStrength = 0.6;
   String aiNegative = '';
 
+  /// 159: 마지막 프롬프트와 만든 그림 목록 (최근 것부터, 업데이트 · 다시 열어도 남게)
+  String aiPrompt = '';
+  List<String> aiRecent = [];
+
   /// 저장 폴더 (비어 있으면 사진 폴더의 JJ_MKVMaker_AI)
   String aiSaveDir = '';
 
@@ -659,6 +663,8 @@ class AppSettings {
         'aiCount': aiCount,
         'aiStrength': aiStrength,
         'aiNegative': aiNegative,
+        'aiPrompt': aiPrompt,
+        'aiRecent': aiRecent,
         'aiSaveDir': aiSaveDir,
         'aiAgreed': aiAgreed,
         'aiUpModel': aiUpModel,
@@ -844,6 +850,8 @@ class AppSettings {
       ..aiCount = ((j['aiCount'] as num?)?.toInt() ?? 1).clamp(1, 100)
       ..aiStrength = ((j['aiStrength'] as num?)?.toDouble() ?? 0.6).clamp(0, 1)
       ..aiNegative = j['aiNegative'] as String? ?? ''
+      ..aiPrompt = j['aiPrompt'] as String? ?? ''
+      ..aiRecent = [for (final x in (j['aiRecent'] as List?) ?? const []) '$x']
       ..aiSaveDir = j['aiSaveDir'] as String? ?? ''
       ..aiAgreed = [for (final x in (j['aiAgreed'] as List?) ?? const []) '$x']
       ..aiUpModel = const ['photo', 'anime'].contains(j['aiUpModel']) ? j['aiUpModel'] as String : 'auto'

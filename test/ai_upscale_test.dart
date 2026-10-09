@@ -97,4 +97,33 @@ void main() {
     expect((out.width, out.height), (128, 96));
     expect(src.readAsBytesSync(), before);
   }, timeout: const Timeout(Duration(minutes: 5)), skip: root.isEmpty || !Platform.isWindows);
+
+  test('156: 자동이면 받아 둔 모델을 쓴다 (고른 것이 없을 때) · 직접 고른 것은 그대로', () {
+    bool only(String id, String x) => x == id;
+    expect(installedUpscaleModel((x) => only('esrgan-anime6b', x), 'auto', gpu: true), 'esrgan-anime6b');
+    expect(installedUpscaleModel((x) => only('esrgan-x4plus', x), 'auto', gpu: false), 'esrgan-x4plus');
+    expect(installedUpscaleModel((x) => true, 'auto', gpu: true), 'esrgan-x4plus');
+    expect(installedUpscaleModel((x) => false, 'auto', gpu: true), isNull);
+    expect(installedUpscaleModel((x) => only('esrgan-anime6b', x), 'photo', gpu: true), isNull);
+  });
+
+  test('152: 모델 읽는 동안에는 남은 시간을 보이지 않는다 · 157: 끝난 일은 다음 일을 시작하면 지운다', () {
+    final jobs = AiJobs();
+    jobs.done('4장 저장: x', dir: 'x');
+    expect(jobs.lastDone, '4장 저장: x');
+    jobs.update(title: 'AI', eta: const Duration(seconds: 5));
+    expect(jobs.statusLine, contains('5'));
+    jobs.eta = null;
+    jobs.update(title: 'AI 그림: 모델 읽는 중 …');
+    expect(jobs.statusLine, isNot(contains('남은 약')));
+  });
+
+  test('159: 프롬프트 · 만든 그림 목록이 설정에 남는다', () {
+    final b = AppSettings.fromJson((AppSettings()
+          ..aiPrompt = 'a cat'
+          ..aiRecent = ['C:/a/ai_1.png', 'C:/a/ai_2.png'])
+        .toJson());
+    expect(b.aiPrompt, 'a cat');
+    expect(b.aiRecent, ['C:/a/ai_1.png', 'C:/a/ai_2.png']);
+  });
 }

@@ -170,6 +170,11 @@ class MainActivity : FlutterActivity() {
                         call.argument<String>("icon") ?: "")
                     result.success(null)
                 }
+                "notifyDone" -> {
+                    KeepAliveService.notifyDone(applicationContext, call.argument<String>("title") ?: "",
+                        call.argument<String>("text") ?: "")
+                    result.success(null)
+                }
                 "stopKeepAlive" -> {
                     stopService(Intent(applicationContext, KeepAliveService::class.java))
                     result.success(null)

@@ -57,12 +57,32 @@ String aiSaveDir(String setting) {
 
 class _AiImagePageState extends State<AiImagePage> with RouteAware {
   AppController get c => widget.c;
-  final _prompt = TextEditingController();
+  late final _prompt = TextEditingController(text: c.settings.aiPrompt);
+  final _promptFocus = FocusNode();
   late final _negative = TextEditingController(text: c.settings.aiNegative);
   final _seed = TextEditingController(text: '-1');
   late String? _init = widget.initImage;
-  final _results = <GeneratedImage>[];
+  /// 159: 지난 결과를 되살린다 (설정의 목록 + 그림 옆 json 의 시드). 지워진 파일은 빼고 보여 준다
+  late final _results = <GeneratedImage>[
+    for (final path in c.settings.aiRecent)
+      if (File(path).existsSync()) GeneratedImage(path, _seedOf(path)),
+  ];
   String? _error;
+
+  static int _seedOf(String path) {
+    try {
+      final j = jsonDecode(File('${p.withoutExtension(path)}.json').readAsStringSync()) as Map;
+      return (j['seed'] as num?)?.toInt() ?? -1;
+    } catch (_) {
+      return -1;
+    }
+  }
+
+  /// 목록을 설정에 남긴다 (최근 100장)
+  void _saveRecent() {
+    final paths = [for (final g in _results) g.path].take(100).toList();
+    c.updateSettings((x) => x.aiRecent = paths);
+  }
 
   /// 150: 엔진 원문 ([자세히] 를 눌러야 보임) · 취소 (회색 한 줄, 오류 아님)
   String _detail = '';
@@ -87,6 +107,7 @@ class _AiImagePageState extends State<AiImagePage> with RouteAware {
   void dispose() {
     browserRouteObserver.unsubscribe(this);
     _prompt.dispose();
+    _promptFocus.dispose();
     _negative.dispose();
     _seed.dispose();
     super.dispose();
@@ -101,14 +122,19 @@ class _AiImagePageState extends State<AiImagePage> with RouteAware {
   Future<void> _generate() async {
     final s = c.settings;
     if (_prompt.text.trim().isEmpty) {
-      setState(() => _error = tr('무엇을 그릴지 적어 주세요'));
+      // 159: 아래 오류 줄은 화면 밖일 수 있다 - 바로 보이게 알리고 글 칸으로
+      setState(() => _error = tr('그릴 내용을 적어 주세요'));
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(tr('그릴 내용을 적어 주세요'))));
+      _promptFocus.requestFocus();
       return;
     }
     if (_local && !_modelsReady) {
       await openAiModels(context, c);
       if (!_modelsReady) return;
     }
-    await c.updateSettings((x) => x.aiNegative = _negative.text);
+    await c.updateSettings((x) => x
+      ..aiNegative = _negative.text
+      ..aiPrompt = _prompt.text);
     final req = ImageGenRequest(
       prompt: _prompt.text.trim(),
       negative: _negative.text.trim(),
@@ -141,6 +167,7 @@ class _AiImagePageState extends State<AiImagePage> with RouteAware {
       final made = await AiJobs.instance.run(engine, req, outDir: aiSaveDir(s.aiSaveDir));
       if (!mounted) return;
       setState(() => _results.insertAll(0, made));
+      _saveRecent();
     } on ImageAiException catch (e) {
       if (mounted) {
         setState(() {
@@ -206,6 +233,7 @@ class _AiImagePageState extends State<AiImagePage> with RouteAware {
                   const SizedBox(height: 8),
                   TextField(
                     controller: _prompt,
+                    focusNode: _promptFocus,
                     minLines: 2,
                     maxLines: 5,
                     decoration: InputDecoration(labelText: tr('그릴 것 (프롬프트, 영어가 잘 됩니다)'), border: const OutlineInputBorder()),
@@ -348,7 +376,12 @@ class _AiImagePageState extends State<AiImagePage> with RouteAware {
             child: Text(tr('파일이 없습니다 (지워졌거나 옮겨짐)'),
                 textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, color: JjColors.textDim)),
           ),
-          TextButton(onPressed: () => setState(() => _results.remove(g)), child: Text(tr('목록에서 빼기'))),
+          TextButton(
+            onPressed: () {
+              setState(() => _results.remove(g));
+              _saveRecent();
+            },
+            child: Text(tr('목록에서 빼기'))),
         ]),
       );
     }

@@ -36,6 +36,7 @@ import 'security_settings.dart';
 import 'ai_settings.dart';
 import '../app/master_lock.dart';
 import 'toast_status.dart';
+import 'license_texts.dart';
 
 /// 동시 작업 수 고르기: 1 · 5 · 10 · 무한(0) · 직접 입력
 class CountSelector extends StatelessWidget {
@@ -990,15 +991,13 @@ class _SettingsPageState extends State<SettingsPage> {
                     ],
                     SettingTile(
                       title: Text(tr('오픈 소스 라이선스')),
-                      subtitle: Text(tr('포함된 구성 요소와 라이선스 (THIRD_PARTY_NOTICES.txt)')),
-                      trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                        if (desk) OutlinedButton(
-                          onPressed: () => c.services.shell.openExternal('system', [
-                            '${File(Platform.resolvedExecutable).parent.path}\\THIRD_PARTY_NOTICES.txt',
-                          ]),
+                      subtitle: Text(tr('포함된 구성 요소와 라이선스 (GPL · LGPL 원문 포함)')),
+                      // 64: Android 에서도 (앱 안에서 연다)
+                      trailing: Wrap(spacing: 6, runSpacing: 6, children: [
+                        OutlinedButton(
+                          onPressed: () => showNoticesDocument(context),
                           child: Text(tr('고지 문서')),
                         ),
-                        if (desk) const SizedBox(width: 6),
                         OutlinedButton(
                           onPressed: () => showLicensePage(context: context, applicationName: 'JJ_MKVMaker'),
                           child: Text(tr('패키지 라이선스')),

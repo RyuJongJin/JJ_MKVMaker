@@ -2,8 +2,10 @@ JJ_MKVMaker - 포함된 오픈 소스 구성 요소 및 라이선스 고지
 ==========================================================
 
 이 프로그램은 아래 오픈 소스 구성 요소를 포함하거나 내려받아 사용합니다.
-각 구성 요소는 해당 라이선스를 따릅니다. 라이선스 원문은 같은 폴더(또는 ffmpeg\, tools\)의
-*_LICENSE*, *_COPYING* 파일과 프로그램 안의 "환경 설정 > 라이선스" 화면에서 볼 수 있습니다.
+각 구성 요소는 해당 라이선스를 따릅니다. 라이선스 원문은 프로그램 안의 "환경 설정 > 프로그램 정보 >
+오픈 소스 라이선스" 화면 (Windows · Android 모두) 과, Windows 판은 data\flutter_assets\assets\licenses\
+(GPL-2.0.txt · GPL-3.0.txt · LGPL-2.1.txt · PDFIUM_LICENSES.txt · YT-DLP_THIRD_PARTY_LICENSES.txt ·
+RSYNC_COPYING.txt) 및 ffmpeg\, tools\, rsync\ 폴더의 *_LICENSE*, *_COPYING* 파일에서 볼 수 있습니다.
 
 [프로그램에 연결된 라이브러리]
 
@@ -15,6 +17,14 @@ JJ_MKVMaker - 포함된 오픈 소스 구성 요소 및 라이선스 고지
   · libmpv 안의 FFmpeg                 LGPL-3.0 (--enable-version3, GPL 옵션 없음)
   · libass, libplacebo 등              ISC / LGPL-2.1+
   libmpv-2.dll 은 별도 파일이며, 같은 인터페이스의 다른 빌드로 바꿔 쓸 수 있습니다.
+- PDFium (pdfium.dll · Android 는 libpdfium.so, PDF 보기)
+                                       BSD 3-Clause (Google)  https://pdfium.googlesource.com/pdfium/
+  판: chromium/7811 (149.0.7811.0), 빌드: https://github.com/bblanchon/pdfium-binaries (MIT)
+  소스: https://pdfium.googlesource.com/pdfium/+/refs/heads/chromium/7811
+  들어 있는 라이브러리: FreeType (FTL), ICU (Unicode License v3), libjpeg-turbo (IJG · BSD), OpenJPEG (BSD-2),
+  libpng, libtiff, Little CMS (MIT), AGG 2.3, abseil (Apache-2.0), fast_float · simdutf (MIT), zlib, LLVM libc
+  원문: PDFIUM_LICENSES.txt
+- pdfrx, pdfrx_engine, pdfium_dart, pdfium_flutter  MIT  https://github.com/espresso3389/pdfrx
 - ANGLE (libEGL.dll, libGLESv2.dll)    BSD 3-Clause          https://chromium.googlesource.com/angle/angle
 - whisper.cpp / ggml                   MIT                   https://github.com/ggml-org/whisper.cpp
 - whisper_ggml (JJ_MKVMaker 수정본)       MIT                   https://pub.dev/packages/whisper_ggml
@@ -37,29 +47,34 @@ JJ_MKVMaker - 포함된 오픈 소스 구성 요소 및 라이선스 고지
 
 [별도 실행 파일로 함께 제공 - 프로그램과 결합되지 않고 명령줄로 실행]
 
-- FFmpeg (ffmpeg\ffmpeg.exe)           GPL-3.0               https://ffmpeg.org
-  빌드: gyan.dev "release essentials"  https://www.gyan.dev/ffmpeg/builds/
-  소스: https://ffmpeg.org/download.html 및 위 빌드 페이지의 소스 링크
-  원문: ffmpeg\FFMPEG_LICENSE.txt
+- FFmpeg 9.0.2 (ffmpeg\ffmpeg.exe)     GPL-3.0               https://ffmpeg.org
+  빌드: gyan.dev "release essentials" 9.0.2  https://www.gyan.dev/ffmpeg/builds/
+  소스: https://ffmpeg.org/releases/ffmpeg-9.0.2.tar.xz (빌드에 쓴 외부 라이브러리 소스는 위 빌드 페이지)
+  원문: ffmpeg\FFMPEG_LICENSE.txt, GPL-3.0.txt
 - aria2 (tools\aria2c.exe)             GPL-2.0-or-later      https://github.com/aria2/aria2
   소스: https://github.com/aria2/aria2/releases/tag/release-1.37.0
-  원문: tools\ARIA2_COPYING.txt
-- yt-dlp (tools\yt-dlp.exe)            Unlicense (퍼블릭 도메인)  https://github.com/yt-dlp/yt-dlp
-  원문: tools\YT-DLP_LICENSE.txt
+  원문: tools\ARIA2_COPYING.txt, GPL-2.0.txt
+- yt-dlp 2026.08.19 (tools\yt-dlp.exe) GPL-3.0-or-later     https://github.com/yt-dlp/yt-dlp
+  yt-dlp 의 소스 코드는 Unlicense 이지만, 배포 실행 파일 (yt-dlp.exe, PyInstaller 로 Python 과 묶음) 은
+  GPL 구성 요소를 포함하므로 GPLv3+ 로 배포됩니다. 앱이 새 판으로 바꿀 수 있습니다 (같은 공식 배포 파일).
+  소스: https://github.com/yt-dlp/yt-dlp/tree/2026.08.19
+  원문: tools\YT-DLP_LICENSE.txt, YT-DLP_THIRD_PARTY_LICENSES.txt (함께 묶인 구성 요소), GPL-3.0.txt
 - Deno (tools\deno.exe)                MIT                   https://github.com/denoland/deno
   원문: tools\DENO_LICENSE.txt
-- rsync (rsync
-sync.exe)              GPL-3.0-or-later      https://rsync.samba.org
-  MSYS2 공식 패키지 rsync 3.5.1 과 실행에 필요한 DLL (msys2-runtime: GPL-3.0 + 예외, OpenSSL: Apache-2.0,
+- rsync 3.5.1 (rsync\rsync.exe)        GPL-3.0-or-later      https://rsync.samba.org
+  MSYS2 공식 패키지 rsync 3.5.1-2 와 실행에 필요한 DLL (msys2-runtime: GPL-3.0 + 예외, OpenSSL: Apache-2.0,
   popt · lz4 · xxhash · zstd: BSD/MIT 계열, libiconv · libintl · libidn2 · libunistring: LGPL)
-  소스: https://packages.msys2.org/base/rsync (각 패키지의 소스 패키지)
+  소스: https://download.samba.org/pub/rsync/src/rsync-3.5.1.tar.gz
+        MSYS2 패키지 (빌드 스크립트 · 함께 쓰는 DLL 의 소스): https://packages.msys2.org/base/rsync
+  원문: rsync\COPYING.txt (RSYNC_COPYING.txt - GPL-3.0 과 OpenSSL · xxhash 예외)
 
 위 GPL 프로그램은 수정하지 않은 공식 배포 파일이며, 해당 소스는 위 주소에서 받을 수 있습니다.
 
 [Android 판 (APK) 에만 들어 있는 구성 요소]
 
-- FFmpegKit (ffmpeg_kit_flutter_new_min_gpl, JJ_MKVMaker 수정본)
-                                       GPL-3.0 (FFmpeg GPL 빌드 포함) https://pub.dev/packages/ffmpeg_kit_flutter_new_min_gpl
+- FFmpegKit (ffmpeg_kit_flutter_new_min_gpl 2.6.2, JJ_MKVMaker 수정본 · com.antonkarpenko:ffmpeg-kit-min-gpl 2.2.2)
+                                       GPL-3.0 (FFmpeg n8.1.2 GPL 빌드 포함) https://pub.dev/packages/ffmpeg_kit_flutter_new_min_gpl
+  소스: https://github.com/sk3llo/ffmpeg_kit_flutter , FFmpeg: https://ffmpeg.org/releases/ffmpeg-8.1.2.tar.xz
   수정 내용: app\packages\ffmpeg_kit_flutter_new_min_gpl\JJ_PATCH.md
 - youtubedl-android (Python · yt-dlp · FFmpeg · aria2c 실행 파일 포함)
                                        GPL-3.0               https://github.com/JunkFood02/youtubedl-android
@@ -73,9 +88,23 @@ sync.exe)              GPL-3.0-or-later      https://rsync.samba.org
 - rsync (librsync.so 라는 이름의 실행 파일) GPL-3.0-or-later  https://rsync.samba.org
   rsync 3.4.1 공식 소스 (https://download.samba.org/pub/rsync/src/rsync-3.4.1.tar.gz) 를 고치지 않고
   Android NDK 로 빌드 (들어 있는 zlib · popt 사용, 선택 기능 끔). 빌드 방법: app/tool/build_rsync_android.sh
-- libmpv (media_kit_libs_android_video) LGPL-2.1+             https://github.com/media-kit/libmpv-android-video-build
+- libmpv (media_kit_libs_android_video) LGPL-2.1+ (원문: LGPL-2.1.txt)             https://github.com/media-kit/libmpv-android-video-build
 - stable-diffusion.cpp · ggml (libsdcli.so 라는 이름의 실행 파일)  MIT  https://github.com/leejet/stable-diffusion.cpp
   커밋 228c707 을 고치지 않고 Android NDK 로 빌드 (AI 그림 · 해상도 올리기). 빌드 방법: app/tool/build_sdcpp_android.sh
+
+Android 판은 위의 GPLv3 구성 요소를 포함하며, 앱 자체의 대응 소스는 같은 판 번호의 GitHub 태그에 있습니다:
+  https://github.com/RyuJongJin/JJ_MKVMaker/tags (예: v1.2.3 판 → 태그 v1.2.3). 원문: GPL-3.0.txt
+
+[문서 미리보기 - 설치할 때 내려받는 구성 요소 (Windows)]
+
+- LibreOffice 26.2.6                   MPL-2.0               https://www.libreoffice.org
+  The Document Foundation 공식 배포처에서 받습니다. 소스: https://download.documentfoundation.org/libreoffice/src/26.2.6/
+- Eclipse Temurin JRE 21.0.12.1        GPL-2.0 + Classpath Exception  https://adoptium.net
+  Adoptium 공식 배포처에서 받습니다. 소스: https://github.com/adoptium/jdk21u (태그 jdk-21.0.12.1+1)
+- H2Orestart 0.7.14 (HWP 를 여는 LibreOffice 확장, H2Orestart.oxt)
+                                       GPL-3.0               https://github.com/ebandal/H2Orestart
+  이 프로그램의 GitHub 릴리스 (components) 에 고치지 않은 공식 파일을 올려 두고 받습니다.
+  소스: https://github.com/ebandal/H2Orestart/tree/v0.7.14   원문: GPL-3.0.txt
 
 [처음 사용할 때 내려받는 AI 모델]
 
@@ -98,6 +127,8 @@ sync.exe)              GPL-3.0-or-later      https://rsync.samba.org
     만든 그림에 대한 책임은 쓰는 사람에게 있습니다. 받기 전에 앱에서 이 조건을 보여 주고 동의를 받습니다.
 - LCM-LoRA (lcm-lora-sdv1-5)              OpenRAIL++  https://huggingface.co/latent-consistency/lcm-lora-sdv1-5
 - TAESD (빠른 디코더)                     MIT          https://huggingface.co/madebyollin/taesd
+- Real-ESRGAN x4plus · x4plus_anime_6B (해상도 올리기)  BSD-3-Clause  https://github.com/xinntao/Real-ESRGAN
+                                        공식 릴리스 (v0.1.0 · v0.2.2.4) 의 .pth 파일
 
 [인터넷 서비스]
 

@@ -57,6 +57,7 @@ void main() {
     await open(t, service: const AiService(id: 's1', name: 'GPU PC', url: 'http://100.1.2.3:7860', kind: 'a1111'));
     await t.tap(find.text('만들기'));
     await t.pump();
-    expect(find.text('무엇을 그릴지 적어 주세요'), findsOneWidget);
+    // 159: 오류 줄 + 바로 보이는 알림 (오류 줄은 화면 밖일 수 있다)
+    expect(find.text('그릴 내용을 적어 주세요'), findsNWidgets(2));
   });
 }

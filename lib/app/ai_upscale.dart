@@ -126,8 +126,19 @@ Future<String> saveUpscaled(String fourX, {required String source, required Stri
   return path;
 }
 
-/// 해상도 올리기에 쓸 장치 · 모델 (없으면 null - 받기 화면으로)
-Future<AiUpscaler?> prepareUpscaler(AiStore store, {required String modelSetting, String device = 'auto', String autoDevice = ''}) async {
+/// 156: 쓸 모델 - 자동이면 고른 것을 받아 두지 않았을 때 받아 둔 다른 것을 쓴다 (없으면 null)
+String? installedUpscaleModel(bool Function(String id) installed, String setting, {required bool gpu}) {
+  final want = pickUpscaleModel(setting, gpu: gpu);
+  if (installed(want)) return want;
+  if (setting != 'auto') return null;
+  for (final id in const ['esrgan-x4plus', 'esrgan-anime6b']) {
+    if (installed(id)) return id;
+  }
+  return null;
+}
+
+/// 해상도 올리기에 쓸 장치 (엔진이 없으면 null)
+Future<SdDevice?> pickUpscaleDevice(AiStore store, {String device = 'auto'}) async {
   final devices = await sdDevices(store);
   if (devices.isEmpty) return null;
   SdDevice dev;
@@ -139,8 +150,14 @@ Future<AiUpscaler?> prepareUpscaler(AiStore store, {required String modelSetting
         devices.where((d) => d.backend.startsWith('cuda')).firstOrNull ??
         devices.first;
   }
-  final gpu = dev.backend != 'cpu';
-  final id = pickUpscaleModel(modelSetting, gpu: gpu);
-  if (!store.isInstalled(id)) return null;
+  return dev;
+}
+
+/// 해상도 올리기에 쓸 장치 · 모델 (없으면 null - 받을 것을 묻는다)
+Future<AiUpscaler?> prepareUpscaler(AiStore store, {required String modelSetting, String device = 'auto', String autoDevice = ''}) async {
+  final dev = await pickUpscaleDevice(store, device: device);
+  if (dev == null) return null;
+  final id = installedUpscaleModel(store.isInstalled, modelSetting, gpu: dev.backend != 'cpu');
+  if (id == null) return null;
   return AiUpscaler(device: dev, modelPath: store.pathOf(aiFile(id)), modelId: id);
 }

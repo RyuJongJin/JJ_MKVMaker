@@ -125,8 +125,13 @@ set(CMAKE_INSTALL_SYSTEM_RUNTIME_COMPONENT Runtime)
 include(InstallRequiredSystemLibraries)
 
 # JJ_MKVMaker: 라이선스 고지
-install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../THIRD_PARTY_NOTICES.txt"
+# (원문은 assets/licenses - 앱 안 라이선스 화면과 같은 파일. 실행 파일 옆 · 각 도구 폴더에도 둔다)
+set(JJ_LICENSES "${CMAKE_CURRENT_SOURCE_DIR}/../assets/licenses")
+install(FILES "${JJ_LICENSES}/THIRD_PARTY_NOTICES.txt" "${JJ_LICENSES}/GPL-2.0.txt" "${JJ_LICENSES}/GPL-3.0.txt"
+  "${JJ_LICENSES}/LGPL-2.1.txt" "${JJ_LICENSES}/PDFIUM_LICENSES.txt"
   DESTINATION "${CMAKE_INSTALL_PREFIX}" COMPONENT Runtime OPTIONAL)
+install(FILES "${JJ_LICENSES}/YT-DLP_THIRD_PARTY_LICENSES.txt" DESTINATION "${CMAKE_INSTALL_PREFIX}/tools" COMPONENT Runtime OPTIONAL)
+install(FILES "${JJ_LICENSES}/RSYNC_COPYING.txt" DESTINATION "${CMAKE_INSTALL_PREFIX}/rsync" RENAME "COPYING.txt" COMPONENT Runtime OPTIONAL)
 install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../LICENSE" DESTINATION "${CMAKE_INSTALL_PREFIX}" RENAME "LICENSE.txt" COMPONENT Runtime OPTIONAL)
 
 # JJ_MKVMaker: 다운로드 도구 동봉 (yt-dlp, aria2c, deno). 실행 파일 옆 tools\ 폴더로 복사.

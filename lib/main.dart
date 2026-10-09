@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show LicenseEntryWithLineBreaks, LicenseRegistry;
 import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path/path.dart' as p;
@@ -19,7 +18,7 @@ import 'ui/exit_guard.dart' show confirmStopCopies;
 import 'app/copy_center.dart';
 import 'ui/migration_notice.dart';
 import 'app/ai_local.dart';
-import 'core/ai_catalog.dart' show aiLicenseTexts;
+import 'ui/license_texts.dart';
 import 'platform/windows/data_dir_override.dart';
 import 'ui/master_prompt.dart';
 import 'ui/secret_issue.dart';
@@ -75,10 +74,8 @@ Future<String> _prepare() async {
 
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
-  // 123: AI 그림 구성 요소 · 모델의 라이선스를 앱 안 라이선스 화면에 (OpenRAIL-M 용도 제한 포함)
-  LicenseRegistry.addLicense(() => Stream.fromIterable([
-        for (final (name, text) in aiLicenseTexts()) LicenseEntryWithLineBreaks([name], text),
-      ]));
+  // 62 · 63 · 64 · 123: GPL · LGPL 원문 · 고지 문서 · AI 구성 요소 · 모델을 앱 안 라이선스 화면에
+  registerAppLicenses();
   applyDataDirOverride(); // 시험판: 사용자 데이터와 다른 폴더 (JJ_MKVMAKER_DATA)
   final dataDir = await _prepare();
   if (Platform.isAndroid) return runAndroid(dataDir);

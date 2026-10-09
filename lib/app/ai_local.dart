@@ -292,6 +292,8 @@ class AiStore extends ChangeNotifier {
   /// sd-cli: Android 는 앱에 들어 있는 것 (libsdcli.so - 앱 데이터 폴더의 파일은 실행할 수 없음), Windows 는 받은 것
   Future<String?> sdCli({bool cuda = false}) async {
     if (Platform.isAndroid) {
+      // 156: Android 에는 CUDA 판이 없다 (같은 libsdcli.so 를 CUDA 로 잘못 세면 GPU 가 있는 줄 알고 사진용 모델을 찾았다)
+      if (cuda) return null;
       try {
         final dir = await const MethodChannel('jj_mkvmaker/android').invokeMethod<String>('nativeLibDir');
         final f = dir == null ? null : File(p.join(dir, 'libsdcli.so'));
@@ -512,12 +514,24 @@ class AiJobs extends ChangeNotifier {
 
   bool get busy => title != null;
 
+  /// 157: 마지막으로 끝난 일 (작업 현황에 "✓ 4장 저장: 폴더 [열기]") - 다음 일을 시작하면 지운다
+  String? lastDone;
+  String? lastDoneDir;
+
+  void done(String text, {String? dir}) {
+    lastDone = text;
+    lastDoneDir = dir;
+    notifyListeners();
+  }
+
   void start(String t, ImageAiEngine engine, int count) {
     title = t;
     _engine = engine;
     remaining = count;
     progress = 0;
     eta = null;
+    lastDone = null;
+    lastDoneDir = null;
     notifyListeners();
   }
 
@@ -553,6 +567,8 @@ class AiJobs extends ChangeNotifier {
       {required void Function() onCancel, Set<String> uses = const {}}) async {
     if (busy) throw ImageAiException(tr('이미 작업 중입니다'));
     inUse = uses;
+    lastDone = null;
+    lastDoneDir = null;
     var stop = false;
     this.title = title;
     remaining = count;
@@ -601,6 +617,8 @@ class AiJobs extends ChangeNotifier {
           final spent = DateTime.now().difference(started);
           left = spent * ((1 - prog) / prog);
         }
+        // update 는 null 을 무시하므로 직접 지운다 (읽는 동안 지난 "남은 약 0초" 가 남아 있었다)
+        eta = left;
         update(
           progress: prog,
           title: trf('AI 그림: {0}', [step]),
