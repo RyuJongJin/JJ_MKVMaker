@@ -155,6 +155,21 @@ void main() {
       expect(File(p.join(dst, 'single.txt')).existsSync(), isFalse);
     });
 
+    test('진행 표시: 큰 파일 하나도 보낸 바이트로 0% 에서 오른다 · 끝난 뒤에도 항목 이름 (171)', () async {
+      File(p.join(src, 'one.bin')).writeAsBytesSync(List.filled(256 * 1024, 7));
+      final job = TransferJob(sources: [p.join(src, 'one.bin')], dest: dst, move: false, bandwidthKBps: 256);
+      final mid = <double>[];
+      job.addListener(() {
+        if (!job.finished && !job.counting) mid.add(job.overall);
+      });
+      await job.run();
+      expect(job.error, isNull);
+      // 예전에는 파일 수 (0/1) 로 세어 끝날 때까지 0% 였다
+      expect(mid.any((v) => v > 0.2 && v < 1), isTrue, reason: '중간 진행: $mid');
+      expect(job.current, 1);
+      expect(job.currentName, 'one.bin', reason: '끝난 진행 창에 " 안의 파일" 대신 이름');
+    });
+
     test('현재 방식 속도 제한: 64KB 를 32KB/s 로 → 1.5초 넘게', () async {
       File(p.join(src, 'big.bin')).writeAsBytesSync(List.filled(64 * 1024, 7));
       final sw = Stopwatch()..start();

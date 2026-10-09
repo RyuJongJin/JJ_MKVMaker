@@ -175,6 +175,8 @@ Future<String?> upscaleOne(BuildContext context, AppController c, {required Stri
   final up = await _prepare(context, c);
   if (up == null || !context.mounted) return null;
   final progress = ValueNotifier<double?>(null);
+  // 167: 남은 시간 (타일 한 장에 걸린 초로) - 모르면 null
+  final left = ValueNotifier<Duration?>(null);
   var cancelled = false;
   var toPhoto = false;
   // 관리자: CPU 뿐이라 자동이 만화용을 고르면 사진은 질감이 뭉개질 수 있다 - 알리고 바로 바꿀 수 있게
@@ -196,7 +198,17 @@ Future<String?> upscaleOne(BuildContext context, AppController c, {required Stri
             const SizedBox(height: 10),
             LinearProgressIndicator(value: v),
             const SizedBox(height: 4),
-            Text(v == null ? tr('준비하는 중') : '${(v * 100).round()}%', style: const TextStyle(fontSize: 12)),
+            // 167: 모델을 읽는 동안은 숫자 없이 움직이는 막대 (예전엔 읽기 막대가 100% 로 보였다)
+            ValueListenableBuilder<Duration?>(
+              valueListenable: left,
+              builder: (_, d, _) => Text(
+                  v == null
+                      ? tr('준비하는 중')
+                      : d == null
+                          ? '${(v * 100).round()}%'
+                          : '${(v * 100).round()}% · ${trf('약 {0} 남음', [AiJobs.durationText(d)])}',
+                  style: const TextStyle(fontSize: 12)),
+            ),
             if (estimate != null) Text(estimate, style: const TextStyle(fontSize: 12, color: JjColors.textDim)),
             if (cpuAnime) ...[
               const SizedBox(height: 10),
@@ -229,7 +241,7 @@ Future<String?> upscaleOne(BuildContext context, AppController c, {required Stri
   Object? error;
   final watch = Stopwatch()..start();
   try {
-    four = await up.upscale4x(input, onProgress: (v) => progress.value = v);
+    four = await up.upscale4x(input, onProgress: (v) => progress.value = v, onEta: (d) => left.value = d);
     await _recordSpeed(c, up, input, watch.elapsed);
   } catch (e) {
     error = e;

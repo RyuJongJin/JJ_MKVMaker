@@ -1138,6 +1138,7 @@
  "앱을 새로 설치해 설정이 없습니다. 저장해 둔 v{0} 의 설정 (동영상 목록 · 즐겨찾기 포함) 을 되살릴까요?\n(자막 API 키 · 비밀번호는 저장하지 않았으니 다시 넣어 주세요)": "The app was newly installed and has no settings. Restore the saved settings of v{0} (including the video list and bookmarks)?\n(Subtitle API keys and passwords were not saved - please enter them again)",
  "앱을 지우면 다음은 되살릴 수 없습니다:": "Removing the app loses the following for good:",
  "앱이 켜져 있는 동안 늘 동기화합니다.": "Always syncs while the app is running.",
+ "약 {0} 남음": "about {0} left",
  "양쪽을 함께: 받는 쪽이 더 새 파일은 덮어쓰지 않습니다 (-u).": "Both ways: newer files on the receiving side are not overwritten (-u).",
  "어둡게": "Darker",
  "어디서나 누르면 JJ_MKVMaker 창이 나타납니다": "Press anywhere to bring up the JJ_MKVMaker window",

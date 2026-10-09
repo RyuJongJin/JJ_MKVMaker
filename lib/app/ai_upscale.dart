@@ -89,6 +89,19 @@ Duration? upscaleEstimate(Map<String, double> secPerMp, AiUpscaler up, double mp
   return s == null ? null : Duration(seconds: (s * mp).round().clamp(1, 1 << 20));
 }
 
+/// 167: sd-cli 진행 → (진행 0~1, 남은 시간). 모델을 읽는 막대 ("192/192 - 84MB/s") 는 올리기 진행이 아니다 -
+/// 그때는 모름 (null, 움직이는 막대). 올리기는 타일 (n/m) 과 타일 한 장에 걸린 초로 남은 시간을 셈
+(double?, Duration?) upscaleProgressOf(SdProgress prog) => switch (prog.phase) {
+      'done' => (1.0, Duration.zero),
+      'sample' when prog.steps > 0 => (
+          prog.step / prog.steps,
+          prog.secondsPerStep == null || prog.step == 0
+              ? null
+              : Duration(milliseconds: ((prog.steps - prog.step) * prog.secondsPerStep! * 1000).round()),
+        ),
+      _ => (null, null),
+    };
+
 /// 156-2: [result] 가 [input] 의 정확히 4배 크기인지 (그림 머리만 읽음)
 bool isFourTimes(Uint8List input, Uint8List result) {
   final a = img.findDecoderForData(input)?.startDecode(input);
@@ -118,13 +131,17 @@ class AiUpscaler {
   }
 
   /// 4배 결과를 임시 파일로 만든다 (진행: 0~1)
-  Future<String> upscale4x(String input, {void Function(double? p)? onProgress}) async {
+  Future<String> upscale4x(String input, {void Function(double? p)? onProgress, void Function(Duration? left)? onEta}) async {
     _cancelled = false;
     final tmp = await Directory.systemTemp.createTemp('jj_up_');
     final out = p.join(tmp.path, 'up.png');
     try {
       await runner(device.exe, sdUpscaleArgs(model: modelPath, input: input, out: out, backend: device.backend, threads: upscaleThreads(device), tileSize: upscaleTileSize(device)),
-          onProgress: (prog) => onProgress?.call(prog.phase == 'done' ? 1 : (prog.steps == 0 ? null : prog.step / prog.steps)),
+          onProgress: (prog) {
+            final (v, left) = upscaleProgressOf(prog);
+            onProgress?.call(v);
+            onEta?.call(left);
+          },
           onStart: (pr) => _proc = pr);
     } catch (_) {
       if (_cancelled) throw ImageAiException(tr('취소했습니다'), cancelled: true);

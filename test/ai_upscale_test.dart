@@ -6,6 +6,7 @@ import 'package:jj_mkvmaker/app/ai_local.dart';
 import 'package:jj_mkvmaker/app/ai_upscale.dart';
 import 'package:jj_mkvmaker/app/settings.dart';
 import 'package:jj_mkvmaker/core/ai_catalog.dart';
+import 'package:jj_mkvmaker/core/sd_cli.dart';
 import 'package:jj_mkvmaker/services/image_ai.dart';
 import 'package:path/path.dart' as p;
 
@@ -181,5 +182,13 @@ void main() {
       final b = AppSettings.fromJson((AppSettings()..aiUpSecPerMp = {'cpu|esrgan-anime6b': 442.5}).toJson());
       expect(b.aiUpSecPerMp, {'cpu|esrgan-anime6b': 442.5});
     });
+  });
+
+  test('167: 진행 - 모델 읽기 막대는 올리기 진행이 아님 (예전엔 100% 로 보임) · 타일 n/m 과 한 장 초로 남은 시간', () {
+    expect(upscaleProgressOf(parseSdProgress('  |##################################################| 192/192 - 84.37MB/s')!), (null, null));
+    final (v, left) = upscaleProgressOf(parseSdProgress('  |==========>        | 5/20 - 4.00s/it')!);
+    expect(v, 0.25);
+    expect(left, const Duration(seconds: 60));
+    expect(upscaleProgressOf(parseSdProgress('[I] 1/1 images saved --- main.cpp:573')!), (1.0, Duration.zero));
   });
 }

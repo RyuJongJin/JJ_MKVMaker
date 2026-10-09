@@ -73,7 +73,14 @@ class TransferJob extends ChangeNotifier {
       final ms = now.difference(_samples.first.$1).inMilliseconds;
       if (ms > 0) speed = (_bytes - _samples.first.$2) * 1000 / ms;
     }
+    // 큰 파일 하나를 보내는 동안에도 진행 막대가 오르게 (파일이 끝날 때만 알리면 0% 에 머문다) - 0.2초마다
+    if (now.difference(_lastTick).inMilliseconds >= 200) {
+      _lastTick = now;
+      _tick();
+    }
   }
+
+  DateTime _lastTick = DateTime.fromMillisecondsSinceEpoch(0);
 
   /// 원본 정리 중 · 지운 빈 폴더 수
   bool pruning = false;
@@ -82,9 +89,17 @@ class TransferJob extends ChangeNotifier {
   // ── 진행 상태 ──
   int index = 0; // 지금 항목
   int get total => sources.length;
-  String get currentName => index < sources.length ? p.basename(sources[index]) : '';
+  // 171: 끝난 뒤에도 마지막 항목 이름 (빈 이름으로 " 안의 파일" 이 되던 것)
+  String get currentName => sources.isEmpty ? '' : p.basename(sources[index < sources.length ? index : sources.length - 1]);
   late final List<int> filesTotal = List.filled(sources.length, 0);
   late final List<int> filesDone = List.filled(sources.length, 0);
+
+  /// 진행 표시 (한 파일 0% 에 머물던 것): 앱이 직접 복사할 때 항목마다 바이트 크기와 보낸 바이트로 진행률을 센다.
+  /// 같은 드라이브에서 이름 바꾸기로 옮기면 보낸 바이트가 없으므로 파일 수로
+  late final List<int> itemBytes = List.filled(sources.length, 0);
+  int _itemStart = 0;
+  int get _bytesTotal => itemBytes.fold(0, (a, b) => a + b);
+  bool get _byBytes => _bytesTotal > 0 && _bytes > 0;
 
   /// 지금 파일의 진행률 (rsync -P · robocopy 가 알려 줄 때)
   double? filePercent;
@@ -114,6 +129,7 @@ class TransferJob extends ChangeNotifier {
   double get overall {
     if (finished) return 1;
     if (total == 0) return 0;
+    if (_byBytes) return (_bytes / _bytesTotal).clamp(0.0, 1.0);
     final cur = index < total && filesTotal[index] > 0 ? (filesDone[index] / filesTotal[index]).clamp(0.0, 1.0) : 0.0;
     return ((index + cur) / total).clamp(0.0, 1.0);
   }
@@ -121,7 +137,9 @@ class TransferJob extends ChangeNotifier {
   /// 아래쪽 진행률: 지금 항목의 파일
   double get current {
     if (finished) return 1;
-    if (index >= total || filesTotal[index] == 0) return 0;
+    if (index >= total) return 0;
+    if (_byBytes && itemBytes[index] > 0) return ((_bytes - _itemStart) / itemBytes[index]).clamp(0.0, 1.0);
+    if (filesTotal[index] == 0) return 0;
     return (filesDone[index] / filesTotal[index]).clamp(0.0, 1.0);
   }
 
@@ -169,6 +187,12 @@ class TransferJob extends ChangeNotifier {
           throw FileSystemException('폴더를 자기 안으로 복사 · 이동할 수 없습니다', s);
         }
         filesTotal[i] = await countFiles(s);
+        // 앱이 직접 복사할 때만 (robocopy · rsync 는 그 프로그램이 진행을 알려 줌)
+        if (viaWebDav || method == CopyMethod.builtin) {
+          try {
+            itemBytes[i] = await FileOps.totalSize([s]);
+          } catch (_) {}
+        }
       }
       counting = false;
       _tick();
@@ -203,6 +227,7 @@ class TransferJob extends ChangeNotifier {
     for (index = 0; index < sources.length; index++) {
       if (cancelled) return;
       final i = index;
+      _itemStart = _bytes;
       _ops = FileOps(
         bandwidthKBps: bandwidthKBps,
         onFileDone: (src) {
