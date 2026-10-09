@@ -121,6 +121,21 @@ class _CopySyncSettingsState extends State<CopySyncSettings> {
         _options(tr('robocopy 옵션'), tr('예: /E /COPY:DAT /DCOPY:T /R:2 /W:2. 이동은 /MOVE 를 자동으로 붙임'), s.robocopyOptions,
             defaultRobocopyOptions, (x, v) => x.robocopyOptions = v),
       ],
+      // 48: 같은 이름이 있을 때 (앱이 직접 복사 · 이동할 때, robocopy · rsync 는 그 프로그램의 규칙)
+      SettingTile(
+        title: Text(tr('같은 이름이 있을 때')),
+        subtitle: Text(tr('복사 · 이동할 폴더에 같은 이름이 있으면 (현재 방식 · WebDAV)')),
+        trailing: DropdownButton<String>(
+          value: const ['ask', 'rename', 'overwrite', 'skip'].contains(s.copyConflict) ? s.copyConflict : 'ask',
+          items: [
+            DropdownMenuItem(value: 'ask', child: Text(tr('묻기'))),
+            DropdownMenuItem(value: 'rename', child: Text(tr('늘 이름 바꾸기'))),
+            DropdownMenuItem(value: 'overwrite', child: Text(tr('늘 덮어쓰기'))),
+            DropdownMenuItem(value: 'skip', child: Text(tr('늘 건너뛰기'))),
+          ],
+          onChanged: (v) => c.updateSettings((x) => x.copyConflict = v ?? 'ask'),
+        ),
+      ),
       SettingTile(
         title: Text(tr('속도 제한 (KB/s)')),
         subtitle: Text(tr('0 = 제한 없음. 모든 방법에 적용: rsync --bwlimit, 현재 방식은 앱이 조절, robocopy 는 /IPG 로 비슷하게. '

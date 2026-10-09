@@ -345,6 +345,9 @@ class AppSettings {
   /// 파일 탐색기의 복사 · 이동 방법: 'builtin' 현재 방식 (기본) · 'robocopy' (Windows). 파일만 고를 때 / 폴더가 들어 있을 때.
   /// rsync 는 Rsync 화면에서 따로 (파일 탐색기에서는 쓰지 않음)
   String copyMethodFile = 'builtin';
+
+  /// 48: 복사 · 이동할 때 받는 폴더에 같은 이름이 있으면 'ask' (확인 창에서 고름, 처음 값) · 'rename' · 'overwrite' · 'skip'
+  String copyConflict = 'ask';
   String copyMethodFolder = 'builtin';
   String rsyncOptions = '-avPog';
   String robocopyOptions = '/E /COPY:DAT /DCOPY:T /R:2 /W:2';
@@ -628,6 +631,7 @@ class AppSettings {
         'explorerShowHidden': explorerShowHidden,
         'explorerPaths': explorerPaths,
         'copyMethodFile': copyMethodFile,
+        'copyConflict': copyConflict,
         'copyMethodFolder': copyMethodFolder,
         'rsyncPaths': rsyncPaths,
         'components': components,
@@ -809,6 +813,7 @@ class AppSettings {
       ..explorerShowHidden = j['explorerShowHidden'] as bool? ?? false
       ..explorerPaths = [for (final x in (j['explorerPaths'] as List?) ?? const []) '$x']
       ..copyMethodFile = _method(j['copyMethodFile'])
+      ..copyConflict = const ['rename', 'overwrite', 'skip'].contains(j['copyConflict']) ? j['copyConflict'] as String : 'ask'
       ..copyMethodFolder = _method(j['copyMethodFolder'])
       ..rsyncPaths = [for (final x in (j['rsyncPaths'] as List?) ?? const []) '$x']
       ..components = j['components'] is List

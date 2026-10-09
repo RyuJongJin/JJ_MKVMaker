@@ -83,6 +83,28 @@ void main() {
     expect(File(p.join(right, 'doc (2).txt')).existsSync(), isFalse);
   });
 
+  testWidgets('48 보충: 환경 설정이 "늘 덮어쓰기" 면 묻지 않고 (확인 창에 알림만) 덮어쓴다', (tester) async {
+    c.settings.copyConflict = 'overwrite';
+    await startCopy(tester);
+    expect(find.text('덮어쓰기 (원래 파일은 없어집니다)'), findsNothing, reason: '고르는 칸 없음');
+    expect(find.textContaining('환경 설정대로 덮어씁니다'), findsOneWidget);
+    await confirm(tester);
+    expect(File(p.join(right, 'doc.txt')).readAsStringSync(), 'new');
+  });
+
+  testWidgets('48 보충: 처음 열면 아무것도 고르지 않은 상태 - 바로 [복사] 를 누르면 "복사할 항목을 고르세요" (폴더 통째로 복사하지 않음)', (tester) async {
+    tester.view.physicalSize = const Size(1600, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.runAsync(() => tester.pumpWidget(MaterialApp(home: ExplorerPage(c: c))));
+    await settle(tester, () => find.text('doc.txt').evaluate().length >= 2);
+    await tester.runAsync(() => tester.tap(find.text('복사').first));
+    await tester.pump();
+    expect(find.widgetWithText(FilledButton, '복사'), findsNothing, reason: '확인 창이 뜨지 않음');
+    expect(find.textContaining('복사할 항목을 고르세요'), findsOneWidget);
+    expect(Directory(p.join(right, 'left')).existsSync(), isFalse);
+  });
+
   testWidgets('48: 건너뛰기를 고르면 그대로 두고 건너뛴 것을 알린다', (tester) async {
     await startCopy(tester);
     await tester.tap(find.text('건너뛰기'));

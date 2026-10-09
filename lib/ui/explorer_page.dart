@@ -280,7 +280,8 @@ class _ExplorerPageState extends State<ExplorerPage> {
       _panes[i]
         ..root = _volumeOf(wants[i])
         ..current = wants[i]
-        ..focused = wants[i];
+        // 48 보충 (관리자): 처음 열면 아무것도 고르지 않은 상태 - 열자마자 폴더 통째가 복사 · 이동 대상이 되지 않게
+        ..focused = null;
     }
     if (!mounted) return;
     setState(() => _ready = true);
@@ -293,7 +294,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
     }
     for (var i = 0; i < 2; i++) {
       final pane = _panes[i];
-      unawaited(_goTo(pane, wants[i], remember: false).then((_) => _reveal(pane, pane.current)));
+      unawaited(_goTo(pane, wants[i], remember: false, focus: false).then((_) => _reveal(pane, pane.current)));
     }
   }
 
@@ -586,7 +587,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
 
   /// 그 폴더로: 저장 장치부터 그 폴더까지 펼치고 지금 폴더로 정한다
   /// [fresh]: 경로 입력 · 찾기 · 내역으로 갈 때 - 그 폴더를 새로 읽는다 (앱 밖에서 바뀐 것까지 보이게, 122)
-  Future<void> _goTo(_Pane pane, String dir, {bool remember = true, bool fresh = false}) async {
+  Future<void> _goTo(_Pane pane, String dir, {bool remember = true, bool fresh = false, bool focus = true}) async {
     // 124 · 128: 사용자가 WebDAV 로 간 것이면 마스터 창을 한 번 취소했어도 다시 묻는다 (켤 때 되살리는 것은 [remember] 없음)
     if (remember && isDav(dir)) await SecretGate.pass(force: true);
     if (!mounted) return;
@@ -607,9 +608,8 @@ class _ExplorerPageState extends State<ExplorerPage> {
         await _load(pane, x, force: true);
       }
     }
-    pane
-      ..current = dir
-      ..focused = dir;
+    pane.current = dir;
+    if (focus) pane.focused = dir;
     pane.changed();
     if (pane.listScroll.hasClients) pane.listScroll.jumpTo(0);
     _reveal(pane, dir);
@@ -1494,7 +1494,14 @@ class _ExplorerPageState extends State<ExplorerPage> {
     // 확인 창은 바로 띄우고, 같은 이름은 창 안에서 뒤에서 찾는다 (느린 네트워크 · WebDAV 폴더라도 창이 늦게 뜨지 않게).
     // 다 찾기 전에 누르면 이름 바꾸기 (원래 파일을 건드리지 않는 쪽)
     final clashesFuture = builtin ? _findClashes(sources, dest) : Future.value(const <String>[]);
-    var conflict = NameConflict.rename;
+    // 48: 환경 설정 "같은 이름이 있을 때" 가 늘 하는 것이면 묻지 않고 그대로 (확인 창에 알림만)
+    final always = switch (c.settings.copyConflict) {
+      'rename' => NameConflict.rename,
+      'overwrite' => NameConflict.overwrite,
+      'skip' => NameConflict.skip,
+      _ => null,
+    };
+    var conflict = always ?? NameConflict.rename;
     final go = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -1522,6 +1529,17 @@ class _ExplorerPageState extends State<ExplorerPage> {
                   const SizedBox(height: 12),
                   Text(trf('같은 이름이 이미 있습니다: {0}', [_namesOf(clashes)]),
                       style: const TextStyle(color: Colors.orangeAccent)),
+                  if (always != null)
+                    Text(
+                        trf('환경 설정대로 {0} (환경 설정 > 파일 탐색기 > 같은 이름이 있을 때)', [
+                          switch (always) {
+                            NameConflict.rename => tr('이름을 바꿉니다'),
+                            NameConflict.overwrite => tr('덮어씁니다'),
+                            NameConflict.skip => tr('건너뜁니다'),
+                          }
+                        ]),
+                        style: const TextStyle(fontSize: 12))
+                  else
                   RadioGroup<NameConflict>(
                     groupValue: conflict,
                     onChanged: (x) => setInner(() => conflict = x ?? conflict),
