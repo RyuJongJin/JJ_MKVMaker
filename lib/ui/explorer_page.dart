@@ -473,6 +473,23 @@ class _ExplorerPageState extends State<ExplorerPage> {
     final server = dav ? DavRegistry.server(DavPath.parse(where).server) : null;
     final (title, body) = explainFileError(err, dav: dav, noPassword: server != null && server.password.isEmpty);
     final locked = isLockedError(err);
+    // 50: 막힌 폴더는 다시 해도 같으니 [다시 시도] 없이 [위 폴더로]
+    if (err == androidRestrictedError) {
+      return _notice(
+        icon: Icons.lock_outline,
+        title: '${_displayPath(where)}: $title',
+        body: body,
+        actions: [
+          FilledButton.tonal(
+            onPressed: () {
+              pane.errors.remove(where);
+              _goTo(pane, vDirname(where));
+            },
+            child: Text(tr('위 폴더로')),
+          ),
+        ],
+      );
+    }
     return _notice(
       icon: dav ? Icons.cloud_off_outlined : Icons.error_outline,
       title: '${_displayPath(where)}: $title',
@@ -584,10 +601,15 @@ class _ExplorerPageState extends State<ExplorerPage> {
     try {
       final list = await listEntries(dir, showHidden: c.settings.explorerShowHidden);
       pane.cache[dir] = _sorted(list);
-      pane.errors.remove(dir);
+      // 50: Android 가 막은 폴더는 비어 보인다 (오류 없이) - 비어 있는 것이 아니라 막힌 것이라고 알린다
+      if (list.isEmpty && isAndroidRestricted(dir)) {
+        pane.errors[dir] = androidRestrictedError;
+      } else {
+        pane.errors.remove(dir);
+      }
     } catch (e) {
       pane.cache[dir] = const [];
-      pane.errors[dir] = '$e';
+      pane.errors[dir] = isAndroidRestricted(dir) ? androidRestrictedError : '$e';
     } finally {
       pane.loading.remove(dir);
       pane.changed();

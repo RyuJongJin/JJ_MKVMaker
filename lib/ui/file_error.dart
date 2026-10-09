@@ -5,7 +5,21 @@ import '../l10n/tr.dart';
 
 /// 파일 · WebDAV 오류를 사람이 읽을 말로 (제목, 할 일). 원문 예외는 알아볼 수 없을 때만 그대로.
 /// 파일 탐색기 · 폴더 고르기 · 그 밖에 WebDAV 를 읽는 화면이 함께 쓴다 (12 · 134).
+/// 50: Android 가 막은 폴더 (Android/data · obb) 표시 (파일 탐색기가 오류 자리에 넣는다)
+const androidRestrictedError = 'ANDROID_RESTRICTED_FOLDER';
+
+/// 50: Android 11 부터 어떤 파일 앱도 다른 앱의 데이터 폴더 (Android/data · Android/obb) 를 볼 수 없다
+bool isAndroidRestricted(String path, {bool? android}) =>
+    (android ?? Platform.isAndroid) && RegExp(r'/Android/(data|obb)(/|$)', caseSensitive: false).hasMatch(path);
+
 (String, String) explainFileError(String e, {required bool dav, bool noPassword = false}) {
+if (e == androidRestrictedError) {
+  return (
+    tr('이 폴더는 Android 가 막아 볼 수 없습니다'),
+    tr('Android 11 부터 다른 앱의 데이터 폴더 (Android/data · Android/obb) 는 어떤 파일 앱도 열 수 없습니다. '
+        '그 앱 안의 내보내기 · 공유로 파일을 꺼내세요.'),
+  );
+}
 // 128 · 133: 마스터 비밀번호를 기다리는 중 (고장이 아님)
 if (isLockedError(e)) {
   return (tr('마스터 비밀번호가 필요합니다'), tr('이 서버의 저장된 비밀번호를 쓰려면 마스터 비밀번호를 넣으세요.'));
