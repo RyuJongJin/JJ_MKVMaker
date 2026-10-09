@@ -81,9 +81,12 @@ void main() {
       for (var i = 0; i < 250 && c.videos.isEmpty; i++) {
         await Future<void>.delayed(const Duration(milliseconds: 20));
       }
-      await Future<void>.delayed(const Duration(milliseconds: 100));
     });
-    await tester.pump();
+    // 안내가 뜰 때까지 (정해 둔 시간이 아니라 - 전체 시험 중 느려도 흔들리지 않게)
+    for (var i = 0; i < 100 && find.textContaining('동영상 목록에 1개를 추가했습니다').evaluate().isEmpty; i++) {
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+      await tester.pump();
+    }
     expect([for (final v in c.videos) v.fileName], ['끌어온 영상.mp4']);
     expect(c.selected, c.videos.single);
     expect(find.textContaining('여기에 놓으면'), findsNothing);
@@ -92,12 +95,10 @@ void main() {
     // 같은 것을 다시 놓으면 "이미 있음"
     await _native(tester, 'entered', [400.0, 300.0]);
     await tester.pump();
-    await tester.runAsync(() async {
-      await _native(tester, 'performOperation', [file]);
-      await Future<void>.delayed(const Duration(milliseconds: 1000));
-    });
-    // 앞의 안내가 사라지고 새 안내가 나올 때까지
-    for (var i = 0; i < 10; i++) {
+    await tester.runAsync(() => _native(tester, 'performOperation', [file]));
+    // 앞의 안내가 사라지고 새 안내가 나올 때까지 (될 때까지 기다림, 최대 10초)
+    for (var i = 0; i < 50 && find.textContaining('이미 동영상 목록에 있습니다').evaluate().isEmpty; i++) {
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
       await tester.pump(const Duration(milliseconds: 200));
     }
     expect(c.videos, hasLength(1));

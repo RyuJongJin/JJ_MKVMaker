@@ -128,8 +128,16 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('이번 업데이트로 바뀐 기본 설정'), findsOneWidget);
     await tester.tap(find.text('확인'));
-    // 파일 쓰기 (진짜 입출력) 가 끝나게 몇 번 돌려 준다
-    for (var i = 0; i < 20; i++) {
+    // 파일 쓰기 (진짜 입출력) 가 끝날 때까지 (정해 둔 시간이 아니라 파일에 실제로 쓰일 때까지 - 전체 시험 중 느려도 흔들리지 않게)
+    for (var i = 0; i < 200; i++) {
+      final now = await tester.runAsync(() async {
+        try {
+          return (await SettingsStore(file, MemorySecretStore()).load()).migrated;
+        } catch (_) {
+          return null; // 쓰는 도중
+        }
+      });
+      if (now != null && now.isEmpty) break;
       await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
       await tester.pump();
     }
