@@ -134,13 +134,20 @@ enum ExplorerButton {
   /// Rsync 화면의 버튼 (늘 이대로, 두 창 사이)
   static const rsyncButtons = [up, refresh, newFolder, toRight, toLeft, both, monitor];
 
+  /// 147 (관리자): 처음 값 (버튼 구성을 바꾸지 않았을 때) 은 자주 쓰는 것부터 - 좁은 화면에서 [더 보기] 로 가는 것은 뒤쪽
+  static List<ExplorerButton> get defaultOrder {
+    const first = [copy, move, delete, newFolder, rename, select, search, orient];
+    return [...first, for (final b in explorerValues) if (!first.contains(b)) b];
+  }
+
   static List<ExplorerButton> fromSettings(List<String> names) {
     final out = [
       for (final n in names)
         for (final b in explorerValues)
           if (b.name == n) b,
     ];
-    return out.isEmpty ? explorerValues : out;
+    // 사용자가 정한 순서는 그대로 (비어 있을 때만 처음 값)
+    return out.isEmpty ? defaultOrder : out;
   }
 }
 
@@ -2423,7 +2430,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
               onPressed: () => set(() {
                 order
                   ..clear()
-                  ..addAll(ExplorerButton.explorerValues);
+                  ..addAll(ExplorerButton.defaultOrder);
                 on
                   ..clear()
                   ..addAll(ExplorerButton.explorerValues);
@@ -3083,17 +3090,72 @@ class _Toolbar extends StatelessWidget {
       );
     }
 
+    // 147: 다 들어가지 않으면 (좁은 · 낮은 화면) 들어가는 만큼 보이고 나머지는 [더 보기 ⋯] 메뉴로 - 밀어야 보이는 것을 몰라 못 찾던 것
+    Widget more(List<ExplorerButton> rest) => Builder(
+          builder: (context) => Tooltip(
+            message: tr('더 보기'),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(6),
+              onTap: () async {
+                final box = context.findRenderObject()! as RenderBox;
+                final at = box.localToGlobal(Offset.zero);
+                final pick = await showMenu<ExplorerButton>(
+                  context: context,
+                  position: RelativeRect.fromLTRB(at.dx + box.size.width, at.dy, at.dx + box.size.width, at.dy),
+                  items: [
+                    for (final b in rest)
+                      PopupMenuItem(
+                        value: b,
+                        enabled: enabled(b),
+                        height: 40,
+                        child: Row(children: [
+                          Icon(_icon(b), size: 18, color: selected(b) ? JjColors.accent : null),
+                          const SizedBox(width: 10),
+                          Text(tr(_label(b))),
+                        ]),
+                      ),
+                  ],
+                );
+                if (pick != null) onPressed(pick);
+              },
+              child: SizedBox(
+                width: 72,
+                height: 58,
+                child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  const Icon(Icons.more_horiz, size: 22),
+                  const SizedBox(height: 2),
+                  Text(tr('더 보기'), style: const TextStyle(fontSize: 10.5, height: 1.1)),
+                ]),
+              ),
+            ),
+          ),
+        );
+
     return Container(
       color: JjColors.panel,
       width: vertical ? 76 : null,
       height: vertical ? null : 62,
-      child: SingleChildScrollView(
-        scrollDirection: vertical ? Axis.vertical : Axis.horizontal,
-        padding: const EdgeInsets.all(2),
-        child: vertical
-            ? Column(children: [for (final b in buttons) btn(b)])
-            : Row(children: [for (final b in buttons) btn(b)]),
-      ),
+      padding: const EdgeInsets.all(2),
+      child: LayoutBuilder(builder: (context, box) {
+        final room = vertical ? box.maxHeight : box.maxWidth;
+        final each = vertical ? 58.0 : 72.0;
+        var shown = buttons;
+        var rest = const <ExplorerButton>[];
+        if (room.isFinite && buttons.length * each > room) {
+          final fit = (room / each).floor() - 1; // 하나는 [더 보기] 자리
+          if (fit >= 1) {
+            shown = buttons.take(fit).toList();
+            rest = buttons.skip(fit).toList();
+            // 창 배치 버튼은 늘 줄에 (사용자가 가운데 아이콘 모음에 두라고 함, 10/9) - 넘치면 마지막 자리를 내준다
+            if (rest.contains(ExplorerButton.orient)) {
+              rest = [shown.removeLast(), ...rest.where((b) => b != ExplorerButton.orient)];
+              shown = [...shown, ExplorerButton.orient];
+            }
+          }
+        }
+        final children = [for (final b in shown) btn(b), if (rest.isNotEmpty) more(rest)];
+        return vertical ? Column(children: children) : Row(children: children);
+      }),
     );
   }
 }

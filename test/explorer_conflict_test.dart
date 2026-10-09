@@ -323,6 +323,34 @@ void main() {
     expect(find.textContaining('이미 이 폴더에 있어 건너뜀: b.txt'), findsOneWidget, reason: '끝난 알림에도');
   });
 
+  testWidgets('147: 버튼 줄이 다 들어가지 않으면 (낮은 화면) 나머지는 [더 보기] 메뉴로 - "숨은 항목 표시" 도 누를 수 있다', (tester) async {
+    tester.view.physicalSize = const Size(1200, 560);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final before = c.settings.explorerShowHidden;
+    await tester.runAsync(() => tester.pumpWidget(MaterialApp(home: ExplorerPage(c: c))));
+    await settle(tester, () => find.text('doc.txt').evaluate().isNotEmpty);
+    expect(tester.takeException(), isNull, reason: '넘침 없음');
+    expect(find.text('더 보기'), findsOneWidget);
+    expect(find.text('숨은 항목 표시'), findsNothing, reason: '들어가지 않는 버튼은 줄에 없음');
+    await tester.tap(find.text('더 보기'));
+    await tester.pumpAndSettle();
+    expect(find.text('숨은 항목 표시'), findsOneWidget);
+    await tester.runAsync(() => tester.tap(find.text('숨은 항목 표시')));
+    await settle(tester, () => c.settings.explorerShowHidden != before, rounds: 20);
+    expect(c.settings.explorerShowHidden, !before);
+    // 창 배치 버튼은 좁아도 늘 줄에 (사용자 요청) · 처음 값은 자주 쓰는 것부터 (복사 · 이동 · 삭제 …)
+    expect(find.byTooltip('창 배치: 좌우 (누르면 위아래)'), findsOneWidget);
+    expect(ExplorerButton.fromSettings(const []).take(8).map((b) => b.name),
+        ['copy', 'move', 'delete', 'newFolder', 'rename', 'select', 'search', 'orient']);
+    expect(ExplorerButton.fromSettings(const ['hidden', 'copy']), [ExplorerButton.hidden, ExplorerButton.copy],
+        reason: '사용자가 정한 순서는 그대로');
+    // 넉넉한 화면에서는 [더 보기] 없이 모두
+    tester.view.physicalSize = const Size(1600, 1400);
+    await settle(tester, () => find.text('더 보기').evaluate().isEmpty, rounds: 20); // 숨은 항목을 바꿔 다시 읽는 중일 수 있어 정해진 만큼만
+    expect(find.text('더 보기'), findsNothing);
+  });
+
   testWidgets('146 · 37-2: 없는 경로를 넣으면 창을 닫지 않고 칸 아래에 "폴더가 없거나 열 수 없습니다" · 고친 경로로 간다', (tester) async {
     tester.view.physicalSize = const Size(1600, 900);
     tester.view.devicePixelRatio = 1;

@@ -214,24 +214,29 @@ void main() {
     addTearDown(tester.view.reset);
     await tester.runAsync(() => tester.pumpWidget(MaterialApp(home: ExplorerPage(c: c))));
     await settle(tester, () => find.text('a.txt').evaluate().isNotEmpty);
-    await act(tester, () => tester.tap(find.byTooltip('두 창으로 보기 (좌우)')));
-    await settle(tester, () => false, rounds: 5);
-    expect((c.settings.explorerLayout, c.settings.explorerOrientation), ('dual', 'side'));
-    expect(find.byTooltip('창 배치: 좌우 (누르면 위아래)'), findsOneWidget, reason: '폰 세로에서도 좌우');
+    // 그 버튼을 누른다: 버튼 줄에 있으면 바로, 다 들어가지 않아 [더 보기] 메뉴에 있으면 메뉴에서 (147)
+    Future<void> press(String tooltip, String label) async {
+      if (find.byTooltip(tooltip).evaluate().isNotEmpty) {
+        await act(tester, () => tester.tap(find.byTooltip(tooltip)));
+      } else {
+        await tester.tap(find.text('더 보기'));
+        await tester.pumpAndSettle();
+        expect(find.text(label), findsOneWidget, reason: '[더 보기] 메뉴에 지금 배치가 보임: $label');
+        await act(tester, () => tester.tap(find.text(label)));
+      }
+      await settle(tester, () => false, rounds: 5);
+    }
+
+    await press('두 창으로 보기 (좌우)', '두 창으로');
+    expect((c.settings.explorerLayout, c.settings.explorerOrientation), ('dual', 'side'), reason: '폰 세로에서도 좌우');
     expect(find.text('a.txt'), findsNWidgets(2));
     final left = tester.getCenter(find.text('a.txt').first), right = tester.getCenter(find.text('a.txt').last);
     expect(right.dx, greaterThan(left.dx));
-    await act(tester, () => tester.tap(find.byTooltip('창 배치: 좌우 (누르면 위아래)')));
-    await settle(tester, () => false, rounds: 5);
+    await press('창 배치: 좌우 (누르면 위아래)', '좌우 ⇆');
     expect(c.settings.explorerOrientation, 'stacked');
-    expect(find.byTooltip('창 배치: 위아래 (누르면 좌우)'), findsOneWidget);
     final top = tester.getCenter(find.text('a.txt').first), bottom = tester.getCenter(find.text('a.txt').last);
     expect(bottom.dy, greaterThan(top.dy));
-    // 위아래면 버튼 줄이 가로로 밀어 보는 줄 - 보이게 한 뒤 누른다
-    await tester.ensureVisible(find.byTooltip('창 배치: 위아래 (누르면 좌우)'));
-    await tester.pump();
-    await act(tester, () => tester.tap(find.byTooltip('창 배치: 위아래 (누르면 좌우)')));
-    await settle(tester, () => false, rounds: 5);
+    await press('창 배치: 위아래 (누르면 좌우)', '위아래 ⇅');
     expect(c.settings.explorerOrientation, 'side');
   });
 }

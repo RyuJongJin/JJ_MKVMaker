@@ -298,6 +298,9 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('버튼 구성').last);
     await tester.pumpAndSettle();
+    // 처음 값 순서 (자주 쓰는 것부터) 에서 뒤쪽이라 목록을 내려 보이게 한 뒤
+    await tester.scrollUntilVisible(find.widgetWithText(CheckboxListTile, 'MKV 목록에 추가'), 80,
+        scrollable: find.descendant(of: find.byType(AlertDialog), matching: find.byType(Scrollable)).first);
     await tester.tap(find.widgetWithText(CheckboxListTile, 'MKV 목록에 추가'));
     await tester.pump();
     await tester.tap(find.widgetWithText(FilledButton, '확인'));
