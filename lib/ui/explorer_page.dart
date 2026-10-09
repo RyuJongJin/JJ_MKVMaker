@@ -2356,8 +2356,35 @@ class _ExplorerPageState extends State<ExplorerPage> {
 
   // ───────── 화면 ─────────
 
+  /// 49: 뒤로 키가 화면을 닫기 전에 할 일이 있는지 (고른 것이 있거나 맨 위 폴더가 아님)
+  bool get _backHasWork =>
+      _selecting || _panes.any((x) => x.marked.isNotEmpty) || (_ready && !samePath(_pane.current, _pane.root));
+
+  /// 49: 뒤로 키 - 먼저 고른 것 풀기, 그다음 상위 폴더, 맨 위면 화면 닫기 (위쪽 ← 는 늘 닫기)
+  Future<void> _onBack() async {
+    if (_selecting || _panes.any((x) => x.marked.isNotEmpty)) {
+      _setSelecting(false);
+      return;
+    }
+    if (!samePath(_pane.current, _pane.root)) {
+      await _button(ExplorerButton.up);
+      return;
+    }
+    if (mounted) Navigator.of(context).pop();
+  }
+
   @override
   Widget build(BuildContext context) {
+    return PopScope(
+      canPop: !_backHasWork,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) unawaited(_onBack());
+      },
+      child: _buildPage(context),
+    );
+  }
+
+  Widget _buildPage(BuildContext context) {
     return CallbackShortcuts(
       bindings: {
         const SingleActivator(LogicalKeyboardKey.f5): () => _button(ExplorerButton.refresh),

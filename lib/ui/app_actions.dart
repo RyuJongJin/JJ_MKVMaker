@@ -308,7 +308,8 @@ class AppNavButtons extends StatelessWidget {
         ),
       btn(const Icon(Icons.arrow_back), tr('뒤로'),
           // 브라우저 화면: 뒤로 키는 웹 페이지 뒤로 (PopScope) 이지만 이 버튼은 화면 이동이라 바로 닫는다
-          atRoot ? null : () => onBrowserPage ? Navigator.pop(context) : Navigator.maybePop(context),
+          // 위쪽 ← 는 늘 화면 닫기 (브라우저 · 탐색기는 뒤로 키가 웹 뒤로 · 선택 풀기 · 상위 폴더를 먼저 하므로 그것을 거치지 않게 - 49)
+          atRoot ? null : () => onBrowserPage || onExplorerPage || onRsyncPage ? Navigator.pop(context) : Navigator.maybePop(context),
           label: tr('뒤로')),
     ]);
   }

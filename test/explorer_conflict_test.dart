@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -207,6 +208,40 @@ void main() {
     expect(Directory(p.join(left, 'deep')).existsSync(), isFalse);
     expect(find.textContaining('1개를 영구 삭제했습니다.'), findsOneWidget);
   }, skip: !Platform.isWindows);
+
+  testWidgets('49: 뒤로 키 - 먼저 고른 것 풀기 → 상위 폴더 → 맨 위에서 화면 닫기', (tester) async {
+    tester.view.physicalSize = const Size(1600, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    // 시험 폴더를 저장 장치 맨 위로 (left 에서 한 번 올라가면 맨 위)
+    ExplorerPage.debugVolumes = () => [(tmp.path, 'T:')];
+    final navKey = GlobalKey<NavigatorState>();
+    await tester.runAsync(() => tester.pumpWidget(MaterialApp(navigatorKey: navKey, home: const Text('앞 화면'))));
+    unawaited(navKey.currentState!.push(MaterialPageRoute<void>(builder: (_) => ExplorerPage(c: c))));
+    await settle(tester, () => find.text('doc.txt').evaluate().isNotEmpty);
+    Future<void> back() async {
+      await tester.runAsync(() => tester.binding.handlePopRoute());
+      await settle(tester, () => false, rounds: 10);
+    }
+
+    // 표시 (선택 모드) 를 켜고 doc.txt 를 고름
+    await tester.runAsync(() => tester.tap(find.text('선택').first));
+    await settle(tester, () => false, rounds: 5);
+    await tester.runAsync(() => tester.tap(find.text('doc.txt').first));
+    await settle(tester, () => false, rounds: 5);
+    expect(find.textContaining('1개 표시함'), findsOneWidget);
+    await back(); // 1) 고른 것 풀기 (화면은 그대로)
+    expect(find.textContaining('표시함'), findsNothing);
+    expect(find.byType(ExplorerPage), findsOneWidget);
+    expect(find.textContaining(p.join(tmp.path, 'left')), findsWidgets, reason: '아직 left 폴더');
+    await back(); // 2) 상위 폴더 (= 맨 위)
+    expect(find.byType(ExplorerPage), findsOneWidget);
+    expect(find.textContaining(p.join(tmp.path, 'left')), findsNothing);
+    await back(); // 3) 맨 위에서는 화면 닫기
+    await tester.pumpAndSettle(); // 닫히는 전환 (가짜 시간을 흘려야 끝난다)
+    expect(find.byType(ExplorerPage), findsNothing);
+    expect(find.text('앞 화면'), findsOneWidget);
+  });
 
   testWidgets('48: 건너뛰기를 고르면 그대로 두고 건너뛴 것을 알린다', (tester) async {
     await startCopy(tester);
