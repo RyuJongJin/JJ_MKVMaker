@@ -393,6 +393,11 @@ void main() {
     // MKV 화면: 뒤로 · MKV 는 "지금 여기" 라 꺼짐, 다운로드 목록 열기
     expect(btn('뒤로').onPressed, isNull);
     expect(find.byTooltip('MKV 화면 (지금 여기)'), findsOneWidget);
+    // 지금 화면 버튼 아래 밑줄 하나 (그 버튼 아래에)
+    final line = find.byKey(const ValueKey('nav-here-underline'));
+    expect(line, findsOneWidget);
+    final mkv = tester.getRect(find.byTooltip('MKV 화면 (지금 여기)'));
+    expect(tester.getCenter(line).dx, closeTo(mkv.center.dx, 2));
     await tester.tap(find.byTooltip('다운로드 목록'));
     await tester.pumpAndSettle();
     expect(find.textContaining('다운로드 ('), findsOneWidget);

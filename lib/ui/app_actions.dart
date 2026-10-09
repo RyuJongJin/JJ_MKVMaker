@@ -240,7 +240,22 @@ class AppNavButtons extends StatelessWidget {
         };
     // 좁은 화면 (폰): 아이콘 아래에 짧은 이름 - 글자 없는 작은 아이콘만 늘어서 무엇인지 몰랐던 것
     final labels = isCompact(context);
-    Widget btn(Widget icon, String tip, VoidCallback? f, {bool here = false, String label = ''}) => labels
+    // 지금 화면 버튼 아래 밑줄 (색만으로는 알아보기 어려운 사람도 어디인지 알게)
+    Widget underline(Widget child, bool here) => !here
+        ? child
+        : Stack(clipBehavior: Clip.none, children: [
+            child,
+            Positioned(
+              left: 10,
+              right: 10,
+              bottom: 0,
+              child: Container(
+                  key: const ValueKey('nav-here-underline'),
+                  height: 3,
+                  decoration: BoxDecoration(color: JjColors.accent, borderRadius: BorderRadius.circular(2))),
+            ),
+          ]);
+    Widget btn0(Widget icon, String tip, VoidCallback? f, {bool here = false, String label = ''}) => labels
         ? Tooltip(
             message: tip,
             child: InkWell(
@@ -284,6 +299,7 @@ class AppNavButtons extends StatelessWidget {
               onPressed: f,
             ),
           );
+    Widget btn(Widget icon, String tip, VoidCallback? f, {bool here = false, String label = ''}) => underline(btn0(icon, tip, f, here: here, label: label), here);
     String short(String id) => switch (id) {
           'mkv' => 'MKV',
           'browser' => tr('브라우저'),
