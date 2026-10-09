@@ -30,6 +30,9 @@ void main() {
     File(p.join(right, 'doc.txt'))
       ..createSync(recursive: true)
       ..writeAsStringSync('old');
+    // 172: 바뀐 날 (왼쪽이 더 새것)
+    File(p.join(left, 'doc.txt')).setLastModifiedSync(DateTime(2026, 10, 9, 12));
+    File(p.join(right, 'doc.txt')).setLastModifiedSync(DateTime(2026, 10, 1, 8));
     c = AppController(PlatformServices(mediaTool: ProcessMediaTool('x', 'y'), storage: DesktopStorageService()));
     c.settings.explorerPaths = [left, right];
     final root = p.rootPrefix(tmp.path);
@@ -67,6 +70,8 @@ void main() {
     expect(find.widgetWithText(FilledButton, '복사'), findsOneWidget);
     await settle(tester, () => find.textContaining('같은 이름이 이미 있습니다').evaluate().isNotEmpty);
     expect(find.textContaining('같은 이름이 이미 있습니다: doc.txt'), findsOneWidget);
+    // 172: 두 파일의 크기 · 바뀐 날 (어느 쪽이 새것인지)
+    expect(find.textContaining('doc.txt: 보낼 것 3B · 2026-10-09 12:00 / 있는 것 3B · 2026-10-01 08:00 (보낼 것이 더 새것)'), findsOneWidget);
     // 154 · 155: 확인 창에 항목 이름
     expect(find.textContaining('\ndoc.txt'), findsOneWidget);
   }

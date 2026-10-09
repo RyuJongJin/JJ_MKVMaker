@@ -1568,12 +1568,16 @@ class _ExplorerPageState extends State<ExplorerPage> {
 
   /// 154: 항목 이름 (앞의 3개 + "외 n개")
   /// 48: 받는 폴더에 같은 이름이 있는 원본 (같은 폴더로 복사는 늘 새 이름이라 빼고)
-  static Future<List<String>> _findClashes(List<String> sources, String dest) async {
-    final out = <String>[];
+  /// 48 · 172: 대상 폴더에 같은 이름이 있는 원본 - 두 파일의 크기 · 바뀐 날을 함께 (어느 쪽이 새것인지 보고 고르게)
+  static Future<List<NameClash>> _findClashes(List<String> sources, String dest) async {
+    final out = <NameClash>[];
     for (final s in sources) {
       if (samePath(vDirname(s), dest)) continue;
       try {
-        if (await vExists(vJoin(dest, vBasename(s)))) out.add(s);
+        final there = await vStat(vJoin(dest, vBasename(s)));
+        if (there == null) continue;
+        final here = await vStat(s);
+        out.add((src: s, here: here, there: there));
       } catch (_) {}
     }
     return out;
@@ -1711,7 +1715,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
     final builtin = method == CopyMethod.builtin || _viaDav([...sources, dest]);
     // 확인 창은 바로 띄우고, 같은 이름은 창 안에서 뒤에서 찾는다 (느린 네트워크 · WebDAV 폴더라도 창이 늦게 뜨지 않게).
     // 다 찾기 전에 누르면 이름 바꾸기 (원래 파일을 건드리지 않는 쪽)
-    final clashesFuture = builtin ? _findClashes(sources, dest) : Future.value(const <String>[]);
+    final clashesFuture = builtin ? _findClashes(sources, dest) : Future.value(const <NameClash>[]);
     // 48: 환경 설정 "같은 이름이 있을 때" 가 늘 하는 것이면 묻지 않고 그대로 (확인 창에 알림만)
     final always = switch (c.settings.copyConflict) {
       'rename' => NameConflict.rename,
@@ -1734,7 +1738,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
                 '\n\n${trf('방법: {0}', [tr(method.label)])}'
                 '${method == CopyMethod.builtin ? '' : ' · ${task.options}'}'
                 '${task.bandwidthKBps > 0 ? ' · ${trf('속도 제한 {0} KB/s', [task.bandwidthKBps])}' : ''}'),
-            FutureBuilder<List<String>>(
+            FutureBuilder<List<NameClash>>(
               future: clashesFuture,
               builder: (ctx, snap) {
                 if (snap.connectionState != ConnectionState.done) {
@@ -1743,12 +1747,18 @@ class _ExplorerPageState extends State<ExplorerPage> {
                     child: Text(tr('같은 이름이 있는지 확인하는 중 …'), style: const TextStyle(fontSize: 12, color: JjColors.textDim)),
                   );
                 }
-                final clashes = snap.data ?? const <String>[];
+                final clashes = snap.data ?? const <NameClash>[];
                 if (clashes.isEmpty) return const SizedBox.shrink();
                 return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
                   const SizedBox(height: 12),
-                  Text(trf('같은 이름이 이미 있습니다: {0}', [_namesOf(clashes)]),
+                  Text(trf('같은 이름이 이미 있습니다: {0}', [_namesOf([for (final x in clashes) x.src])]),
                       style: const TextStyle(color: Colors.orangeAccent)),
+                  // 172: 두 파일의 크기 · 바뀐 날 (3개까지)
+                  for (final x in clashes.take(3))
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4, left: 8),
+                      child: Text(clashCompareText(x), style: const TextStyle(fontSize: 12)),
+                    ),
                   if (always != null)
                     Text(
                         trf('환경 설정대로 {0} (환경 설정 > 파일 탐색기 > 같은 이름이 있을 때)', [
@@ -3034,6 +3044,24 @@ class _ExplorerPageState extends State<ExplorerPage> {
     final (icon, color) = fileIcon(look, e, open: open);
     return Icon(icon, size: look.rich && !e.isDir ? 28 : look.iconSize, color: color);
   }
+}
+
+/// 172: 같은 이름 - 보낼 것 (복사 · 이동, [here]) 과 대상 폴더에 이미 있는 것 ([there])
+typedef NameClash = ({String src, ({bool isDir, int size, DateTime modified})? here, ({bool isDir, int size, DateTime modified}) there});
+
+/// 172: "이름: 보낼 것 1.2 MB · 2026-10-09 14:00 / 있는 것 900 KB · 2026-10-01 09:00 (보낼 것이 더 새것)"
+String clashCompareText(NameClash x) {
+  String one(({bool isDir, int size, DateTime modified}) s) =>
+      [if (!s.isDir) formatSize(s.size) else tr('폴더'), if (s.modified.year > 1) _date(s.modified)].join(' · ');
+  final h = x.here, t = x.there;
+  final newer = h == null || h.modified.year <= 1 || t.modified.year <= 1
+      ? ''
+      : h.modified.isAfter(t.modified.add(const Duration(seconds: 2)))
+          ? tr(' (보낼 것이 더 새것)')
+          : t.modified.isAfter(h.modified.add(const Duration(seconds: 2)))
+              ? tr(' (있는 것이 더 새것)')
+              : tr(' (바뀐 날 같음)');
+  return '${vBasename(x.src)}: ${trf('보낼 것 {0} / 있는 것 {1}', [h == null ? '?' : one(h), one(t)])}$newer';
 }
 
 String _date(DateTime d) =>
