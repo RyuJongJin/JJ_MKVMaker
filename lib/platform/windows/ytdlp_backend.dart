@@ -242,8 +242,8 @@ class YtDlpBackend implements DownloadBackend {
       }
       t
         ..state = DownloadState.failed
-        ..error = friendlyYtDlpError(
-            errTail.where((l) => l.contains('ERROR')).join('\n').ifEmpty(errTail.join('\n')));
+        // 136: 원문 그대로 둔다 (화면은 friendlyDownloadError 로 사람 말 이유, [자세히] 에 원문)
+        ..error = errTail.where((l) => l.contains('ERROR')).join('\n').ifEmpty(errTail.join('\n'));
     }
     changed();
   }

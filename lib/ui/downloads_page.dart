@@ -257,6 +257,28 @@ class _DownloadRow extends StatelessWidget {
   final DownloadTask t;
   const _DownloadRow({required this.d, required this.t});
 
+  static final _small = TextButton.styleFrom(
+      visualDensity: VisualDensity.compact, padding: const EdgeInsets.symmetric(horizontal: 6), minimumSize: const Size(0, 28));
+
+  /// 136: 실패 원문 (yt-dlp · aria2 가 남긴 그대로 - 복사해 물어볼 수 있게)
+  static Future<void> _showDetail(BuildContext context, DownloadTask t) => showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          scrollable: true,
+          title: Text(friendlyDownloadError(t.error ?? '')),
+          content: SizedBox(
+            width: 560,
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              // 서명 · 키가 든 주소 부분은 가린다
+              SelectableText(redactUrlSecrets(t.source), style: const TextStyle(fontSize: 12, color: JjColors.textDim)),
+              const SizedBox(height: 8),
+              SelectableText(redactUrlSecrets(t.error ?? ''), style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
+            ]),
+          ),
+          actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('닫기')))],
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
     final (label, color) = switch (t.state) {
@@ -286,19 +308,33 @@ class _DownloadRow extends StatelessWidget {
               Text(t.title, maxLines: 1, overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontSize: 13)),
               const SizedBox(height: 4),
-              if (t.state != DownloadState.cancelled) DownloadProgressBar(t: t),
+              // 136: 실패하면 진행 막대 ("준비 중…") 를 지우고 실패 · 이유 (사람 말) · [자세히] · [다시 시도]
+              if (t.state != DownloadState.cancelled && t.state != DownloadState.failed) DownloadProgressBar(t: t),
               const SizedBox(height: 4),
-              Text(
-                [
-                  label,
-                  if (t.speed.isNotEmpty) t.speed,
-                  if (t.eta.isNotEmpty) t.eta.contains(RegExp(r'\d')) ? trf('남은 시간 {0}', [t.eta]) : t.eta, // 숫자가 없으면 "합치는 중" 같은 단계
-                  if (t.error != null) t.error!.split('\n').first,
-                ].join('  ·  '),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 11, color: t.error != null ? JjColors.danger : color),
-              ),
+              if (t.state == DownloadState.failed)
+                Wrap(crossAxisAlignment: WrapCrossAlignment.center, spacing: 4, children: [
+                  Text('$label  ·  ${friendlyDownloadError(t.error ?? '')}',
+                      style: const TextStyle(fontSize: 12, color: JjColors.danger)),
+                  if ((t.error ?? '').trim().isNotEmpty)
+                    TextButton(
+                      style: _small,
+                      onPressed: () => _showDetail(context, t),
+                      child: Text(tr('자세히')),
+                    ),
+                  TextButton(style: _small, onPressed: () => d.resume([t]), child: Text(tr('다시 시도'))),
+                ])
+              else
+                Text(
+                  [
+                    label,
+                    if (t.speed.isNotEmpty) t.speed,
+                    if (t.eta.isNotEmpty) t.eta.contains(RegExp(r'\d')) ? trf('남은 시간 {0}', [t.eta]) : t.eta, // 숫자가 없으면 "합치는 중" 같은 단계
+                    if (t.error != null) redactUrlSecrets(t.error!.split('\n').first),
+                  ].join('  ·  '),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 11, color: t.error != null ? JjColors.danger : color),
+                ),
             ]),
           ),
           IconButton(
@@ -350,7 +386,11 @@ class DownloadProgressBar extends StatelessWidget {
     // "45.3% · 166MB / 367MB" (크기를 모르면 퍼센트만)
     final size = downloadSizeText(t);
     final text = value == null
-        ? (t.state == DownloadState.queued || t.extra['waiting'] == true ? tr('대기 중') : tr('준비 중…'))
+        ? (t.state == DownloadState.failed
+            ? tr('실패') // 136: 실패한 것에 "준비 중…" 이 남지 않게 (작은 다운로드 상자 등)
+            : t.state == DownloadState.queued || t.extra['waiting'] == true
+                ? tr('대기 중')
+                : tr('준비 중…'))
         : '${(value * 100).toStringAsFixed(1)}%${size.isEmpty ? '' : ' · $size'}';
     return ClipRRect(
       borderRadius: BorderRadius.circular(4),

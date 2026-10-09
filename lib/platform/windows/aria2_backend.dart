@@ -160,7 +160,8 @@ class Aria2Backend implements DownloadBackend {
           case 'error':
             t
               ..state = DownloadState.failed
-              ..error = '${s['errorMessage']}';
+              // 136: 원문 + 오류 번호 (화면은 friendlyDownloadError 로 사람 말 이유)
+              ..error = '${s['errorMessage']} (errorCode=${s['errorCode']})';
             _tasks.remove(t.id);
           case 'removed':
             _tasks.remove(t.id);

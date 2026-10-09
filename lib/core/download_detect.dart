@@ -288,6 +288,35 @@ String friendlyYtDlpError(String err) {
   return err;
 }
 
+/// 글 속 주소의 서명 · 키가 든 부분 (?… 물음 · #… · 아이디:비밀번호@) 을 가린다 - 화면 · 기록에 서명된 주소를 보이지 않게
+String redactUrlSecrets(String text) => text.replaceAllMapped(
+    RegExp(r'''(https?|wss?|ftp|dav)://(?:[^\s/@'"]+@)?([^\s?#'"]+)([?#][^\s'")\]>]*)?''', caseSensitive: false),
+    (m) => '${m[1]}://${m[2]}${m[3] == null ? '' : '?…'}');
+
+/// 136: 실패한 다운로드의 이유를 사람 말로 (yt-dlp · aria2 원문 → 화면 언어). 원문은 [자세히] 에서 그대로 보인다.
+/// 알아보지 못하면 "받지 못했습니다".
+String friendlyDownloadError(String raw) {
+  final known = friendlyYtDlpError(raw);
+  if (known != raw) return known;
+  final e = raw.toLowerCase();
+  bool any(List<String> xs) => xs.any(e.contains);
+  if (any(['unsupported url', 'no suitable extractor'])) return tr('지원하지 않는 사이트입니다');
+  if (any(['http error 404', ' 404 ', '404 not found', 'resource not found', 'errorcode=3)'])) {
+    return tr('주소에 영상이 없습니다 (404)');
+  }
+  if (any(['http error 403', 'http error 401', '403 forbidden', 'login required', 'requires authentication',
+    'use --cookies', 'errorcode=24)'])) {
+    return tr('로그인이 필요합니다 (403)');
+  }
+  if (any(['no space left', 'disk full', 'errorcode=9)'])) return tr('저장 공간이 모자랍니다');
+  if (any(['unable to download webpage', 'getaddrinfo', 'name or service not known', 'name resolution',
+    'temporary failure', 'timed out', 'timeout', 'connection refused', 'connection reset', 'network is unreachable',
+    'no route to host', 'network problem', 'errorcode=1)', 'errorcode=2)', 'errorcode=6)', 'errorcode=19)'])) {
+    return tr('연결할 수 없습니다');
+  }
+  return tr('받지 못했습니다');
+}
+
 /// 바이트 → 읽기 쉬운 크기
 String formatBytes(num b) {
   if (b < 1024) return '${b.round()}B';
