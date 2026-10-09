@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:jj_mkvmaker/app/app_controller.dart';
 import 'package:jj_mkvmaker/app/i18n_controller.dart';
+import 'package:jj_mkvmaker/core/models.dart';
 import 'package:jj_mkvmaker/main.dart';
 import 'package:jj_mkvmaker/platform/windows/desktop_storage_service.dart';
 import 'package:jj_mkvmaker/platform/windows/process_media_tool.dart';
@@ -78,18 +79,26 @@ void main() {
     });
   }
 
-  // 61: 일본어 가로 (태블릿 크기) 에서 맨 위 버튼 글이 잘리는지 - 첫 화면 (MKV) 과 각 화면의 맨 위 줄
-  for (final size in [const Size(1280, 800), const Size(1138, 712), const Size(960, 600)]) {
-    testWidgets('61: 일본어 가로 ${size.width.toInt()}x${size.height.toInt()} - 맨 위 버튼', (t) async {
-      t.view.physicalSize = size;
-      t.view.devicePixelRatio = 1;
-      addTearDown(t.view.reset);
-      final c = AppController(PlatformServices(mediaTool: ProcessMediaTool('x', 'y'), storage: DesktopStorageService()));
-      await t.runAsync(() => i18n.apply('ja', save: false));
-      await t.runAsync(() => t.pumpWidget(RepaintBoundary(key: shotKey, child: JjMkvMakerApp(controller: c, navigatorKey: navKey))));
-      await settle(t, 20);
-      await shot(t, 'i18n_ja_home_${size.width.toInt()}');
-      await t.runAsync(() => i18n.apply('ko', save: false));
-    });
+  // 61: 일본어 가로 (태블릿 크기) 에서 맨 위 버튼 글이 잘리는지 - MKV 첫 화면의 맨 위 줄.
+  // 실제 서비스 (AI 자막 · 플레이어 버튼이 보이게), 체크 0개 · 50개 ("(50)" 이 붙으면 더 좁다). S10 Ultra 가로 ≈ 1480 · 앱 크기 90% ≈ 1644
+  for (final (w, h) in [(1644, 1027), (1480, 924), (1280, 800), (1138, 712), (960, 600)]) {
+    for (final checked in [0, 50]) {
+      testWidgets('61: 일본어 가로 ${w}x$h · 체크 $checked - 맨 위 버튼', (t) async {
+        t.view.physicalSize = Size(w.toDouble(), h.toDouble());
+        t.view.devicePixelRatio = 1;
+        addTearDown(t.view.reset);
+        final c = AppController(PlatformServices.create());
+        for (var i = 0; i < checked; i++) {
+          final v = VideoItem(p.join(Directory.systemTemp.path, 'jj_i18n_none', 'v$i.mp4'));
+          c.videos.add(v);
+          c.checked.add(v);
+        }
+        await t.runAsync(() => i18n.apply('ja', save: false));
+        await t.runAsync(() => t.pumpWidget(RepaintBoundary(key: shotKey, child: JjMkvMakerApp(controller: c, navigatorKey: navKey))));
+        await settle(t, 20);
+        await shot(t, 'i18n_ja_home_${w}_c$checked');
+        await t.runAsync(() => i18n.apply('ko', save: false));
+      });
+    }
   }
 }

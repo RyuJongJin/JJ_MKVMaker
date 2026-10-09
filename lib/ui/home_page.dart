@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:async';
 import 'dart:io';
 
@@ -216,15 +217,23 @@ class _TopBar extends StatelessWidget {
       var title = true, leftText = true, rightText = true, usage = c.usage != null, jobText = true;
       // 아주 좁을 때: 다운로드 상자 숨김 (왼쪽 공통 버튼으로 열 수 있음) → MKV 만들기도 아이콘만
       var dlBox = downloads != null, mkvText = true;
-      // 각 부분의 너비 (실제 화면에서 잰 값)
+      // 각 부분의 너비 (실제 화면에서 잰 값 - 한국어 글 기준)
+      // 61: 다른 언어는 버튼 글이 더 길 수 있어 (일본어 "字幕作成 & MKV 作成") 그 차이를 재어 더한다 - 안 하면 줄이기 전에 잘렸다
+      final style = Theme.of(context).textTheme.labelLarge ?? const TextStyle(fontSize: 14);
+      double textW(String s) => (TextPainter(text: TextSpan(text: s, style: style), textDirection: TextDirection.ltr, maxLines: 1)
+            ..layout())
+          .width;
+      double more(String ko) => uiLanguage == 'ko' ? 0 : math.max(0, textW(tr(ko).replaceAll('{0}', '').replaceAll('{1}', '')) - textW(ko.replaceAll('{0}', '').replaceAll('{1}', '')));
+      final leftMore = more('동영상 추가') + (hasAi ? more('자막 만들기{0}') + more('자막 만들기 & MKV 만들기{0}') : 0);
+      final playMore = more('선택한 파일 재생{0}'), mkvMore = more('MKV 만들기{0}{1}'), outMore = more('결과 폴더');
       // 좁은 화면: 이동 버튼 · 설정 · 종료는 첫 줄에 있으므로 둘째 줄 (가운데 도구) 만 잰다
       double need() =>
           (compact ? 0 : 8 + appBarRightPadding + AppNavButtons.width + 8) + (title ? 126 : 0) + 24 +
-          (leftText ? 153 + (hasAi ? 161 + 298 : 0) : 40 + (hasAi ? 96 : 0)) + 8 +
+          (leftText ? 153 + (hasAi ? 161 + 298 : 0) + leftMore : 40 + (hasAi ? 96 : 0)) + 8 +
           (c.busy ? (jobText ? 350 : 60) : 0) +
-          (hasPlayer ? (rightText ? 201 : 48) : 0) +
-          (mkvText ? 166 + (c.busy && jobText ? 60 : 0) : 48) +
-          (rightText ? 166 : 48) + // 결과 폴더
+          (hasPlayer ? (rightText ? 201 + playMore : 48) : 0) +
+          (mkvText ? 166 + mkvMore + (c.busy && jobText ? 60 : 0) : 48) +
+          (rightText ? 166 + outMore : 48) + // 결과 폴더
           (dlBox ? 162 : 0) +
           (compact ? 0 : (usage ? 220 : 0) + 96 + 92) +
           (c.checked.isEmpty ? 0 : 3 * 26) +
