@@ -260,7 +260,7 @@ Future<String?> upscaleOne(BuildContext context, AppController c, {required Stri
   try {
     final save = await Navigator.of(context).push<bool>(MaterialPageRoute(
       fullscreenDialog: true,
-      builder: (_) => _CompareView(original: input, upscaled: four!, title: p.basename(nameFrom)),
+      builder: (_) => UpscaleCompareView(original: input, upscaled: four!, title: p.basename(nameFrom)),
     ));
     if (save != true || !context.mounted) return null;
     final saved = await saveUpscaled(four, source: nameFrom, original: input, o: upscaleOptionsOf(c, outDir: outDir));
@@ -353,18 +353,18 @@ Future<void> upscaleAll(BuildContext context, AppController c, ReaderSource src)
   ));
 }
 
-/// 원본 / 올린 것을 바꿔 보며 비교 (확대해서 볼 수 있음)
-class _CompareView extends StatefulWidget {
-  const _CompareView({required this.original, required this.upscaled, required this.title});
+/// 원본 / 올린 것을 바꿔 보며 비교 (확대해서 볼 수 있음). [저장] 이면 true, 저장하지 않고 닫으면 false
+class UpscaleCompareView extends StatefulWidget {
+  const UpscaleCompareView({super.key, required this.original, required this.upscaled, required this.title});
   final String original;
   final String upscaled;
   final String title;
 
   @override
-  State<_CompareView> createState() => _CompareViewState();
+  State<UpscaleCompareView> createState() => UpscaleCompareViewState();
 }
 
-class _CompareViewState extends State<_CompareView> {
+class UpscaleCompareViewState extends State<UpscaleCompareView> {
   bool _up = true;
   final _zoom = TransformationController();
 
@@ -374,12 +374,44 @@ class _CompareViewState extends State<_CompareView> {
     super.dispose();
   }
 
+  /// 160: 저장하지 않고 닫으면 올린 그림이 지워지므로 묻는다 (닫기 버튼 · 뒤로 키 · 뒤로 몸짓)
+  Future<void> _close() async {
+    final r = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('저장하지 않고 닫을까요?')),
+        content: Text(tr('올린 그림은 지워집니다. 다시 보려면 해상도 올리기를 다시 해야 합니다.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('취소'))),
+          TextButton(onPressed: () => Navigator.pop(ctx, 'discard'), child: Text(tr('저장하지 않고 닫기'))),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(ctx, 'save'),
+            icon: const Icon(Icons.save_outlined, size: 18),
+            label: Text(tr('저장')),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || r == null) return;
+    Navigator.pop(context, r == 'save');
+  }
+
   @override
   Widget build(BuildContext context) {
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _close();
+      },
+      child: _page(context),
+    );
+  }
+
+  Widget _page(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
-        leading: IconButton(tooltip: tr('닫기'), icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context, false)),
+        leading: IconButton(tooltip: tr('닫기'), icon: const Icon(Icons.close), onPressed: _close),
         title: Text(widget.title, maxLines: 1, overflow: TextOverflow.ellipsis),
         actions: [
           SegmentedButton<bool>(
