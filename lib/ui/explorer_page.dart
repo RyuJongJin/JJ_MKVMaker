@@ -73,6 +73,15 @@ class ExplorerPage extends StatefulWidget {
   /// Rsync 화면으로 (이미 열려 있으면 그 화면으로)
   static Future<void> openRsync(NavigatorState nav, {required AppController c}) => _show(nav, c, rsync: true);
 
+  /// 162: 이 앱의 파일 탐색기로 그 폴더를 연다 (이미 열려 있으면 그 화면에서 그 폴더로). 끝난 작업의 [열기] 등
+  static Future<void> openAt(NavigatorState nav, {required AppController c, required String dir}) {
+    goToRequest.value = dir;
+    return _show(nav, c, rsync: false);
+  }
+
+  /// 열려 있는 (또는 곧 열릴) 탐색기가 갈 폴더 (가면 비운다)
+  static final goToRequest = ValueNotifier<String?>(null);
+
   static Future<void> _show(NavigatorState nav, AppController c, {required bool rsync}) async {
     final name = rsync ? rsyncRouteName : routeName;
     if ((rsync ? _openRsync : _open) > 0) {
@@ -264,6 +273,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
       ExplorerPage._openRsync--;
     } else {
       ExplorerPage._open--;
+      ExplorerPage.goToRequest.removeListener(_onGoToRequest);
     }
     for (final pane in _panes) {
       pane.dispose();
@@ -288,6 +298,12 @@ class _ExplorerPageState extends State<ExplorerPage> {
     final wants = [
       for (var i = 0; i < 2; i++) reach[i] ? saved[i] : _local[0].$1,
     ];
+    // 162: "이 폴더를 탐색기로" 로 열렸으면 첫 창은 그 폴더 (지난 폴더 대신)
+    final asked = widget.rsync ? null : ExplorerPage.goToRequest.value;
+    if (asked != null) {
+      ExplorerPage.goToRequest.value = null;
+      wants[0] = asked;
+    }
     for (var i = 0; i < 2; i++) {
       _panes[i]
         ..root = _volumeOf(wants[i])
@@ -297,6 +313,8 @@ class _ExplorerPageState extends State<ExplorerPage> {
     }
     if (!mounted) return;
     setState(() => _ready = true);
+    // (이미 열린 화면에 들어온 요청은 그 화면에서)
+    if (!widget.rsync) ExplorerPage.goToRequest.addListener(_onGoToRequest);
     // 52: 다른 화면에 다녀와도 아직 도는 복사 · 이동의 진행 막대를 다시 보이고, 끝나면 그 폴더들을 새로 읽는다
     final center = CopyCenter.peekOf(c);
     if (center != null) {
@@ -1593,6 +1611,13 @@ class _ExplorerPageState extends State<ExplorerPage> {
   /// 지금 도는 복사 · 이동 (아래에서 올라오는 진행 막대)
   /// (Rsync 화면의 ⇄ 는 둘이 함께)
   List<TransferJob> _jobs = const [];
+
+  void _onGoToRequest() {
+    final dir = ExplorerPage.goToRequest.value;
+    if (dir == null || !_ready || !mounted) return;
+    ExplorerPage.goToRequest.value = null;
+    unawaited(_goTo(_pane, dir, fresh: true).then((_) => _reveal(_pane, dir)));
+  }
 
   /// 52: 이 화면을 떠난 사이에 시작된 (또는 앞의 화면이 시작한) 작업을 다시 보이고, 끝나면 새로 읽고 막대를 내린다
   void _adoptJob(TransferJob job) {

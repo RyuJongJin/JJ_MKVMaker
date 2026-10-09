@@ -5,6 +5,7 @@ import '../app/ai_local.dart';
 import '../app/download_manager.dart';
 import '../core/models.dart';
 import '../services/downloader.dart';
+import 'ai_upscale_ui.dart' show openFolderInApp;
 import 'app_actions.dart';
 import 'downloads_page.dart';
 import 'theme.dart';
@@ -108,7 +109,7 @@ class WorkPanel extends StatelessWidget {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
               children: [
-                ..._jobs(),
+                ..._jobs(context),
                 _title(trf('편집 목록 {0}개', [c.videos.length])),
                 if (c.videos.isEmpty)
                   _Dim(tr('아직 없습니다. 영상을 다 받으면 자동으로 들어옵니다 (설정에서 변경).')),
@@ -184,7 +185,7 @@ class WorkPanel extends StatelessWidget {
     ),
   );
 
-  List<Widget> _jobs() => [
+  List<Widget> _jobs(BuildContext context) => [
     _title(tr('작업')),
     // 123: AI 그림 (남은 장 · 예상 시간)
     if (AiJobs.instance.statusLine case final ai?) ...[
@@ -196,7 +197,7 @@ class WorkPanel extends StatelessWidget {
       Row(children: [
         Expanded(child: Text('✓ ${AiJobs.instance.lastDone}', style: const TextStyle(fontSize: 12))),
         if (AiJobs.instance.lastDoneDir case final dir?)
-          TextButton(onPressed: () => c.services.shell.revealFile(dir), child: Text(tr('열기'))),
+          TextButton(onPressed: () => openFolderInApp(Navigator.of(context), c, dir), child: Text(tr('열기'))),
       ]),
     if (!c.busy && !AiJobs.instance.busy)
       _Dim(tr('쉬는 중'))

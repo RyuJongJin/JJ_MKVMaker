@@ -83,10 +83,20 @@ class KeepAliveService : Service() {
         const val STOPPED_ID = 2
         const val DONE_ID = 3
 
-        /// 157: 끝난 작업 알림 (예: "4장 저장: 폴더"). 누르면 작업 현황으로
+        const val DONE_CHANNEL_ID = "done"
+
+        /// 157: 끝난 작업 알림 (예: "4장 저장: 폴더"). 누르면 작업 현황으로.
+        /// 진행 알림 채널 (조용히, 낮은 중요도) 과 따로 두어 알림 창의 "조용한 알림" 칸에 묻히지 않게 (보통 중요도, 소리 없음)
         fun notifyDone(context: Context, title: String, text: String) {
             val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            notification(context, "", -1, "") // 알림 채널을 만들어 둔다
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && nm.getNotificationChannel(DONE_CHANNEL_ID) == null) {
+                nm.createNotificationChannel(
+                    NotificationChannel(DONE_CHANNEL_ID, "끝난 작업", NotificationManager.IMPORTANCE_DEFAULT).apply {
+                        description = "AI 해상도 올리기 등 오래 걸린 작업이 끝났을 때"
+                        setSound(null, null)
+                    }
+                )
+            }
             val open = PendingIntent.getActivity(
                 context, 3,
                 Intent(context, MainActivity::class.java)
@@ -95,7 +105,7 @@ class KeepAliveService : Service() {
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
             )
             val b = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                Notification.Builder(context, CHANNEL_ID)
+                Notification.Builder(context, DONE_CHANNEL_ID)
             } else {
                 @Suppress("DEPRECATION") Notification.Builder(context)
             }

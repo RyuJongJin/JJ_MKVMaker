@@ -15,6 +15,7 @@ import '../l10n/tr.dart';
 import '../services/image_ai.dart' show ImageAiException;
 import 'ai_image_page.dart' show aiSaveDir;
 import 'confirm.dart';
+import 'explorer_page.dart' show ExplorerPage;
 import 'theme.dart';
 
 UpscaleOptions upscaleOptionsOf(AppController c, {String? outDir}) {
@@ -265,6 +266,15 @@ Future<String?> upscaleOne(BuildContext context, AppController c, {required Stri
   }
 }
 
+/// 157 · 162: 저장한 폴더 열기 - Android 는 이 앱의 파일 탐색기로 (삼성 파일 앱 대신), Windows 는 탐색기로
+Future<void> openFolderInApp(NavigatorState nav, AppController c, String dir) async {
+  if (Platform.isAndroid) {
+    await ExplorerPage.openAt(nav, c: c, dir: dir);
+  } else {
+    await c.services.shell.revealFile(dir);
+  }
+}
+
 /// 121: 폴더 · ZIP 의 모든 장을 올려 저장 (백그라운드 - 작업 알림 · 작업 현황에 남은 장 · 예상 시간)
 Future<void> upscaleAll(BuildContext context, AppController c, ReaderSource src) async {
   final n = src.length;
@@ -294,6 +304,7 @@ Future<void> upscaleAll(BuildContext context, AppController c, ReaderSource src)
   );
   if (!ok || !context.mounted) return;
   final messenger = ScaffoldMessenger.maybeOf(context);
+  final nav = Navigator.of(context);
   final failed = <String>[];
   String? lastDir;
   final done = await AiJobs.instance.runTask(tr('AI 해상도 올리기'), n, (i, progress) async {
@@ -326,7 +337,7 @@ Future<void> upscaleAll(BuildContext context, AppController c, ReaderSource src)
   messenger?.showSnackBar(SnackBar(
     duration: const Duration(seconds: 10),
     content: Text(text),
-    action: dir == null ? null : SnackBarAction(label: tr('열기'), onPressed: () => c.services.shell.revealFile(dir)),
+    action: dir == null ? null : SnackBarAction(label: tr('열기'), onPressed: () => openFolderInApp(nav, c, dir)),
   ));
 }
 

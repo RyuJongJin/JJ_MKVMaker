@@ -351,6 +351,27 @@ void main() {
     expect(find.text('더 보기'), findsNothing);
   });
 
+  testWidgets('157 · 162: 끝난 작업의 [열기] - 이 앱의 탐색기로 그 폴더를 연다 (이미 열려 있으면 그 화면에서 그 폴더로)', (tester) async {
+    final out = Directory(p.join(tmp.path, 'out_AI'))..createSync();
+    File(p.join(out.path, 'p1_x2.png')).writeAsStringSync('x');
+    tester.view.physicalSize = const Size(1600, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final navKey = GlobalKey<NavigatorState>();
+    await tester.runAsync(() => tester.pumpWidget(MaterialApp(navigatorKey: navKey, home: const Text('앞 화면'))));
+    unawaited(ExplorerPage.openAt(navKey.currentState!, c: c, dir: out.path));
+    // 제목 (지금 경로) 이 그 폴더 - 목록은 저장 장치 맨 위부터라 그 파일 줄이 화면 밖일 수 있다
+    await settle(tester, () => find.text(out.path).evaluate().isNotEmpty);
+    expect(find.text(out.path), findsOneWidget);
+    expect(ExplorerPage.goToRequest.value, isNull, reason: '간 뒤에는 비움');
+    // 이미 열린 채로 다른 폴더를 요청하면 새 화면을 쌓지 않고 그 화면에서
+    // (실제 비동기 구역에서: 그때 시작한 폴더 읽기가 시험의 가짜 시간에 묶이지 않게)
+    await tester.runAsync(() async => unawaited(ExplorerPage.openAt(navKey.currentState!, c: c, dir: right)));
+    await settle(tester, () => find.text(right).evaluate().isNotEmpty);
+    expect(find.byType(ExplorerPage), findsOneWidget);
+    expect(find.text(right), findsOneWidget);
+  });
+
   testWidgets('146 · 37-2: 없는 경로를 넣으면 창을 닫지 않고 칸 아래에 "폴더가 없거나 열 수 없습니다" · 고친 경로로 간다', (tester) async {
     tester.view.physicalSize = const Size(1600, 900);
     tester.view.devicePixelRatio = 1;
