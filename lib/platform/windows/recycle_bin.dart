@@ -214,6 +214,11 @@ String recycleErrorText(int code) => switch (code) {
       _ => trf('Windows 오류 0x{0}', [code.toRadixString(16)]),
     };
 
+/// 144: 경로가 너무 길어 휴지통이 받지 않는 것 (영구 삭제는 사용자가 따로 고른다). [path] 는 그 긴 경로
+class LongPathException extends FileSystemException {
+  const LongPathException(super.message, super.path);
+}
+
 /// Windows 휴지통으로 보내기 (SHFileOperationW, FO_DELETE + FOF_ALLOWUNDO). 65: 탐색기의 기본 지우기.
 /// 하나씩 보내 어느 것이 실패했는지 알 수 있게 한다. 실패하면 [FileSystemException] (이유는 읽을 수 있는 말).
 /// 휴지통보다 커서 들어가지 않으면 Windows 가 묻게 하고 (FOF_WANTNUKEWARNING), 실제로 어떻게 됐는지 돌려준다 (94).
@@ -223,7 +228,7 @@ RecycleResult moveToRecycleBin(String path) {
   // 휴지통은 260자 넘는 경로를 받지 않고, 그때 Windows 는 묻지 않고 영구 삭제해 버린다 (시험에서 확인).
   // 그래서 보내기 전에 (폴더면 안의 것까지) 긴 경로가 있으면 지우지 않고 이유를 알린다 - 영구 삭제는 사용자가 따로 고른다.
   final long = longPathInside(path);
-  if (long != null) throw FileSystemException(recycleErrorText(0x7C), long);
+  if (long != null) throw LongPathException(recycleErrorText(0x7C), long);
   final shell32 = DynamicLibrary.open('shell32.dll');
   final op = shell32.lookupFunction<Int32 Function(Pointer<_ShFileOp>), int Function(Pointer<_ShFileOp>)>('SHFileOperationW');
   final before = _binCount(path);

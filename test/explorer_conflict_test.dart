@@ -166,6 +166,44 @@ void main() {
     await tester.pumpAndSettle();
   }, skip: !Platform.isWindows);
 
+  testWidgets('144: 긴 경로는 휴지통에 넣지 못한 이유 한 줄과 [영구 삭제] - 누르면 지운다 · [그대로 두기] 면 남는다', (tester) async {
+    String lp(String s) => r'\\?\' + s;
+    var deep = p.join(left, 'deep');
+    while (deep.length < 250) {
+      deep = p.join(deep, 'd' * 30);
+    }
+    Directory(lp(deep)).createSync(recursive: true);
+    File(lp(p.join(deep, 'a_file_name_that_makes_it_longer.txt'))).writeAsStringSync('x');
+    tester.view.physicalSize = const Size(1600, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.runAsync(() => tester.pumpWidget(MaterialApp(home: ExplorerPage(c: c))));
+    await settle(tester, () => find.text('deep').evaluate().isNotEmpty);
+    Future<void> deleteDeep() async {
+      await tester.runAsync(() => tester.tap(find.text('deep').first));
+      await settle(tester, () => false, rounds: 10);
+      await tester.runAsync(() => tester.tap(find.text('삭제').first));
+      await tester.pumpAndSettle();
+      await tester.runAsync(() => tester.tap(find.widgetWithText(FilledButton, '휴지통으로')));
+      await settle(tester, () => find.textContaining('경로가 너무 길어').evaluate().isNotEmpty);
+    }
+
+    await deleteDeep();
+    // 이유는 한 줄, 항목은 이름만, 버튼은 [그대로 두기] · [영구 삭제]
+    expect(find.textContaining('경로가 너무 길어 휴지통에 넣을 수 없습니다'), findsOneWidget);
+    expect(find.text('· deep'), findsOneWidget);
+    expect(find.textContaining('영구 삭제로 지울 수 있습니다'), findsNothing, reason: '긴 설명을 항목마다 되풀이하지 않음');
+    await tester.tap(find.text('그대로 두기'));
+    await tester.pumpAndSettle();
+    expect(Directory(lp(deep)).existsSync(), isTrue);
+    // 다시 → [영구 삭제]
+    await deleteDeep();
+    await tester.runAsync(() => tester.tap(find.textContaining('영구 삭제 (1개, 되돌릴 수 없음)')));
+    await settle(tester, () => find.textContaining('영구 삭제했습니다').evaluate().isNotEmpty);
+    expect(Directory(p.join(left, 'deep')).existsSync(), isFalse);
+    expect(find.textContaining('1개를 영구 삭제했습니다.'), findsOneWidget);
+  }, skip: !Platform.isWindows);
+
   testWidgets('48: 건너뛰기를 고르면 그대로 두고 건너뛴 것을 알린다', (tester) async {
     await startCopy(tester);
     await tester.tap(find.text('건너뛰기'));

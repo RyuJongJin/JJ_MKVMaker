@@ -1332,6 +1332,8 @@ class _ExplorerPageState extends State<ExplorerPage> {
     if (ok != true) return;
     // 하나씩: 실패해도 나머지는 계속. 실제로 어떻게 됐는지 세어 그대로 알린다 (94)
     final failed = <(String, String)>[];
+    // 144: 경로가 너무 길어 휴지통이 받지 않은 것 (이유는 한 번, [영구 삭제] 로 바로 지울 수 있게)
+    final tooLong = <String>[];
     var recycled = 0, nuked = 0, kept = 0;
     // 148: 휴지통으로 보낸 것 (되돌리기용) - 정보 파일 시각은 초 단위라 조금 앞에서부터
     final since = DateTime.now().subtract(const Duration(seconds: 2));
@@ -1351,18 +1353,29 @@ class _ExplorerPageState extends State<ExplorerPage> {
         } else {
           await FileOps().delete([x]);
         }
+      } on LongPathException {
+        tooLong.add(x);
       } catch (e) {
         failed.add((x, e is FileSystemException ? (e.osError?.message ?? e.message) : '$e'));
       }
     }
-    if (failed.isNotEmpty && mounted) {
-      await showDialog<void>(
+    if ((failed.isNotEmpty || tooLong.isNotEmpty) && mounted) {
+      final nukeLong = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
           scrollable: true,
           icon: const Icon(Icons.error_outline, color: Colors.redAccent),
-          title: Text(trf('{0}개 중 {1}개를 지우지 못했습니다', [paths.length, failed.length])),
+          title: Text(trf('{0}개 중 {1}개를 지우지 못했습니다', [paths.length, failed.length + tooLong.length])),
           content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            // 144: 긴 경로는 이유 한 줄 + 이름만 (영구 삭제는 아래 버튼으로)
+            if (tooLong.isNotEmpty) ...[
+              Text(tr('경로가 너무 길어 휴지통에 넣을 수 없습니다 (Windows 의 휴지통은 260자 넘는 경로를 받지 않습니다).'),
+                  style: const TextStyle(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 4),
+              for (final x in tooLong.take(30)) Text('· ${vBasename(x)}', style: const TextStyle(fontSize: 12)),
+              if (tooLong.length > 30) Text(trf('… 외 {0}개', [tooLong.length - 30])),
+              const SizedBox(height: 8),
+            ],
             for (final (x, why) in failed.take(30)) ...[
               Text(vBasename(x), style: const TextStyle(fontWeight: FontWeight.w600)),
               Text('${vDirname(x)} · $why', style: const TextStyle(fontSize: 12, color: JjColors.textDim)),
@@ -1371,11 +1384,36 @@ class _ExplorerPageState extends State<ExplorerPage> {
             if (failed.length > 30) Text(trf('… 외 {0}개', [failed.length - 30])),
             const SizedBox(height: 6),
             // 이유를 이미 위에 적었으므로 짐작하는 말은 빼고, 실제로 지운 것이 있을 때만 "나머지는 지웠습니다"
-            if (failed.length < paths.length) Text(tr('나머지는 지웠습니다.'), style: const TextStyle(fontSize: 12)),
+            if (failed.length + tooLong.length < paths.length) Text(tr('나머지는 지웠습니다.'), style: const TextStyle(fontSize: 12)),
           ]),
-          actions: [FilledButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('확인')))],
+          actions: [
+            if (tooLong.isNotEmpty) ...[
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('그대로 두기'))),
+              FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+                onPressed: () => Navigator.pop(ctx, true),
+                child: Text(trf('영구 삭제 ({0}개, 되돌릴 수 없음)', [tooLong.length])),
+              ),
+            ] else
+              FilledButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('확인'))),
+          ],
         ),
       );
+      // 144: 사용자가 [영구 삭제] 를 고른 긴 경로만 지운다
+      if (nukeLong == true) {
+        final notDeleted = <String>[];
+        for (final x in tooLong) {
+          try {
+            await FileOps().delete([x]);
+          } catch (e) {
+            notDeleted.add('${vBasename(x)}: ${e is FileSystemException ? (e.osError?.message ?? e.message) : e}');
+          }
+        }
+        _snack([
+          if (tooLong.length > notDeleted.length) trf('{0}개를 영구 삭제했습니다.', [tooLong.length - notDeleted.length]),
+          if (notDeleted.isNotEmpty) trf('지우지 못함: {0}', [notDeleted.take(3).join(' · ')]),
+        ].join(' '));
+      }
     } else if (!permanent && mounted) {
       final text = [
         if (recycled > 0) trf('{0}개 항목을 휴지통으로 보냈습니다.', [recycled]),

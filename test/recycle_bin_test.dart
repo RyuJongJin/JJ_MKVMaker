@@ -84,12 +84,13 @@ void main() {
   test('148: 원래 폴더가 그사이 지워졌으면 다시 만들지 않고 알린다 · 이 사용자 (SID) 의 휴지통에서만 찾는다', () async {
     expect(currentUserSid(), matches(RegExp(r'^S-1-5-')));
     final tmp = Directory.systemTemp.createTempSync('jj_undo_');
+    final folder = Directory(p.join(tmp.absolute.path, 'gone'))..createSync();
     addTearDown(() async {
-      await _purgeFromRecycleBin(tmp.absolute.path);
+      // 휴지통에 남긴 x.txt 의 원래 위치는 gone 폴더 (정확히 그 폴더로 찾아 지운다)
+      expect(await _purgeFromRecycleBin(folder.path), 1);
       if (tmp.existsSync()) tmp.deleteSync(recursive: true);
     });
     final since = DateTime.now().subtract(const Duration(seconds: 2));
-    final folder = Directory(p.join(tmp.absolute.path, 'gone'))..createSync();
     final f = File(p.join(folder.path, 'x.txt'))..writeAsStringSync('x');
     expect(moveToRecycleBin(f.path), RecycleResult.recycled);
     folder.deleteSync(); // 사용자가 그 폴더를 지움
