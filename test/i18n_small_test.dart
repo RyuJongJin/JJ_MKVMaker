@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jj_mkvmaker/app/i18n_controller.dart';
+import 'package:jj_mkvmaker/app/settings.dart';
 import 'package:jj_mkvmaker/core/bookmarks.dart';
 import 'package:jj_mkvmaker/core/languages.dart';
 import 'package:jj_mkvmaker/core/mkv_command_builder.dart';
@@ -46,6 +47,22 @@ void main() {
       expect(ko.hasMatch(s), isTrue, reason: s);
     }
     expect(preferredSubtitlePattern('xx').hasMatch('a.ko.srt'), isTrue, reason: '모르는 언어면 한국어');
+  });
+
+  test('기본 자막 언어 설정: 화면 언어 따르기 (처음 값) · 고른 언어가 화면 언어보다 먼저 · 저장', () async {
+    addTearDown(() => preferredSubtitleSetting = '');
+    expect(AppSettings().preferredSubtitleLanguage, '', reason: '처음 값은 화면 언어 따르기');
+    await i18n.apply('ja', save: false);
+    preferredSubtitleSetting = 'ko'; // 화면은 일본어, 자막은 한국어
+    expect(preferredDefaultLanguage, 'kor');
+    expect(preferredSubtitlePattern().hasMatch('a.ko.srt'), isTrue);
+    expect(preferredSubtitlePattern().hasMatch('a.ja.srt'), isFalse);
+    preferredSubtitleSetting = 'vi';
+    expect(preferredDefaultLanguage, 'vie');
+    preferredSubtitleSetting = '';
+    expect(preferredDefaultLanguage, 'jpn');
+    final s = AppSettings()..preferredSubtitleLanguage = 'zh-Hans';
+    expect(AppSettings.fromJson(s.toJson()).preferredSubtitleLanguage, 'zh-Hans');
   });
 
   test('Android 저장소 이름: 내장 · SD 카드는 앱 화면 언어로, USB 등은 기기 이름 그대로', () async {

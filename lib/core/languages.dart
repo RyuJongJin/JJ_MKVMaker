@@ -81,11 +81,18 @@ Language languageOf(String? token) {
   return undetermined;
 }
 
-/// 61: 플레이어가 먼저 켤 자막을 알아보는 글 (화면 언어의 자막: 파일 이름의 코드 · 트랙 이름). 예전에는 늘 한국어.
-/// 화면 언어가 자막 언어 목록에 없으면 한국어.
+/// 61: 환경 설정의 기본 자막 언어 ('' = 화면 언어 따르기). 앱이 설정을 읽을 때 넣는다 (AppController).
+String preferredSubtitleSetting = '';
+
+/// 기본 자막 언어: 설정에서 고른 언어, 없으면 화면 언어. 자막 언어 목록에 없으면 한국어.
+Language preferredSubtitleLanguage([String? ui]) {
+  final l = languageOf(ui ?? (preferredSubtitleSetting.isNotEmpty ? preferredSubtitleSetting : uiLanguage));
+  return l == undetermined ? languageOf('ko') : l;
+}
+
+/// 61: 플레이어가 먼저 켤 자막을 알아보는 글 (기본 자막 언어의 자막: 파일 이름의 코드 · 트랙 이름). 예전에는 늘 한국어.
 RegExp preferredSubtitlePattern([String? ui]) {
-  var l = languageOf(ui ?? uiLanguage);
-  if (l == undetermined) l = languageOf('ko');
+  final l = preferredSubtitleLanguage(ui);
   final codes = {l.code.toLowerCase(), l.mkv, ...l.aliases.where((a) => RegExp(r'^[a-z-]+$').hasMatch(a))}.map(RegExp.escape).join('|');
   final names = {l.koName, l.name, ...l.aliases.where((a) => !RegExp(r'^[a-z-]+$').hasMatch(a))}.map(RegExp.escape).join('|');
   return RegExp('[._-]($codes)[._]|\\(($codes)\\)|\\b(${l.mkv})\\b|$names', caseSensitive: false);

@@ -142,6 +142,8 @@ class AppController extends ChangeNotifier {
 
   void _applySettings() {
     playerSubtitleScale.value = settings.subtitleScale;
+    // 61: 기본 자막 언어 (MKV 기본 자막 트랙 · 플레이어가 먼저 켜는 자막)
+    preferredSubtitleSetting = settings.preferredSubtitleLanguage;
     // WebDAV 서버 (파일 탐색기 · Rsync 화면 · 복사 · 동기화가 dav:// 경로로 쓴다)
     DavRegistry.configure(settings.webdavServers);
     outputRootOverride =

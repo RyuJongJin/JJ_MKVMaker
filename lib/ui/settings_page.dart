@@ -37,6 +37,7 @@ import 'ai_settings.dart';
 import '../app/master_lock.dart';
 import 'toast_status.dart';
 import 'license_texts.dart';
+import 'subtitle_language_picker.dart';
 
 /// 동시 작업 수 고르기: 1 · 5 · 10 · 무한(0) · 직접 입력
 class CountSelector extends StatelessWidget {
@@ -427,6 +428,15 @@ class _SettingsPageState extends State<SettingsPage> {
                     ),
                   ]),
                   _group('mkv', Icons.movie_creation_outlined, tr('MKV 만들기'), [
+                    // 61: 화면 언어와 다른 언어의 자막을 기본으로 원할 수 있다 (예: 화면은 일본어, 자막은 한국어)
+                    SettingTile(
+                      title: Text(tr('기본 자막 언어')),
+                      subtitle: Text(tr('MKV 의 기본 자막 트랙 · 플레이어가 먼저 켜는 자막')),
+                      trailing: SubtitleLanguagePicker(
+                        value: s.preferredSubtitleLanguage,
+                        onChanged: (v) => c.updateSettings((x) => x.preferredSubtitleLanguage = v),
+                      ),
+                    ),
                     SettingTile(
                       title: Text(tr('동영상을 세 번 누르면')),
                       subtitle: Text(tr('한 번: 보기 · 두 번: 재생 · 세 번: 이동 폴더로 옮기기 (옮기기 전에 묻습니다)')),

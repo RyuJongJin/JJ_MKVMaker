@@ -435,6 +435,9 @@ class AppSettings {
   /// 47: MKV 목록에서 세 번 누르면 'move' (확인 뒤 이동 폴더로) · 'none' (아무것도 안 함)
   String tripleTapAction = 'move';
 
+  /// 61: 기본 자막 언어 (MKV 의 기본 자막 트랙 · 플레이어가 먼저 켜는 자막). '' = 화면 언어 따르기, 그 밖은 자막 언어 코드 (ko · ja …)
+  String preferredSubtitleLanguage = '';
+
   /// 55: 로그인이 필요한 WebDAV 동영상을 다른 앱으로 열 때 'ask' (매번 묻기) · 'fetch' (늘 받아서) · 'url' (늘 주소로)
   String davExternalOpen = 'ask';
 
@@ -659,6 +662,7 @@ class AppSettings {
         'rememberPasswords': rememberPasswords,
         'recycleOnDelete': recycleOnDelete,
         'tripleTapAction': tripleTapAction,
+        'preferredSubtitleLanguage': preferredSubtitleLanguage,
         'davExternalOpen': davExternalOpen,
         // 116: 예전 판의 표시 ('allFilesHintShown') 는 권한이 없어진 것을 몰라 다시 띄우지 못했다 → 새 이름으로 한 번 더
         'allFilesHint2': allFilesHintShown,
@@ -853,6 +857,7 @@ class AppSettings {
       ..rememberPasswords = j['rememberPasswords'] != false
       ..recycleOnDelete = j['recycleOnDelete'] != false
       ..tripleTapAction = j['tripleTapAction'] == 'none' ? 'none' : 'move'
+      ..preferredSubtitleLanguage = j['preferredSubtitleLanguage'] is String ? j['preferredSubtitleLanguage'] as String : ''
       ..davExternalOpen = const ['fetch', 'url'].contains(j['davExternalOpen']) ? j['davExternalOpen'] as String : 'ask'
       ..allFilesHintShown = j['allFilesHint2'] == true
       ..subtitleScale = ((j['subtitleScale'] as num?)?.toDouble() ?? 1.0).clamp(0.5, 2.5)
