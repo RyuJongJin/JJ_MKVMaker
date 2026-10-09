@@ -111,8 +111,8 @@ void main() {
     await act(tester, () => tester.tap(find.widgetWithText(FilledButton, '확인')));
     await settle(tester, () => find.textContaining('폴더가 없거나 열 수 없습니다').evaluate().isNotEmpty, rounds: 20);
     expect(find.textContaining('폴더가 없거나 열 수 없습니다'), findsOneWidget);
-    await tester.tap(find.byTooltip('경로 입력').first);
-    await tester.pumpAndSettle();
+    // 146: 창은 열린 채 - 그 칸에서 고쳐 넣는다
+    expect(find.byType(AlertDialog), findsOneWidget);
     await tester.enterText(find.byType(TextField).last, deep);
     await act(tester, () => tester.tap(find.widgetWithText(FilledButton, '확인')));
     await settle(tester, () => find.text('deep.txt').evaluate().isNotEmpty);

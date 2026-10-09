@@ -257,6 +257,115 @@ void main() {
     expect(find.text('다시 시도'), findsOneWidget);
   });
 
+  testWidgets('135: 두 창이 같은 폴더 - [이동] 은 "이미 이 폴더에 있습니다" 창 · [복사] 는 사본을 만들지 묻는다', (tester) async {
+    c.settings.explorerPaths = [left, left];
+    tester.view.physicalSize = const Size(1600, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.runAsync(() => tester.pumpWidget(MaterialApp(home: ExplorerPage(c: c))));
+    await settle(tester, () => find.text('doc.txt').evaluate().length >= 2);
+    await tester.runAsync(() => tester.tap(find.text('선택').first));
+    await settle(tester, () => false, rounds: 5);
+    await tester.runAsync(() => tester.tap(find.text('doc.txt').first));
+    await settle(tester, () => false, rounds: 5);
+    expect(find.textContaining('1개 표시함'), findsOneWidget);
+    await tester.runAsync(() => tester.tap(find.text('이동').first));
+    await settle(tester, () => find.byType(AlertDialog).evaluate().isNotEmpty, rounds: 30);
+    // 짧은 알림은 놓치기 쉬워 창으로 (135)
+    expect(find.descendant(of: find.byType(AlertDialog), matching: find.text('이미 이 폴더에 있습니다')), findsOneWidget);
+    expect(find.textContaining('doc.txt 은(는) 이미 이 폴더에 있어 옮길 것이 없습니다'), findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, '확인'));
+    await tester.pumpAndSettle();
+    expect(File(p.join(left, 'doc.txt')).existsSync(), isTrue);
+    // 같은 폴더로 [복사] 는 사본을 만들지 묻는다: [취소] → 그대로, [사본 만들기] → "doc (2).txt"
+    await tester.runAsync(() => tester.tap(find.text('복사').first));
+    await settle(tester, () => find.byType(AlertDialog).evaluate().isNotEmpty, rounds: 30);
+    expect(find.textContaining('같은 폴더에 사본을 만들까요? (이름 (2))'), findsOneWidget);
+    await tester.tap(find.text('취소'));
+    await tester.pumpAndSettle();
+    expect(File(p.join(left, 'doc (2).txt')).existsSync(), isFalse);
+    await tester.runAsync(() => tester.tap(find.text('복사').first));
+    await settle(tester, () => find.byType(AlertDialog).evaluate().isNotEmpty, rounds: 30);
+    await tester.runAsync(() => tester.tap(find.widgetWithText(FilledButton, '사본 만들기')));
+    await settle(tester, () => File(p.join(left, 'doc (2).txt')).existsSync() && find.byType(SnackBar).evaluate().isNotEmpty);
+    expect(File(p.join(left, 'doc (2).txt')).readAsStringSync(), 'new');
+    expect(find.widgetWithText(FilledButton, '복사'), findsNothing, reason: '확인 창을 두 번 띄우지 않음');
+  });
+
+  testWidgets('135 보충: 섞어 고른 [이동] - 이미 그 폴더에 있는 것만 건너뛰고 나머지는 옮긴다 (확인 창 · 끝난 알림에 적음)', (tester) async {
+    File(p.join(left, 'a.txt')).writeAsStringSync('a');
+    File(p.join(right, 'b.txt')).writeAsStringSync('b');
+    c.settings.explorerPaths = [tmp.path, right]; // 왼쪽 창은 left · right 를 함께 보는 위 폴더
+    tester.view.physicalSize = const Size(1600, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.runAsync(() => tester.pumpWidget(MaterialApp(home: ExplorerPage(c: c))));
+    await settle(tester, () => find.text('left').evaluate().isNotEmpty);
+    // 왼쪽 창에서 left · right 를 펼침
+    await tester.runAsync(() => tester.tap(find.text('left').first));
+    await settle(tester, () => find.text('a.txt').evaluate().isNotEmpty);
+    await tester.runAsync(() => tester.tap(find.text('right').first));
+    await settle(tester, () => find.text('b.txt').evaluate().length >= 2);
+    await tester.runAsync(() => tester.tap(find.text('선택').first));
+    await settle(tester, () => false, rounds: 5);
+    await tester.runAsync(() => tester.tap(find.text('a.txt').first));
+    await tester.runAsync(() => tester.tap(find.text('b.txt').first));
+    await settle(tester, () => false, rounds: 5);
+    expect(find.textContaining('2개 표시함'), findsOneWidget);
+    await tester.runAsync(() => tester.tap(find.text('이동').first));
+    await settle(tester, () => find.byType(AlertDialog).evaluate().isNotEmpty, rounds: 30);
+    expect(find.textContaining('이미 이 폴더에 있어 건너뜀: b.txt'), findsOneWidget);
+    await tester.runAsync(() => tester.tap(find.widgetWithText(FilledButton, '이동')));
+    await settle(tester, () => File(p.join(right, 'a.txt')).existsSync() && find.byType(SnackBar).evaluate().isNotEmpty);
+    expect(File(p.join(right, 'a.txt')).readAsStringSync(), 'a');
+    expect(File(p.join(left, 'a.txt')).existsSync(), isFalse);
+    expect(File(p.join(right, 'b.txt')).readAsStringSync(), 'b');
+    expect(find.textContaining('이미 이 폴더에 있어 건너뜀: b.txt'), findsOneWidget, reason: '끝난 알림에도');
+  });
+
+  testWidgets('146 · 37-2: 없는 경로를 넣으면 창을 닫지 않고 칸 아래에 "폴더가 없거나 열 수 없습니다" · 고친 경로로 간다', (tester) async {
+    tester.view.physicalSize = const Size(1600, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.runAsync(() => tester.pumpWidget(MaterialApp(home: ExplorerPage(c: c))));
+    await settle(tester, () => find.text('doc.txt').evaluate().isNotEmpty);
+    await tester.tap(find.byTooltip('경로 입력').first);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, p.join(tmp.path, 'nope'));
+    await tester.runAsync(() => tester.tap(find.widgetWithText(FilledButton, '확인')));
+    await settle(tester, () => find.text('폴더가 없거나 열 수 없습니다').evaluate().isNotEmpty);
+    expect(find.text('폴더가 없거나 열 수 없습니다'), findsOneWidget, reason: '칸 아래 (창은 그대로)');
+    expect(find.byType(AlertDialog), findsOneWidget);
+    // 고치기 시작하면 오류는 지워지고, 있는 폴더면 창을 닫고 간다
+    await tester.enterText(find.byType(TextField).last, right);
+    await tester.pump();
+    expect(find.text('폴더가 없거나 열 수 없습니다'), findsNothing);
+    await tester.runAsync(() => tester.tap(find.widgetWithText(FilledButton, '확인')));
+    await settle(tester, () => find.byType(AlertDialog).evaluate().isEmpty);
+    await settle(tester, () => false, rounds: 10);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.textContaining(right), findsWidgets);
+  });
+
+  testWidgets('37-2: 보던 폴더가 밖에서 지워지면 새로 읽을 때 남아 있는 상위 폴더로 옮기고 알린다', (tester) async {
+    final deep = Directory(p.join(left, 'a', 'b'))..createSync(recursive: true);
+    c.settings.explorerPaths = [deep.path, right];
+    tester.view.physicalSize = const Size(1600, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.runAsync(() => tester.pumpWidget(MaterialApp(home: ExplorerPage(c: c))));
+    await settle(tester, () => find.textContaining(deep.path).evaluate().isNotEmpty);
+    // 밖에서 a 폴더째 지움 → [새로 고침]
+    Directory(p.join(left, 'a')).deleteSync(recursive: true);
+    await tester.runAsync(() => tester.tap(find.text('새로 고침').first));
+    await settle(tester, () => find.textContaining('보던 폴더가 없어져 상위 폴더로 옮겼습니다').evaluate().isNotEmpty);
+    expect(find.textContaining('보던 폴더가 없어져 상위 폴더로 옮겼습니다'), findsOneWidget);
+    await settle(tester, () => false, rounds: 10);
+    // 제목 (지금 경로) 도 남아 있는 가장 가까운 상위 (left) 로
+    expect(find.textContaining(p.join(left, 'a')), findsNothing);
+    expect(find.text('doc.txt'), findsWidgets);
+  });
+
   testWidgets('48: 건너뛰기를 고르면 그대로 두고 건너뛴 것을 알린다', (tester) async {
     await startCopy(tester);
     await tester.tap(find.text('건너뛰기'));

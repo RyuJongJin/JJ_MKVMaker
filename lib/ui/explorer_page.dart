@@ -610,6 +610,21 @@ class _ExplorerPageState extends State<ExplorerPage> {
     } catch (e) {
       pane.cache[dir] = const [];
       pane.errors[dir] = isAndroidRestricted(dir) ? androidRestrictedError : '$e';
+      // 37-2: 보던 폴더가 밖에서 지워졌으면 남아 있는 가장 가까운 상위 폴더로 (제목 · 경로 칸도 그 폴더로)
+      if (!isDav(dir) && samePath(dir, pane.current) && !samePath(dir, pane.root) && !Directory(dir).existsSync()) {
+        var up = vDirname(dir);
+        while (!samePath(up, pane.root) && !Directory(up).existsSync() && vDirname(up) != up) {
+          up = vDirname(up);
+        }
+        pane.errors.remove(dir);
+        pane.cache.remove(dir);
+        pane.expanded.remove(dir);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          _snack(tr('보던 폴더가 없어져 상위 폴더로 옮겼습니다'));
+          unawaited(_goTo(pane, up, fresh: true));
+        });
+      }
     } finally {
       pane.loading.remove(dir);
       pane.changed();
@@ -1614,6 +1629,36 @@ class _ExplorerPageState extends State<ExplorerPage> {
       _snack(tr('같은 항목을 같은 곳으로 복사 · 이동하는 중입니다.'));
       return false;
     }
+    // 135: 같은 폴더로 - 짧은 알림은 놓치기 쉬워 창으로. 이동은 할 것이 없고, 복사는 사본을 만들지 한 번 묻는다
+    final here = [for (final x in sources) if (samePath(vDirname(x), dest)) x];
+    var sameFolderCopy = false;
+    // 이동인데 일부만 이미 그 폴더에 있으면 그것만 건너뛰고 나머지를 옮긴다 (관리자: 섞어 고른 것을 다시 고르지 않게)
+    var skippedHere = const <String>[];
+    if (move && here.isNotEmpty && here.length < sources.length) {
+      skippedHere = here;
+      sources = [for (final x in sources) if (!here.contains(x)) x];
+    } else if (here.isNotEmpty && (move || here.length == sources.length)) {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          scrollable: true,
+          title: Text(move ? tr('이미 이 폴더에 있습니다') : tr('같은 폴더입니다')),
+          content: Text(move
+              ? trf('{0} 은(는) 이미 이 폴더에 있어 옮길 것이 없습니다.\n{1}', [_namesOf(here), vDisplay(dest)])
+              : trf('같은 폴더에 사본을 만들까요? (이름 (2))\n{0}', [_namesOf(here)])),
+          actions: [
+            if (move)
+              FilledButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('확인')))
+            else ...[
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('취소'))),
+              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('사본 만들기'))),
+            ],
+          ],
+        ),
+      );
+      if (ok != true || !mounted) return false;
+      sameFolderCopy = true; // 이미 물었으니 아래 확인 창은 건너뛴다
+    }
     // 원본 · 대상이 없거나 (다른 곳에서 지움 - 목록을 새로 고침) 폴더를 자기 안으로 넣으려 하면 시작하지 않는다
     final problem = transferProblem(sources, dest, move: move);
     if (problem != null) {
@@ -1643,7 +1688,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
       _ => null,
     };
     var conflict = always ?? NameConflict.rename;
-    final go = await showDialog<bool>(
+    final go = sameFolderCopy ? true : await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setInner) => AlertDialog(
@@ -1652,6 +1697,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
           content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('${trf('{0}개 항목을 다음 폴더로 {1}\n{2}', [sources.length, move ? tr('옮길까요?') : tr('복사할까요?'), vDisplay(dest)])}'
                 '\n${_namesOf(sources)}'
+                '${skippedHere.isEmpty ? '' : '\n${trf('이미 이 폴더에 있어 건너뜀: {0}', [_namesOf(skippedHere)])}'}'
                 '\n\n${trf('방법: {0}', [tr(method.label)])}'
                 '${method == CopyMethod.builtin ? '' : ' · ${task.options}'}'
                 '${task.bandwidthKBps > 0 ? ' · ${trf('속도 제한 {0} KB/s', [task.bandwidthKBps])}' : ''}'),
@@ -1736,6 +1782,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
             : [
                 trf('{0}개 항목을 {1}', [job.made.length, move ? tr('옮겼습니다.') : tr('복사했습니다.')]),
                 if (job.skipped.isNotEmpty) trf('같은 이름이라 건너뜀: {0}', [_namesOf(job.skipped)]),
+                if (skippedHere.isNotEmpty) trf('이미 이 폴더에 있어 건너뜀: {0}', [_namesOf(skippedHere)]),
               ].join(' · '));
     // 다 되면 진행 막대가 잠깐 100% 를 보인 뒤 내려간다
     await Future<void>.delayed(const Duration(milliseconds: 1200));
@@ -2736,27 +2783,29 @@ class _ExplorerPageState extends State<ExplorerPage> {
         ),
       );
 
-  /// 경로를 직접 넣어 가기 (37). 없는 폴더면 알린다
+  /// 경로를 직접 넣어 가기 (37). 146 · 37-2: 없는 폴더면 창을 닫지 않고 칸 아래에 알린다 (고쳐서 다시 넣을 수 있게)
   Future<void> _enterPath(_Pane pane) async {
     setState(() => _active = _panes.indexOf(pane));
-    final input = await _askName(
-        Platform.isWindows ? tr('경로 입력 (예: D:\\영상 · \\\\NAS\\공유)') : tr('경로 입력'), pane.current,
-        hint: tr('경로'), selectAll: true);
-    if (input == null || !mounted) return;
+    final path = await showDialog<String>(context: context, builder: (_) => _PathDialog(initial: pane.current));
+    if (path == null || !mounted) return;
+    await _goTo(pane, path, fresh: true);
+  }
+
+  /// 146: 넣은 경로를 고쳐 쓰기 · 확인. 갈 수 있으면 그 경로, 아니면 칸 아래에 보일 이유
+  static Future<(String?, String?)> checkEnteredPath(String input) async {
     var path = input.trim().replaceAll('"', '');
-    if (path.isEmpty) return;
+    if (path.isEmpty) return (null, null);
     if (Platform.isWindows && RegExp(r'^\\\\[^\\/]+[\\/]?$').hasMatch(path)) {
-      _snack(tr('네트워크 공유는 공유 폴더 이름까지 넣으세요 (예: \\\\NAS\\영상).'));
-      return;
+      return (null, tr('네트워크 공유는 공유 폴더 이름까지 넣으세요 (예: \\\\NAS\\영상).'));
     }
     if (!isDav(path) && Platform.isWindows && RegExp(r'^[a-zA-Z]:$').hasMatch(path)) path = '$path\\';
-    final ok = isDav(path) || await Directory(path).exists();
-    if (!mounted) return;
-    if (!ok) {
-      _snack(trf('폴더가 없거나 열 수 없습니다: {0}', [path]));
-      return;
+    bool ok;
+    try {
+      ok = isDav(path) || await Directory(path).exists();
+    } catch (_) {
+      ok = false;
     }
-    await _goTo(pane, path, fresh: true);
+    return ok ? (path, null) : (null, tr('폴더가 없거나 열 수 없습니다'));
   }
 
   /// WebDAV 서버 추가 (없으면 [root] 는 null) · 고치기 (탭 길게 누르기). 저장하면 그 서버로 간다.
@@ -3263,5 +3312,58 @@ class _Thumb extends StatelessWidget {
             ]),
           );
         },
+      );
+}
+
+/// 146 · 37-2: 경로 입력 창 - 없는 폴더면 닫지 않고 칸 아래에 "폴더가 없거나 열 수 없습니다"
+class _PathDialog extends StatefulWidget {
+  const _PathDialog({required this.initial});
+  final String initial;
+
+  @override
+  State<_PathDialog> createState() => _PathDialogState();
+}
+
+class _PathDialogState extends State<_PathDialog> {
+  late final _ctl = TextEditingController(text: widget.initial)
+    ..selection = TextSelection(baseOffset: 0, extentOffset: widget.initial.length);
+  String? _error;
+  bool _checking = false;
+
+  @override
+  void dispose() {
+    _ctl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    setState(() => _checking = true);
+    final (path, error) = await _ExplorerPageState.checkEnteredPath(_ctl.text);
+    if (!mounted) return;
+    setState(() {
+      _checking = false;
+      _error = error;
+    });
+    if (path != null) Navigator.pop(context, path);
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        scrollable: true,
+        title: Text(Platform.isWindows ? tr('경로 입력 (예: D:\\영상 · \\\\NAS\\공유)') : tr('경로 입력')),
+        content: TextField(
+          controller: _ctl,
+          autofocus: true,
+          decoration: InputDecoration(hintText: tr('경로'), errorText: _error, errorMaxLines: 3),
+          // 고치기 시작하면 앞의 오류는 지운다
+          onChanged: (_) {
+            if (_error != null) setState(() => _error = null);
+          },
+          onSubmitted: (_) => _submit(),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: Text(tr('취소'))),
+          FilledButton(onPressed: _checking ? null : _submit, child: Text(tr('확인'))),
+        ],
       );
 }
