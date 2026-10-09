@@ -217,8 +217,8 @@ void main() {
         data.deleteSync(recursive: true);
       });
 
-      Future<void> openPicker(WidgetTester tester) async {
-        tester.view.physicalSize = const Size(1200, 900);
+      Future<void> openPicker(WidgetTester tester, {Size size = const Size(1200, 900)}) async {
+        tester.view.physicalSize = size;
         tester.view.devicePixelRatio = 1;
         addTearDown(tester.view.reset);
         await tester.pumpWidget(MaterialApp(
@@ -229,6 +229,19 @@ void main() {
         await tester.tap(find.text('고르기'));
         await tester.pumpAndSettle();
       }
+
+      testWidgets('168: 좁은 화면 (폰) 에서는 목록 위 · 바뀐 내용 아래 (넓으면 나란히)', (tester) async {
+        await openPicker(tester, size: const Size(400, 800));
+        final list = tester.getTopLeft(find.text('v1.0.0').first);
+        final notes = tester.getTopLeft(find.text('바뀐 내용'));
+        expect(notes.dy, greaterThan(list.dy), reason: '바뀐 내용은 목록 아래');
+        expect(tester.getSize(find.text('바뀐 내용')).width, lessThan(400));
+        await tester.tap(find.text('닫기'));
+        await tester.pumpAndSettle();
+        await openPicker(tester);
+        expect(tester.getTopLeft(find.text('바뀐 내용')).dx, greaterThan(tester.getTopLeft(find.text('v1.0.0').first).dx + 200),
+            reason: '넓으면 나란히 (오른쪽)');
+      });
 
       testWidgets('올려 둔 모든 버전 · 지금 · 최신 표시 → 예전 버전으로 되돌리기 (설치 전 설정 보관, 비밀 값 빼고)', (tester) async {
         await openPicker(tester);

@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -211,10 +212,7 @@ class _VersionPickerState extends State<_VersionPicker> {
               final all = snap.data!;
               if (all.isEmpty) return Center(child: Text(tr('올려 둔 버전이 없습니다.')));
               final newest = all.first.version;
-              return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                SizedBox(
-                  width: 300,
-                  child: ListView(children: [
+              final list = ListView(children: [
                     Padding(
                       padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
                       child: Text(trf('지금 쓰는 버전: v{0}', [widget.current]),
@@ -236,11 +234,8 @@ class _VersionPickerState extends State<_VersionPicker> {
                         enabled: r.zipUrl != null,
                         onTap: () => setState(() => _sel = r),
                       ),
-                  ]),
-                ),
-                const VerticalDivider(width: 16),
-                Expanded(
-                  child: _sel == null
+                  ]);
+              final detail = _sel == null
                       ? const SizedBox()
                       : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           Text('v${_sel!.version}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
@@ -262,9 +257,21 @@ class _VersionPickerState extends State<_VersionPicker> {
                           Text(tr('바뀐 내용'), style: const TextStyle(fontWeight: FontWeight.w600)),
                           const SizedBox(height: 4),
                           Expanded(child: _Notes(_sel!.notes)),
-                        ]),
-                ),
-              ]);
+                        ]);
+              // 168: 좁은 화면 (폰) 에서는 목록 위 · 고른 버전의 바뀐 내용 아래 (나란히 두면 바뀐 내용 칸이 너무 좁았다)
+              return LayoutBuilder(
+                builder: (context, box) => box.maxWidth < 560
+                    ? Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        SizedBox(height: math.min(200, box.maxHeight * 0.4), child: list),
+                        const Divider(height: 16),
+                        Expanded(child: detail),
+                      ])
+                    : Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        SizedBox(width: 300, child: list),
+                        const VerticalDivider(width: 16),
+                        Expanded(child: detail),
+                      ]),
+              );
             },
           ),
         ),
