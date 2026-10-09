@@ -139,6 +139,10 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, '옮기기'));
     await tester.pump();
     await settleIo();
+    // 옮긴 뒤 목록에서 빠지는 것은 조금 늦다 (전체 시험 중 바쁠 때) - 빠질 때까지 기다린다
+    for (var i = 0; i < 30 && c.videos.any((v) => v.fileName == 'b.mp4'); i++) {
+      await settleIo();
+    }
     expect(File(p.join(dest, 'b.mp4')).existsSync(), isTrue);
     // 102: 세 번 누르기를 "아무것도 안 함" 으로 하면 묻지도 옮기지도 않는다
     c.settings.tripleTapAction = 'none';
