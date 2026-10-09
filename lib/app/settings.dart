@@ -538,6 +538,9 @@ class AppSettings {
   /// 돌아온 버전이 자기 것이 아니면 보관해 둔 그 버전의 설정을 되살릴지 묻는다 (VersionSnapshot)
   String lastRunVersion = '';
 
+  /// P0 (Android 되돌리기): 받은 AI 모델을 공용 폴더에 옮겨 두었다가 되살릴지. '' = 남은 공간이 모델의 2배 이상이면 켬 · 'on' · 'off'
+  String rollbackKeepModels = '';
+
   /// "이 버전 건너뛰기" 한 버전
   String skippedVersion = '';
 
@@ -700,6 +703,7 @@ class AppSettings {
         'lastUpdateCheck': lastUpdateCheck,
         'lastUpdateCheckVersion': lastUpdateCheckVersion,
         'lastRunVersion': lastRunVersion,
+        'rollbackKeepModels': rollbackKeepModels,
         'skippedVersion': skippedVersion,
         'playlistMode': playlistMode.name,
         'externalPlayers': externalPlayers,
@@ -900,6 +904,7 @@ class AppSettings {
       ..lastUpdateCheck = j['lastUpdateCheck'] as String? ?? ''
       ..lastUpdateCheckVersion = j['lastUpdateCheckVersion'] as String? ?? ''
       ..lastRunVersion = j['lastRunVersion'] as String? ?? ''
+      ..rollbackKeepModels = const ['on', 'off'].contains(j['rollbackKeepModels']) ? j['rollbackKeepModels'] as String : ''
       ..skippedVersion = j['skippedVersion'] as String? ?? ''
       ..playlistMode = pick(PlaylistMode.values, j['playlistMode'], PlaylistMode.series)
       ..externalPlayers = ((j['externalPlayers'] as Map?) ?? const {}).cast<String, String>()

@@ -10,6 +10,7 @@ import 'package:window_manager/window_manager.dart';
 
 import 'app/app_controller.dart';
 import 'app/live_sync.dart';
+import 'app/model_backup.dart';
 import 'app/version_snapshot.dart';
 import 'app/install_marker.dart';
 import 'app/component_store.dart';
@@ -477,6 +478,7 @@ Future<void> runAndroid(String dataDir) async {
   try {
     final root = await const MethodChannel('jj_mkvmaker/android').invokeMethod<String>('storageRoot');
     if (root != null) sharedSnapshots = p.join(root, 'Download', 'JJ_MKVMaker', '설정 보관');
+    if (root != null) ModelBackup.sharedRoot = p.join(root, 'Download', 'JJ_MKVMaker');
   } catch (_) {}
   VersionSnapshot.instance = VersionSnapshot(dataDir, sharedDir: sharedSnapshots);
   await controller.init();
@@ -599,6 +601,9 @@ Future<void> runAndroid(String dataDir) async {
         await services.shell.quit();
       });
     }
+    // P0: 되돌리느라 공용 폴더에 옮겨 둔 받은 AI 모델 되살리기
+    final ctxModels = navigatorKey.currentContext;
+    if (ctxModels != null && ctxModels.mounted) await restoreModelBackup(ctxModels, controller);
     // 새 버전 확인 (하루 한 번, 환경 설정에서 끌 수 있음)
     final ctx = navigatorKey.currentContext;
     if (ctx != null && ctx.mounted) unawaited(checkForUpdate(ctx, controller));

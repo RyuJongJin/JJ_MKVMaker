@@ -3,11 +3,14 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:jj_mkvmaker/app/ai_local.dart';
 import 'package:jj_mkvmaker/app/app_controller.dart';
+import 'package:jj_mkvmaker/app/model_backup.dart';
 import 'package:jj_mkvmaker/app/version_snapshot.dart';
 import 'package:jj_mkvmaker/core/app_update.dart';
 import 'package:jj_mkvmaker/platform/windows/desktop_storage_service.dart';
 import 'package:jj_mkvmaker/platform/windows/process_media_tool.dart';
+import 'package:jj_mkvmaker/services/model_store.dart';
 import 'package:jj_mkvmaker/services/platform_services.dart';
 import 'package:jj_mkvmaker/services/updater.dart';
 import 'package:jj_mkvmaker/ui/update_dialog.dart';
@@ -69,6 +72,16 @@ class _FakeUpdater implements Updater {
   }
   @override
   Future<void> openPage(ReleaseInfo r) async => calls.add('page');
+}
+
+/// 실제 파일 작업 (크기 재기 · 남은 공간 · 복사) 이 끝날 때까지
+Future<void> settleIo(WidgetTester tester, {required bool Function() until}) async {
+  // 위젯 시험 안의 파일 읽기 · 쓰기는 pump 마다 조금씩 나아간다 - 넉넉히 (끝나면 바로 나옴)
+  for (var i = 0; i < 600 && !until(); i++) {
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 100)));
+    await tester.pump();
+  }
+  await tester.pumpAndSettle();
 }
 
 void main() {
@@ -155,6 +168,14 @@ void main() {
             .writeAsStringSync(jsonEncode({'uiLanguage': 'ko', 'openSubtitlesKey': 'SECRET-KEY', 'lastRunVersion': '1.0.1'}));
         File(p.join(data.path, 'videos.json')).writeAsStringSync('[]');
         VersionSnapshot.instance = VersionSnapshot(data.path, sharedDir: p.join(data.path, 'shared', '설정 보관'));
+        // P0: 받은 모델 폴더도 시험 폴더 안으로 (시험 프로그램 옆 models 를 건드리지 않게)
+        c = AppController(PlatformServices(
+            mediaTool: ProcessMediaTool('x', 'y'),
+            storage: DesktopStorageService(),
+            updater: up,
+            models: ModelStore(p.join(data.path, 'models'))));
+        AiStore.instance = AiStore(data.path);
+        ModelBackup.sharedRoot = p.join(data.path, 'shared');
         up.all = [
           parseRelease(_release('v1.0.2'), allowPrerelease: true)!,
           parseRelease(_release('v1.0.1'), allowPrerelease: true)!,
@@ -163,6 +184,8 @@ void main() {
       });
       tearDown(() {
         VersionSnapshot.instance = null;
+        AiStore.instance = null;
+        ModelBackup.sharedRoot = null;
         data.deleteSync(recursive: true);
       });
 
@@ -219,9 +242,19 @@ void main() {
         await tester.tap(find.text('v1.0.0').first);
         await tester.pumpAndSettle();
         await tester.tap(find.text('이 버전으로 되돌리기'));
-        await tester.pumpAndSettle();
+        await settleIo(tester, until: () => find.text('저장하고 계속').evaluate().isNotEmpty);
         expect(find.textContaining('Android 는 버전이 낮은 앱을'), findsOneWidget);
+        // P0: 남는 것 / 사라지는 것을 사실대로 (받은 모델이 없으면 모델 줄은 없음)
+        expect(find.text('남는 것'), findsOneWidget);
+        expect(find.text('사라지는 것'), findsOneWidget);
+        expect(find.textContaining('비밀번호 · API 키'), findsOneWidget);
+        expect(find.textContaining('브라우저의 로그인'), findsOneWidget);
+        expect(find.textContaining('다시 받아야 합니다'), findsNothing);
         await tester.tap(find.text('저장하고 계속'));
+        await tester.pumpAndSettle();
+        // 사라지는 것이 있으니 한 번 더
+        expect(find.text('정말 되돌릴까요?'), findsOneWidget);
+        await tester.tap(find.text('되돌리기 계속'));
         // 받기 · 파일 복사 (실제 파일 작업) 가 끝날 때까지
         for (var i = 0; i < 50 && find.text('저장했습니다').evaluate().isEmpty; i++) {
           await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 100)));
@@ -233,6 +266,47 @@ void main() {
         await tester.tap(find.text('앱 지우기'));
         await tester.pumpAndSettle();
         expect(up.calls, ['download 1.0.0', 'uninstall']);
+      });
+
+      testWidgets('P0 Android: 받은 AI 모델을 복사해 두기 (기본: 남은 공간이 2배 이상이면 켬) · 끄면 "다시 받아야" · 설정에 기억', (tester) async {
+        up.installsInPlace = true;
+        up.downloaded = (File(p.join(data.path, 'dl.apk'))..writeAsStringSync('apk')).path;
+        File(p.join(data.path, 'ai', 'models', 'esrgan.pth'))
+          ..createSync(recursive: true)
+          ..writeAsBytesSync(List.filled(2 << 20, 1)); // 2MB
+        File(p.join(data.path, 'models', 'whisper', 'ggml-base.bin'))
+          ..createSync(recursive: true)
+          ..writeAsBytesSync(List.filled(1 << 20, 2)); // 1MB
+        await openPicker(tester);
+        await tester.tap(find.text('v1.0.0').first);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('이 버전으로 되돌리기'));
+        await settleIo(tester, until: () => find.text('저장하고 계속').evaluate().isNotEmpty);
+        // 시험 PC 는 공간이 넉넉하니 처음 값은 켬 → 남는 것에 모델 (공용 폴더가 아직 없어도 상위 폴더로 잼)
+        expect(find.textContaining('남은 공간'), findsOneWidget);
+        expect(find.textContaining('받은 AI 모델 (3MB) - Download/JJ_MKVMaker/AI 모델 보관'), findsOneWidget);
+        // 예전 판 (v1.0.0) 은 옮겨 둔 모델 · 설정을 되살리지 못한다고 사실대로
+        expect(find.textContaining('v1.0.0 은 복사해 둔 모델을 되살리지 못합니다'), findsOneWidget);
+        expect(find.textContaining('v1.0.0 은 저장해 둔 설정을 되살리지 못해'), findsOneWidget);
+        // 끄면 사라지는 것으로 · 설정에 기억
+        await tester.tap(find.byType(Checkbox));
+        await tester.pumpAndSettle();
+        expect(find.textContaining('다시 받아야 합니다 (약 3MB)'), findsOneWidget);
+        expect(c.settings.rollbackKeepModels, 'off');
+        // 다시 켜고 진행 → 공용 폴더에 모델 사본과 목록
+        await tester.tap(find.byType(Checkbox));
+        await tester.pumpAndSettle();
+        expect(c.settings.rollbackKeepModels, 'on');
+        await tester.tap(find.text('저장하고 계속'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('되돌리기 계속'));
+        await settleIo(tester, until: () => find.text('저장했습니다').evaluate().isNotEmpty);
+        expect(find.text('저장했습니다'), findsOneWidget);
+        final kept = ModelBackup.shared!;
+        expect(kept.exists, isTrue);
+        expect(kept.savedSize, 3 << 20);
+        expect(File(p.join(kept.dir, 'ai', 'models', 'esrgan.pth')).lengthSync(), 2 << 20);
+        expect(File(p.join(kept.dir, 'models', 'whisper', 'ggml-base.bin')).existsSync(), isTrue);
       });
     });
   });

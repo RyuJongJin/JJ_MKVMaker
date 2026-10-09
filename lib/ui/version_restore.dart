@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 
 import '../app/app_controller.dart';
+import '../app/model_backup.dart';
 import '../app/version_snapshot.dart';
 import '../l10n/tr.dart';
+import 'update_dialog.dart' show gbText, rollbackModelRoots, withProgressDialog;
 
 /// 시작할 때: 다른 버전을 쓰다가 이 버전으로 돌아왔으면 (또는 Android 에서 앱을 다시 설치해 설정이 없으면)
 /// 보관해 둔 설정을 되살릴지 묻는다. 되살리면 [restart] (다시 시작) 를 부른다. 끝나면 [lastRunVersion] 을 이 버전으로.
@@ -119,4 +121,28 @@ Future<bool?> showAutoBackupNotice(BuildContext context,
       ],
     ),
   );
+}
+
+/// P0: 되돌리느라 공용 폴더에 옮겨 둔 받은 AI 모델이 있으면 되살린다 (SHA-256 확인, 다 되면 공용 폴더의 사본을 지움).
+/// 이 기능이 있는 판이 켜질 때 (되돌린 뒤 다시 설치했거나, 예전 판에서 이 판으로 다시 올렸을 때) 한 번.
+Future<void> restoreModelBackup(BuildContext context, AppController c) async {
+  final backup = ModelBackup.shared;
+  if (backup == null || !backup.exists) return;
+  final roots = await rollbackModelRoots(c);
+  if (!context.mounted) return;
+  final size = gbText(backup.savedSize);
+  RestoreResult? result;
+  final err = await withProgressDialog(context, trf('복사해 둔 AI 모델 ({0}) 을 되살리는 중', [size]), (onProgress) async {
+    result = await backup.restore(roots, onProgress: onProgress);
+    return null;
+  });
+  final r = result;
+  final text = err != null
+      ? trf('복사해 둔 AI 모델을 되살리지 못했습니다 (사본은 Download/JJ_MKVMaker/AI 모델 보관 에 그대로): {0}', [err])
+      : r!.failed.isEmpty
+          ? trf('복사해 둔 AI 모델 ({0}) 을 되살렸습니다', [size])
+          : trf('AI 모델 {0}개는 확인 (SHA-256) 이 맞지 않아 되살리지 않았습니다. 사본은 공용 폴더에 남겨 두었습니다: {1}',
+              [r.failed.length, r.failed.take(3).join(', ')]);
+  c.note(text);
+  if (context.mounted) ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(text)));
 }
