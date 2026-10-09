@@ -19,6 +19,7 @@ import 'copy_sync_settings.dart' show addLiveSyncPairDialog, editLiveSyncPairDia
 import 'path_label.dart';
 import 'rsync_setup.dart';
 import 'schedule_editor.dart';
+import '../core/sync_preview.dart' show withoutSourceRemovingOptions;
 import 'sync_preview_view.dart' show confirmDeletingRun;
 import 'theme.dart';
 
@@ -373,7 +374,8 @@ class _CopyCardState extends State<_CopyCard> {
         title: Text(tr('고친 옵션을 저장하지 않았습니다')),
         content: Text(trf('칸에 보이는 옵션: {0}\n저장된 옵션: {1}\n\n고친 옵션을 저장하고 실행할까요?', [
           '${_method == 'builtin' ? tr('현재 방식') : _method} ${_options.text.trim()}',
-          '${t.method == 'builtin' ? tr('현재 방식') : t.method} ${t.options}',
+          // 178: 실제로 쓰는 옵션 (원본 지우기는 이동일 때만)
+          '${t.method == 'builtin' ? tr('현재 방식') : t.method} ${withoutSourceRemovingOptions(t.options)}${t.move ? (t.method == 'robocopy' ? ' /MOVE' : t.method == 'rsync' ? ' --remove-source-files' : '') : ''}',
         ])),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('취소'))),

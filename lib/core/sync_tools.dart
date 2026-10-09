@@ -75,13 +75,14 @@ List<String> rsyncArgs({
   bool windows = true,
   bool contents = false,
 }) {
-  final opts = splitOptions(options);
+  // 178: 원본을 지우는 옵션은 [move] (이동 · [원본 파일 지우기]) 로만 - 옵션 글에 있어도 빼고, 이동일 때만 넣는다
+  final opts = [for (final o in splitOptions(options)) if (!isSourceRemovingOption(o)) o];
   return [
     ...opts,
     if (bandwidthKBps > 0 && !opts.any((o) => o.startsWith('--bwlimit'))) '--bwlimit=$bandwidthKBps',
     // 한글 등 이름을 \#355… 로 바꾸지 않고 그대로 출력 (Android 빌드는 iconv 없음 · 진행 표시에 쓰는 이름)
     if (!windows && !opts.contains('-8') && !opts.contains('--8-bit-output')) '-8',
-    if (move && !opts.contains('--remove-source-files')) '--remove-source-files',
+    if (move) '--remove-source-files',
     // [contents]: 폴더 "안의 것" 을 대상에 (rsync 의 끝 / - 동기화 · lsync 와 같은 모양)
     for (final s in sources) '${toCygwinPath(_noTrailingSlash(s), windows: windows)}${contents ? '/' : ''}',
     '${toCygwinPath(_noTrailingSlash(dest), windows: windows)}/',
@@ -89,6 +90,10 @@ List<String> rsyncArgs({
 }
 
 String _noTrailingSlash(String s) => s.length > 3 && (s.endsWith('/') || s.endsWith('\\')) ? s.substring(0, s.length - 1) : s;
+
+/// 원본을 지우는 rsync · robocopy 옵션인지 (--remove-source-files · --remove-sent-files · /MOV · /MOVE) - 107 · 178
+bool isSourceRemovingOption(String o) =>
+    o == '--remove-source-files' || o == '--remove-sent-files' || o.toUpperCase() == '/MOV' || o.toUpperCase() == '/MOVE';
 
 /// robocopy 한 번 실행할 인수 (robocopy 는 "폴더 → 폴더" 라 원본마다 따로 만든다).
 /// - 폴더: robocopy <폴더> <대상>\<폴더 이름> [옵션]
@@ -103,10 +108,11 @@ List<List<String>> robocopyRuns({
   bool move = false,
   bool contents = false,
 }) {
-  final opts = splitOptions(options);
+  // 178: 원본을 지우는 옵션 (/MOV · /MOVE) 은 [move] 로만
+  final opts = [for (final o in splitOptions(options)) if (!isSourceRemovingOption(o)) o];
   final extra = [
     if (bandwidthKBps > 0 && !opts.any((o) => o.toUpperCase().startsWith('/IPG'))) '/IPG:${robocopyIpg(bandwidthKBps)}',
-    if (move && !opts.any((o) => o.toUpperCase().startsWith('/MOV'))) '/MOVE',
+    if (move) '/MOVE',
   ];
   final runs = <List<String>>[
     for (final f in folders) [f, contents ? dest : p.join(dest, p.basename(f)), ...opts, ...extra],

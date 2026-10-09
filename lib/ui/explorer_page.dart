@@ -1736,7 +1736,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
                 '\n${_namesOf(sources)}'
                 '${skippedHere.isEmpty ? '' : '\n${trf('이미 이 폴더에 있어 건너뜀: {0}', [_namesOf(skippedHere)])}'}'
                 '\n\n${trf('방법: {0}', [tr(method.label)])}'
-                '${method == CopyMethod.builtin ? '' : ' · ${task.options}'}'
+                '${method == CopyMethod.builtin ? '' : ' · ${withoutSourceRemovingOptions(task.options)}${move ? (method == CopyMethod.rsync ? ' --remove-source-files' : ' /MOVE') : ''}'}'
                 '${task.bandwidthKBps > 0 ? ' · ${trf('속도 제한 {0} KB/s', [task.bandwidthKBps])}' : ''}'),
             FutureBuilder<List<NameClash>>(
               future: clashesFuture,
@@ -1892,8 +1892,14 @@ class _ExplorerPageState extends State<ExplorerPage> {
     // 96: 확인 창 · 미리 보기 · 실행이 같은 작업 (원본 파일 지우기 = 이동 작업) 과 같은 옵션을 쓴다
     List<CopyTask> shownTasks(bool move) =>
         [for (final (src, dst) in runs) center.peek([src], dst, contents: true, method: 'rsync', move: move)];
-    var tasks = shownTasks(false);
-    String opts(CopyTask t) => both ? withUpdateOption(t.options) : t.options;
+    // 178: 환경 설정 (또는 기억한) 옵션에 원본 지우기가 있으면 [원본 파일 지우기] 를 켠 채로 연다 (버튼은 [이동] · 경고).
+    // 원본 지우기는 이 체크로만 정한다 - 옵션 글에서는 빼고 보이고, 끄면 이번 실행에서 정말 빠진다
+    final optionMove = runs.map((x) => center.peek([x.$1], x.$2, contents: true, method: 'rsync', move: false)).any((t) => optionsRemoveSource(t.options));
+    var tasks = shownTasks(optionMove && !both);
+    String opts(CopyTask t) {
+      final o = withoutSourceRemovingOptions(t.options);
+      return both ? withUpdateOption(o) : o;
+    }
     // 95: ⇄ 는 → 다음에 ← (차례로). ← 에서는 지우지 않는다 (→ 가 방금 복사한 것을 지우지 않게)
     String runOpts(int i) => both && i > 0 ? withoutDeleteOptions(opts(tasks[i])) : opts(tasks[i]);
     if (nested && tasks.any((t) => optionsDelete(opts(t)))) {
@@ -1901,7 +1907,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
       return;
     }
     // 한 방향 (→ · ←) 만: 원본 파일 지우기 (--remove-source-files) 와 끝난 뒤 원본 정리
-    var removeSource = false;
+    var removeSource = optionMove && !both;
     var prune = 'keep';
     // 72: 실행 전 비교 결과 (지워질 수를 실행 버튼에)
     List<PreviewItem>? preview;
@@ -1986,10 +1992,13 @@ class _ExplorerPageState extends State<ExplorerPage> {
             if (_viaDav([l, r]))
               Text(tr('WebDAV: rsync 대신 앱이 직접 맞춥니다 (크기 · 바뀐 때 비교, 옵션 중 -u · --delete · --remove-source-files 를 따름).'),
                   style: const TextStyle(fontSize: 12, color: JjColors.accent)),
-            if (both)
+            if (both) ...[
               Text(tr('양쪽을 함께: 받는 쪽이 더 새 파일은 덮어쓰지 않습니다 (-u).'),
-                  style: const TextStyle(fontSize: 12, color: JjColors.textDim))
-            else ...[
+                  style: const TextStyle(fontSize: 12, color: JjColors.textDim)),
+              if (optionMove)
+                Text(tr('양쪽 (⇄) 에서는 원본 파일을 지우지 않습니다 (옵션의 --remove-source-files 는 쓰지 않음).'),
+                    style: const TextStyle(fontSize: 12, color: Colors.orangeAccent)),
+            ] else ...[
               CheckboxListTile(
                 contentPadding: EdgeInsets.zero,
                 value: removeSource,
@@ -2003,6 +2012,13 @@ class _ExplorerPageState extends State<ExplorerPage> {
                 subtitle: Text(tr('대상으로 옮긴 파일을 원본에서 지웁니다 (이동)')),
               ),
               if (removeSource) ...[
+                // 178: 원본이 지워진다는 것을 분명히 (환경 설정 옵션 때문에 켜졌으면 그렇다고)
+                Text(
+                    optionMove
+                        ? tr('원본 파일이 지워집니다 (이동). 환경 설정의 rsync 옵션에 --remove-source-files 가 있어 켜 두었습니다 - 끄면 이번에는 원본을 남깁니다.')
+                        : tr('원본 파일이 지워집니다 (이동).'),
+                    style: const TextStyle(fontSize: 12, color: Colors.orangeAccent, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 4),
                 Text(tr('끝난 뒤 원본의 빈 폴더를 지웁니다 (find 원본/ -type d -empty -delete). 원본 폴더는:'),
                     style: const TextStyle(fontSize: 12, color: JjColors.textDim)),
                 const SizedBox(height: 6),

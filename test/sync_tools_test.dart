@@ -98,6 +98,15 @@ void main() {
       expect(o.feed('100%  \n\t    Newer     \t\t     200\tC:\\t\\src\\b.txt\n\t*EXTRA File \t\t 1\tC:\\x\n'), [r'C:\t\src\b.txt']);
     });
 
+    test('178: 원본을 지우는 옵션은 이동일 때만 (옵션 글에 있어도)', () {
+      List<String> r(bool move) => rsyncArgs(options: '-av --remove-source-files --remove-sent-files', sources: [r'C:\a'], dest: r'D:\b', move: move);
+      expect(r(false).where(isSourceRemovingOption), isEmpty);
+      expect(r(true).where(isSourceRemovingOption), ['--remove-source-files']);
+      List<String> rc(bool move) => robocopyRuns(options: '/E /MOV /MOVE', folders: [r'C:\a'], files: const [], dest: r'D:\b', move: move).single;
+      expect(rc(false).where(isSourceRemovingOption), isEmpty);
+      expect(rc(true).where(isSourceRemovingOption), ['/MOVE']);
+    });
+
     test('61: robocopy 파일 줄은 Windows 언어와 상관없이 (일본어 · 중국어 · 한국어 종류 글)', () {
       final o = RobocopyOutput();
       expect(o.feed('\t    新しいファイル  \t\t 3000000\tC:\\t\\a b.txt\r\n 34%  \r\n'), [r'C:\t\a b.txt']);

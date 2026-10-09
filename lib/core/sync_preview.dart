@@ -1,5 +1,7 @@
 import 'file_ops.dart' show isPartialFile, SourceUnreadableException;
-import 'sync_tools.dart' show splitOptions;
+import 'sync_tools.dart' show splitOptions, isSourceRemovingOption;
+
+export 'sync_tools.dart' show isSourceRemovingOption;
 import 'vfs.dart';
 
 /// rsync (Rsync 화면의 → · ← · ⇄) 를 실행하기 전에 무엇이 바뀌는지 미리 보기 (72).
@@ -64,9 +66,13 @@ String withoutDeleteOptions(String options) => rawOptionTokens(options)
     .where((raw) => !splitOptions(raw).any(isRsyncDeleteOption))
     .join(' ');
 
-/// 원본을 지우는 rsync · robocopy 옵션인지 (--remove-source-files · --remove-sent-files · /MOV · /MOVE) - 107
-bool isSourceRemovingOption(String o) =>
-    o == '--remove-source-files' || o == '--remove-sent-files' || o.toUpperCase() == '/MOV' || o.toUpperCase() == '/MOVE';
+/// 178: 옵션 글에서 원본을 지우는 옵션을 뺀다 (원본 지우기는 [원본 파일 지우기] · [이동] 으로만 - 보이는 것과 실행이 같게)
+String withoutSourceRemovingOptions(String options) => rawOptionTokens(options)
+    .where((raw) => !splitOptions(raw).any(isSourceRemovingOption))
+    .join(' ');
+
+/// 옵션 글에 원본을 지우는 옵션이 들어 있는지 (환경 설정의 rsync 옵션 등)
+bool optionsRemoveSource(String options) => splitOptions(options).any(isSourceRemovingOption);
 
 /// rsync 옵션에 -u (받는 쪽이 더 새 파일은 건너뜀) 가 있는지
 bool optionsUpdate(String options) =>

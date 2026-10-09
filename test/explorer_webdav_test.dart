@@ -114,6 +114,39 @@ void main() {
     expect(up.readAsStringSync(), 'hello');
   });
 
+  testWidgets('178: 설정 옵션에 --remove-source-files 가 있으면 체크 켬 · [이동] · 경고, 끄면 정말 원본을 남긴다', (tester) async {
+    final s = DavServer(id: 'nas', name: '집 NAS', url: server.url, user: 'user', password: 'pass');
+    c.settings
+      ..webdavServers = [s]
+      ..rsyncOptions = '-av --remove-source-files'
+      ..rsyncPaths = [left, 'dav://nas/'];
+    DavRegistry.configure([s]);
+    await pump(tester, ExplorerPage(c: c, rsync: true));
+    await settle(tester, () => find.text('sub').evaluate().isNotEmpty && find.text('원격').evaluate().isNotEmpty);
+    await act(tester, () => tester.tap(find.text('sub')));
+    await act(tester, () => tester.tap(find.text('원격')));
+    await settle(tester, () => false, rounds: 5);
+    await act(tester, () => tester.tap(find.text('좌 → 우')));
+    await settle(tester, () => find.textContaining('비교하는 중').evaluate().isEmpty, rounds: 400);
+    // 보이는 것 = 실행될 것: 체크 켬 · [이동] · 경고 · 명령 줄에 한 번
+    CheckboxListTile box() => tester.widget<CheckboxListTile>(find.byType(CheckboxListTile));
+    expect(box().value, isTrue);
+    expect(find.widgetWithText(FilledButton, '이동'), findsOneWidget);
+    expect(find.textContaining('원본 파일이 지워집니다 (이동). 환경 설정의 rsync 옵션에'), findsOneWidget);
+    expect(find.text('rsync -av --remove-source-files'), findsOneWidget);
+    // 끄면 [실행] · 옵션 줄에서도 빠진다
+    await tester.tap(find.byType(CheckboxListTile));
+    await settle(tester, () => find.textContaining('비교하는 중').evaluate().isEmpty, rounds: 400);
+    expect(box().value, isFalse);
+    expect(find.widgetWithText(FilledButton, '실행'), findsOneWidget);
+    expect(find.text('rsync -av'), findsOneWidget);
+    await act(tester, () => tester.tap(find.widgetWithText(FilledButton, '실행')));
+    final got = File(p.join(remote.path, '원격', 'inner.txt'));
+    await settle(tester, () => got.existsSync() && find.byType(LinearProgressIndicator).evaluate().isEmpty, rounds: 200);
+    expect(got.readAsStringSync(), 'inner');
+    expect(File(p.join(left, 'sub', 'inner.txt')).existsSync(), isTrue, reason: '체크를 끄면 원본은 그대로 (복사)');
+  });
+
   testWidgets('Rsync 화면: 로컬 ↔ WebDAV 폴더 → (앱이 직접 맞춤 · rsync 필요 없음)', (tester) async {
     final s = DavServer(id: 'nas', name: '집 NAS', url: server.url, user: 'user', password: 'pass');
     c.settings
