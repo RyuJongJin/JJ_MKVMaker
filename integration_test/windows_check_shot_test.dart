@@ -19,6 +19,8 @@ import 'package:jj_mkvmaker/ui/security_settings.dart';
 import 'package:jj_mkvmaker/ui/theme.dart';
 import 'package:path/path.dart' as p;
 
+import '../test/support/fake_recycle_bin.dart';
+
 /// 기기 감독 (Windows) 확인용: 실제 앱 화면을 띄워 누르고 단계마다 PNG (JJ_SHOT_DIR) 로 남긴다.
 /// 65 · 94 · 98 (휴지통 · 휴지통 없는 위치 · 오류 문구), 37 (경로 입력), 124 · 130 (마스터 · 최상), 123 (AI 그림).
 /// 시험 폴더 · 메모리 저장소만 쓴다 (사용자 설정 · 비밀번호는 건드리지 않음). 휴지통에 넣은 시험 항목은 끝에 $I 로 골라 지운다.
@@ -78,6 +80,8 @@ void main() {
   testWidgets('65 · 94 · 98: 지우기 - 휴지통 · 영구 삭제 · 휴지통 없는 위치 · 오류 문구', (t) async {
     final tmp = tempDir('jj_shot_del_');
     final started = DateTime.now();
+    // 휴지통: 기본은 가짜 (화면 흐름만), JJ_TEST_REAL_RECYCLE=1 이면 실제 휴지통 (끝에 시험 항목만 지움)
+    useTestRecycleBin();
     try {
       for (final (tag, size) in sizes) {
         final dir = Directory(p.join(tmp.path, tag))..createSync();
@@ -151,6 +155,13 @@ void main() {
         await t.tap(find.text('휴지통으로').last);
         await settle(t, 20);
         await shot(t, '98_error_text_$tag');
+        // 144 뒤로는 이유 한 줄과 [그대로 두기] / [영구 삭제] 창이 뜬다 - 지우지 않고 닫아 다음 크기로
+        for (final b in ['그대로 두기', '확인']) {
+          if (find.text(b).evaluate().isNotEmpty) {
+            await t.tap(find.text(b).last);
+            await settle(t);
+          }
+        }
       }
     } finally {
       await t.pumpWidget(const SizedBox());

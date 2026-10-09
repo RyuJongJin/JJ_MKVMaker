@@ -1428,7 +1428,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
     for (final x in paths) {
       try {
         if (!permanent) {
-          switch (moveToRecycleBin(x)) {
+          switch (recycle(x)) {
             case RecycleResult.recycled:
               recycled++;
               sent.add(x);
@@ -1530,7 +1530,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
     var back = 0;
     for (final x in paths) {
       try {
-        restoreFromRecycleBin(x, since: since);
+        restoreRecycled(x, since: since);
         back++;
       } catch (e) {
         failed.add('${vBasename(x)}: ${e is FileSystemException ? e.message : e}');

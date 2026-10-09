@@ -2,6 +2,7 @@ import 'dart:ffi';
 import 'dart:io';
 
 import 'package:ffi/ffi.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:path/path.dart' as p;
 
 import '../../l10n/tr.dart';
@@ -16,6 +17,26 @@ enum RecycleResult {
 
   /// 사용자가 Windows 의 경고 창에서 취소했다 (그대로 남음)
   cancelled,
+}
+
+/// 시험용: 실제 휴지통 대신 쓸 것. 기본 전체 시험은 가짜로 흐름만 본다 - 시험이 도중에 끊기면 사용자 휴지통에
+/// 흔적이 남기 때문 (실제 휴지통 시험은 JJ_TEST_REAL_RECYCLE=1 일 때만, test/support/fake_recycle_bin.dart).
+abstract class RecycleBinBackend {
+  RecycleResult move(String path);
+  void restore(String original, {required DateTime since});
+}
+
+/// null 이면 실제 휴지통 (앱은 늘 null)
+@visibleForTesting
+RecycleBinBackend? recycleBinForTest;
+
+/// 휴지통으로 보내기 (앱의 화면은 이것을 쓴다 - 시험에서 가짜로 바꿀 수 있게)
+RecycleResult recycle(String path) => recycleBinForTest?.move(path) ?? moveToRecycleBin(path);
+
+/// 휴지통에서 원래 자리로 (앱의 화면은 이것을 쓴다)
+void restoreRecycled(String original, {required DateTime since}) {
+  final t = recycleBinForTest;
+  t == null ? restoreFromRecycleBin(original, since: since) : t.restore(original, since: since);
 }
 
 /// 이 경로가 있는 곳에 휴지통이 있는지 (94). Windows 의 휴지통은 고정 디스크에만 있다:

@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:jj_mkvmaker/platform/windows/recycle_bin.dart';
 import 'package:path/path.dart' as p;
 
+import 'support/fake_recycle_bin.dart';
 import 'support/recycle_leftovers.dart';
 
 /// 시험이 휴지통에 넣은 것만 (원래 위치가 이 시험의 임시 폴더인 항목) 휴지통에서 지운다. 사용자 항목은 건드리지 않는다.
@@ -30,7 +31,9 @@ foreach (\$it in @(\$rb.Items())) {
   return int.tryParse('${r.stdout}'.trim().split('\n').last.trim()) ?? -1;
 }
 
-/// 65 · 94 · 98: Windows 휴지통 (실제 휴지통 - 시험 파일 하나 · 폴더 하나, 끝나면 휴지통에서도 지움)
+/// 65 · 94 · 98: Windows 휴지통 (실제 휴지통 - 시험 파일 하나 · 폴더 하나, 끝나면 휴지통에서도 지움).
+/// 실제 휴지통을 쓰는 시험은 JJ_TEST_REAL_RECYCLE=1 일 때만 (전체 시험 중에 끊기면 사용자 휴지통에 흔적이 남으므로).
+/// 휴지통 쪽 코드를 고칠 때 · 릴리스 전에 따로: JJ_TEST_REAL_RECYCLE=1 flutter test test/recycle_bin_test.dart
 void main() {
   test('파일 · 폴더를 휴지통으로 (실제로 들어갔는지까지) · 없는 것은 그냥 성공', () async {
     final tmp = Directory.systemTemp.createTempSync('jj_recycle_');
@@ -54,7 +57,7 @@ void main() {
       // 사용자 휴지통에 시험 항목을 남기지 않는다
       expect(await _purgeFromRecycleBin(tmp.absolute.path), 2);
     }
-  }, skip: !Platform.isWindows);
+  }, skip: realRecycleSkip);
 
   test('148: 휴지통으로 보낸 파일 · 폴더를 원래 자리로 되돌린다 (휴지통에 남지 않음) · 원래 자리에 같은 이름이 있으면 덮지 않음', () async {
     final tmp = Directory.systemTemp.createTempSync('jj_undo_');
@@ -83,7 +86,7 @@ void main() {
     expect(recycledInfoExists(f.path, since: since), isTrue);
     // 휴지통에 없으면 실패
     expect(() => restoreFromRecycleBin(p.join(tmp.absolute.path, 'never.txt'), since: since), throwsA(isA<FileSystemException>()));
-  }, skip: !Platform.isWindows);
+  }, skip: realRecycleSkip);
 
   test('148: 원래 폴더가 그사이 지워졌으면 다시 만들지 않고 알린다 · 이 사용자 (SID) 의 휴지통에서만 찾는다', () async {
     expect(currentUserSid(), matches(RegExp(r'^S-1-5-')));
@@ -105,7 +108,7 @@ void main() {
             .having((e) => e.message, 'message', contains('원래 폴더가 없어 되돌리지 못했습니다'))));
     expect(folder.existsSync(), isFalse, reason: '지운 폴더를 몰래 다시 만들지 않음');
     expect(recycledInfoExists(f.path, since: since), isTrue, reason: '휴지통의 것은 그대로');
-  }, skip: !Platform.isWindows);
+  }, skip: realRecycleSkip);
 
   test('긴 경로 (260자 넘음) 는 휴지통으로 보내지 않고 이유를 알린다 - 묻지 않고 영구 삭제되던 것 (폴더 안에 있어도)', () {
     if (!Platform.isWindows) return;
@@ -122,13 +125,18 @@ void main() {
     File(lp(file)).writeAsStringSync('x');
     expect(file.length, greaterThan(259));
     expect(longPathInside(file), file);
-    expect(() => moveToRecycleBin(file), throwsA(isA<FileSystemException>().having((e) => e.message, 'message', contains('경로가 너무 깁니다'))));
-    expect(File(lp(file)).existsSync(), isTrue, reason: '지우지 않음');
+    // 실제 휴지통 함수는 JJ_TEST_REAL_RECYCLE=1 일 때만 (고장 나면 사용자 휴지통에 들어가므로)
+    if (realRecycleBin) {
+      expect(() => moveToRecycleBin(file), throwsA(isA<FileSystemException>().having((e) => e.message, 'message', contains('경로가 너무 깁니다'))));
+      expect(File(lp(file)).existsSync(), isTrue, reason: '지우지 않음');
+    }
     // 폴더 자체는 짧아도 안에 긴 경로가 있으면
     final outer = p.join(tmp.path, 'outer');
     expect(longPathInside(outer), isNotNull);
-    expect(() => moveToRecycleBin(outer), throwsA(isA<FileSystemException>()));
-    expect(Directory(outer).existsSync(), isTrue);
+    if (realRecycleBin) {
+      expect(() => moveToRecycleBin(outer), throwsA(isA<FileSystemException>()));
+      expect(Directory(outer).existsSync(), isTrue);
+    }
     final short = File(p.join(tmp.path, 'short.txt'))..writeAsStringSync('x');
     expect(longPathInside(short.path), isNull, reason: '짧은 파일 경로');
   });

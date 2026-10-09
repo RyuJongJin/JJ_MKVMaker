@@ -12,6 +12,7 @@ import 'package:jj_mkvmaker/ui/explorer_page.dart';
 import 'package:jj_mkvmaker/ui/theme.dart';
 import 'package:path/path.dart' as p;
 
+import '../test/support/fake_recycle_bin.dart';
 import '../test/support/recycle_leftovers.dart';
 
 /// 묶음 3 (데이터 쪽) 기기 감독 확인용 (Windows): 실제 앱 화면을 띄워 누르고 단계마다 PNG (JJ_SHOT_DIR) 로 남긴다.
@@ -77,6 +78,8 @@ void main() {
       ..writeAsStringSync('old');
     c = AppController(PlatformServices.create());
     c.settings.explorerPaths = [left, right];
+    // 휴지통: 기본은 가짜 (화면 흐름만), JJ_TEST_REAL_RECYCLE=1 이면 실제 휴지통
+    useTestRecycleBin();
   });
   tearDown(() async {
     ExplorerPage.debugVolumes = null;

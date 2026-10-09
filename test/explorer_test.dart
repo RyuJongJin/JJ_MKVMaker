@@ -11,6 +11,7 @@ import 'package:jj_mkvmaker/services/platform_services.dart';
 import 'package:jj_mkvmaker/ui/explorer_page.dart';
 import 'package:jj_mkvmaker/ui/path_label.dart';
 import 'package:path/path.dart' as p;
+import 'support/fake_recycle_bin.dart';
 
 /// 다른 앱으로 열기를 기록만 하는 셸 (실제로 프로그램을 띄우지 않게)
 class _Shell extends NoopShell {
@@ -29,6 +30,8 @@ void main() {
   late AppController c;
 
   setUp(() {
+    // 휴지통: 기본은 가짜 (이 시험들은 영구 삭제를 고르지만 혹시라도 사용자 휴지통에 닿지 않게)
+    useTestRecycleBin();
     tmp = Directory.systemTemp.createTempSync('jj_explorer_');
     left = p.join(tmp.path, 'left');
     right = p.join(tmp.path, 'right');

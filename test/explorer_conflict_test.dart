@@ -10,6 +10,7 @@ import 'package:jj_mkvmaker/services/platform_services.dart';
 import 'package:jj_mkvmaker/ui/explorer_page.dart';
 import 'package:path/path.dart' as p;
 
+import 'support/fake_recycle_bin.dart';
 import 'support/recycle_leftovers.dart';
 
 /// 48 · 154 · 155: 같은 이름이 있으면 덮어쓰기 · 건너뛰기 · 이름 바꾸기를 고르고, 확인 창에 항목 이름이 보인다
@@ -17,6 +18,7 @@ void main() {
   late Directory tmp;
   late String left, right;
   late AppController c;
+  FakeRecycleBin? bin;
 
   setUp(() {
     tmp = Directory.systemTemp.createTempSync('jj_conflict_');
@@ -32,10 +34,12 @@ void main() {
     c.settings.explorerPaths = [left, right];
     final root = p.rootPrefix(tmp.path);
     ExplorerPage.debugVolumes = () => [(root, root.replaceAll(RegExp(r'[\\/]+$'), ''))];
+    // 휴지통: 기본은 가짜 (흐름만), JJ_TEST_REAL_RECYCLE=1 이면 실제 휴지통
+    bin = useTestRecycleBin();
   });
   tearDown(() async {
     ExplorerPage.debugVolumes = null;
-    // 휴지통을 건드리는 시험 (148 · 144): 사용자 휴지통에 이 시험 폴더 아래의 흔적이 없는지 스스로 확인
+    // 사용자 휴지통에 이 시험 폴더 아래의 흔적이 없는지 스스로 확인 (가짜일 때도 - 실제 휴지통에 닿지 않았는지)
     expect(await recycleLeftovers(tmp.path), 0, reason: '사용자 휴지통에 시험 흔적 없음 (하위 폴더 포함)');
     tmp.deleteSync(recursive: true);
   });
@@ -166,6 +170,7 @@ void main() {
     await settle(tester, () => find.textContaining('되돌렸습니다').evaluate().isNotEmpty);
     expect(File(p.join(left, 'doc.txt')).readAsStringSync(), 'new');
     expect(find.textContaining('1개 항목을 되돌렸습니다.'), findsOneWidget);
+    if (bin != null) expect(bin!.items, isEmpty, reason: '가짜 휴지통에서 되돌림');
     // 알림 (10초) 이 시험이 끝난 뒤에 닫히지 않게 정리
     ScaffoldMessenger.of(tester.element(find.byType(ExplorerPage))).clearSnackBars();
     await tester.pumpAndSettle();
