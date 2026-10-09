@@ -76,6 +76,7 @@ class StartMenu {
 
   static String _q(String s) => s.replaceAll("'", "''");
 
+  // l10n-skip: PowerShell 스크립트 (안의 한글은 주석)
   static String _script(String lnk, String exe, {bool registerProtocol = true}) => '''
 \$ErrorActionPreference = 'Stop'
 \$lnk = '${_q(lnk)}'

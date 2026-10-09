@@ -13,13 +13,13 @@ import 'theme.dart';
 String get licenseNoticesAsset =>
     Platform.isAndroid ? 'assets/licenses/THIRD_PARTY_NOTICES_ANDROID.txt' : 'assets/licenses/THIRD_PARTY_NOTICES.txt';
 
-/// 앱 안 라이선스 화면 (showLicensePage) 에 넣을 것: (구성 요소들, 원문 asset)
+/// 앱 안 라이선스 화면 (showLicensePage) 에 넣을 것: (구성 요소들, 원문 asset). 화면을 열 때마다 모으므로 이름은 지금 화면 언어로
 List<(List<String>, String)> get _licenseAssets => [
   (['JJ_MKVMaker - THIRD_PARTY_NOTICES'], licenseNoticesAsset),
   (
     [
       'FFmpeg (Windows ffmpeg.exe 9.0.2 · Android FFmpegKit n8.1.2)',
-      'yt-dlp (실행 파일 yt-dlp.exe)',
+      tr('yt-dlp (실행 파일 yt-dlp.exe)'),
       'rsync',
       'FFmpegKit (ffmpeg_kit_flutter_new_min_gpl)',
       'youtubedl-android',
@@ -29,14 +29,14 @@ List<(List<String>, String)> get _licenseAssets => [
   ),
   (['aria2'], 'assets/licenses/GPL-2.0.txt'),
   (['libmpv (media_kit, LGPL-2.1+)'], 'assets/licenses/LGPL-2.1.txt'),
-  (['yt-dlp (실행 파일에 묶인 구성 요소)'], 'assets/licenses/YT-DLP_THIRD_PARTY_LICENSES.txt'),
+  ([tr('yt-dlp (실행 파일에 묶인 구성 요소)')], 'assets/licenses/YT-DLP_THIRD_PARTY_LICENSES.txt'),
   (['rsync'], 'assets/licenses/RSYNC_COPYING.txt'),
   (['PDFium'], 'assets/licenses/PDFIUM_LICENSES.txt'),
   // 175: 함께 빌드한 네이티브 라이브러리 (Dart 쪽 패키지 라이선스와 따로)
-  (['whisper.cpp · ggml (whisper_ggml 안)'], 'assets/licenses/WHISPER_CPP_LICENSE.txt'),
+  ([tr('whisper.cpp · ggml (whisper_ggml 안)')], 'assets/licenses/WHISPER_CPP_LICENSE.txt'),
   (['ONNX Runtime 1.15.1 (Microsoft)'], 'assets/licenses/ONNXRUNTIME_LICENSES.txt'),
-  (['Whisper 모델 (OpenAI)'], 'assets/licenses/WHISPER_MODEL_LICENSE.txt'),
-  (['NLLB-200 번역 모델 (CC BY-NC 4.0 · 비상업적 이용만)'], nllbLicenseAsset),
+  ([tr('Whisper 모델 (OpenAI)')], 'assets/licenses/WHISPER_MODEL_LICENSE.txt'),
+  ([tr('NLLB-200 번역 모델 (CC BY-NC 4.0 · 비상업적 이용만)')], nllbLicenseAsset),
 ];
 
 /// main 에서 한 번: 위 원문과 AI 구성 요소 · 모델 (OpenRAIL-M 용도 제한 포함) 을 라이선스 화면에

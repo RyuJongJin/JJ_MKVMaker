@@ -430,7 +430,7 @@ class FileOps {
 
     for (final s in sources) {
       if (FileSystemEntity.isDirectorySync(s) && isSameOrInside(destDir, s)) {
-        throw FileSystemException('폴더를 자기 안으로 복사할 수 없습니다', s);
+        throw FileSystemException(tr('폴더를 자기 안으로 복사할 수 없습니다'), s);
       }
       final target = await _targetFor(s, destDir);
       if (target == null) continue;
@@ -446,7 +446,7 @@ class FileOps {
     final made = <String>[];
     for (final s in sources) {
       _check();
-      if (isSameOrInside(destDir, s)) throw FileSystemException('폴더를 자기 안으로 옮길 수 없습니다', s);
+      if (isSameOrInside(destDir, s)) throw FileSystemException(tr('폴더를 자기 안으로 옮길 수 없습니다'), s);
       if (samePath(p.dirname(s), destDir)) {
         made.add(s); // 이미 그 폴더에 있음
         continue;
@@ -574,7 +574,7 @@ class FileOps {
     if (isDav(path)) {
       final target = vJoin(vDirname(path), name);
       if (target == vNorm(path)) return target;
-      if (await vExists(target)) throw FileSystemException('같은 이름이 이미 있습니다', target);
+      if (await vExists(target)) throw FileSystemException(tr('같은 이름이 이미 있습니다'), target);
       await vRename(path, target);
       return target;
     }
@@ -582,7 +582,7 @@ class FileOps {
     if (target == path) return path;
     if (FileSystemEntity.typeSync(target) != FileSystemEntityType.notFound &&
         target.toLowerCase() != path.toLowerCase()) {
-      throw FileSystemException('같은 이름이 이미 있습니다', target);
+      throw FileSystemException(tr('같은 이름이 이미 있습니다'), target);
     }
     final t = FileSystemEntity.typeSync(path);
     return t == FileSystemEntityType.directory
@@ -592,16 +592,16 @@ class FileOps {
 
   static Future<String> makeFolder(String dir, String name) async {
     final n = name.trim();
-    if (n.isEmpty || n.contains(RegExp(r'[\\/:*?"<>|]'))) throw FileSystemException('쓸 수 없는 이름입니다', n);
+    if (n.isEmpty || n.contains(RegExp(r'[\\/:*?"<>|]'))) throw FileSystemException(tr('쓸 수 없는 이름입니다'), n);
     if (isDav(dir)) {
       final target = vJoin(dir, n);
-      if (await vExists(target)) throw FileSystemException('같은 이름이 이미 있습니다', target);
+      if (await vExists(target)) throw FileSystemException(tr('같은 이름이 이미 있습니다'), target);
       await vMkdirs(target);
       return target;
     }
     final target = p.join(dir, n);
     if (FileSystemEntity.typeSync(target) != FileSystemEntityType.notFound) {
-      throw FileSystemException('같은 이름이 이미 있습니다', target);
+      throw FileSystemException(tr('같은 이름이 이미 있습니다'), target);
     }
     return (await Directory(target).create()).path;
   }
@@ -676,7 +676,7 @@ class FileOps {
     Future<void> copyAny(String src, String target) async {
       _check();
       final st = await vStat(src);
-      if (st == null) throw FileSystemException('원본이 없습니다', src);
+      if (st == null) throw FileSystemException(tr('원본이 없습니다'), src);
       if (st.isDir) {
         await vMkdirs(target);
         for (final e in await vList(src)) {
@@ -691,7 +691,7 @@ class FileOps {
     }
 
     for (final s in sources) {
-      if (isSameOrInside(destDir, s) && await vIsDir(s)) throw FileSystemException('폴더를 자기 안으로 복사할 수 없습니다', s);
+      if (isSameOrInside(destDir, s) && await vIsDir(s)) throw FileSystemException(tr('폴더를 자기 안으로 복사할 수 없습니다'), s);
       final target = await _targetFor(s, destDir);
       if (target == null) continue;
       await copyAny(s, target);
@@ -704,7 +704,7 @@ class FileOps {
     final made = <String>[];
     for (final s in sources) {
       _check();
-      if (isSameOrInside(destDir, s)) throw FileSystemException('폴더를 자기 안으로 옮길 수 없습니다', s);
+      if (isSameOrInside(destDir, s)) throw FileSystemException(tr('폴더를 자기 안으로 옮길 수 없습니다'), s);
       if (samePath(vDirname(s), destDir)) {
         made.add(s);
         continue;

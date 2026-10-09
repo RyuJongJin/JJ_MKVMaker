@@ -14,7 +14,8 @@ import tempfile
 
 here = os.path.dirname(os.path.abspath(__file__))
 out = os.path.join(tempfile.gettempdir(), 'jj_l10n_keys.json')
-subprocess.run([sys.executable, os.path.join(here, 'extract_keys.py'), out], check=True)
+out2 = os.path.join(tempfile.gettempdir(), 'jj_l10n_unwrapped.json')
+subprocess.run([sys.executable, os.path.join(here, 'extract_keys.py'), out, out2], check=True)
 keys = json.load(open(out, encoding='utf-8'))
 missing = 0
 for lang in ['en', 'ja', 'zh-Hans']:
@@ -23,5 +24,11 @@ for lang in ['en', 'ja', 'zh-Hans']:
     missing += len(miss)
     for k in miss:
         print('%s 사전에 없음: %r' % (lang, k))
+# 60: tr 로 감싸지 않은 한글 글. 사전에 있으면 tr(변수) 로 번역되는 것으로 본다 - 없으면 번역이 빠진 것
+en = json.load(open(os.path.join('assets', 'l10n', 'en.json'), encoding='utf-8'))
+loose = [(p, n, t) for p, n, t in json.load(open(out2, encoding='utf-8')) if t not in en]
+for p, n, t in loose:
+    print('번역 안 된 글 (tr 로 감싸거나 사전에 넣기, 자료면 // l10n-skip): %s:%d %r' % (p, n, t[:80]))
+missing += len(loose)
 print('열쇠 %d개, 빠진 번역 %d개' % (len(keys), missing))
 sys.exit(1 if missing else 0)

@@ -479,6 +479,7 @@ Future<void> runAndroid(String dataDir) async {
   String? sharedSnapshots;
   try {
     final root = await const MethodChannel('jj_mkvmaker/android').invokeMethod<String>('storageRoot');
+    // l10n-skip: 실제 폴더 이름 (예전 보관을 찾아야 하므로 바꾸지 않음)
     if (root != null) sharedSnapshots = p.join(root, 'Download', 'JJ_MKVMaker', '설정 보관');
     if (root != null) ModelBackup.sharedRoot = p.join(root, 'Download', 'JJ_MKVMaker');
   } catch (_) {}

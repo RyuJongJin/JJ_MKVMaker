@@ -1,4 +1,9 @@
-"""lib 의 tr('…') / trf('…') 열쇠와 한국어 이름 (언어 · 선택 목록 · 모델) 을 모아 JSON 으로 쓴다."""
+"""lib 의 tr('…') / trf('…') 열쇠와 한국어 이름 (언어 · 선택 목록 · 모델) 을 모아 JSON 으로 쓴다.
+
+두 번째 인자를 주면 tr 로 감싸지 않은 한글 글 ([경로, 줄, 글]) 도 쓴다 (60: tr(변수) 로 나중에 번역되거나 아예 번역이 빠진 글).
+번역하지 않는 자료 (말버릇 목록 · 정규식 · 스크립트 · 실제 폴더 이름 등) 는 그 줄이나 바로 위 줄에 `// l10n-skip`,
+파일 전체면 맨 위쪽에 `// l10n-skip-file`. raw 문자열 (r'…') 은 정규식이라 보지 않는다.
+"""
 import json
 import os
 import re
@@ -86,6 +91,7 @@ def literal_groups(src):
 
 
 keys = set()
+unwrapped = []
 NAMED = {'lib/core/languages.dart', 'lib/core/download_detect.dart', 'lib/core/encode_options.dart',
          'lib/core/playlist.dart', 'lib/services/model_store.dart'}
 for root, _, files in os.walk('lib'):
@@ -104,16 +110,26 @@ for root, _, files in os.walk('lib'):
                     if part[0] == 'expr':
                         todo.extend((part[1], st, ls) for st, ls in literal_groups(part[1]))
             k += 1
+        skip_file = '// l10n-skip-file' in src
+        lines = src.split('\n')
         for text_src, start, lits in todo:
-            before = text_src[max(0, start - 8):start]
+            # 60: trf( 뒤에서 줄을 바꾼 것도 (예전에는 앞 8글자만 봐서 놓쳤다)
+            before = text_src[max(0, start - 200):start]
             wrapped = re.search(r'\btrf?\(\s*$', before) is not None
             text = group_text(lits)
             if not HANGUL.search(text):
                 continue
             if wrapped or (path in NAMED and not any(l.raw for l in lits)):
                 keys.add(text)
+            elif not skip_file and not any(l.raw for l in lits) and text_src is src:
+                line = src.count('\n', 0, start)
+                near = lines[line] + (lines[line - 1] if line > 0 else '')
+                if '// l10n-skip' not in near:
+                    unwrapped.append([path, line + 1, text])
 # 광고 건너뛰기 표시 (youtube_ads.dart 는 스크립트라 따로)
 keys.add('광고 건너뛰는 중…')
 out = sorted(keys)
 json.dump(out, open(sys.argv[1], 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+if len(sys.argv) > 2:
+    json.dump(unwrapped, open(sys.argv[2], 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
 print(len(out), sum(len(k) for k in out))

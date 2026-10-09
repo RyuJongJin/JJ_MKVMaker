@@ -1,3 +1,5 @@
+import '../l10n/tr.dart';
+
 /// 123 · 121: 기기 안 AI (그림 만들기 · 해상도 올리기) 에 받는 파일. 공식 배포처 주소와 SHA-256 을 고정한다.
 /// 상업 사용이 막힌 라이선스 (CC-BY-NC 계열) 는 넣지 않는다.
 class AiFile {
@@ -161,14 +163,16 @@ const sdCppLicenseAsset = 'assets/licenses/STABLE_DIFFUSION_CPP_LICENSES.txt';
 List<(String, String, String?)> aiLicenseTexts() => [
       (
         'stable-diffusion.cpp',
-        'MIT License - https://github.com/leejet/stable-diffusion.cpp ($sdCppVersion)\n\n'
+        trf(
+            'MIT License - https://github.com/leejet/stable-diffusion.cpp ({0})\n\n'
             '함께 묶인 구성 요소: ggml (MIT) · libwebp · libwebm (BSD-3) · Oniguruma · Darts-clone (BSD-2) · utf8proc · '
             'nlohmann/json · miniz · stb (MIT) · zip (Unlicense)',
+            [sdCppVersion]),
         sdCppLicenseAsset,
       ),
       for (final f in aiCatalog)
         if (f.kind != 'engine' || f.licenseAsset == null)
-          (f.name, '${f.license} - ${f.licenseUrl}${f.terms == null ? '' : '\n\n${f.terms}'}', f.licenseAsset),
+          (tr(f.name), '${tr(f.license)} - ${f.licenseUrl}${f.terms == null ? '' : '\n\n${tr(f.terms!)}'}', f.licenseAsset),
     ];
 
 /// 121: 해상도 올리기 모델 (설정 'auto' · 'photo' · 'anime'). 자동은 폰이면 가볍고 빠른 만화용, PC 면 사진용 (x4plus)

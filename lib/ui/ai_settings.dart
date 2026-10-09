@@ -84,7 +84,7 @@ class _AiSettingsState extends State<AiSettings> {
       context: context,
       builder: (ctx) => AlertDialog(
         scrollable: true,
-        title: Text(trf('{0} 라이선스', [f.license])),
+        title: Text(trf('{0} 라이선스', [tr(f.license)])),
         content: SizedBox(
           width: 520,
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -93,7 +93,7 @@ class _AiSettingsState extends State<AiSettings> {
             SelectableText(f.licenseUrl, style: const TextStyle(fontSize: 12, color: JjColors.textDim)),
             if (f.licenseAsset != null)
               TextButton(
-                onPressed: () => showLicenseDocument(ctx, trf('{0} 라이선스', [f.license]), f.licenseAsset!),
+                onPressed: () => showLicenseDocument(ctx, trf('{0} 라이선스', [tr(f.license)]), f.licenseAsset!),
                 child: Text(tr('라이선스 원문 보기')),
               ),
           ]),
@@ -364,7 +364,7 @@ class _AiSettingsState extends State<AiSettings> {
             : Wrap(crossAxisAlignment: WrapCrossAlignment.center, children: [
                 Text([
                   AiStore.sizeText(f.size),
-                  f.license,
+                  tr(f.license),
                   if (installed) tr('받음'),
                   // 받을 때 SHA-256 을 공식 값과 맞춰 보았다
                   if (installed && store.isVerified(f)) tr('확인됨'),
@@ -376,7 +376,7 @@ class _AiSettingsState extends State<AiSettings> {
                   TextButton(
                     style: TextButton.styleFrom(
                         visualDensity: VisualDensity.compact, padding: const EdgeInsets.symmetric(horizontal: 6)),
-                    onPressed: () => showLicenseDocument(context, trf('{0} 라이선스', [f.license]), f.licenseAsset!),
+                    onPressed: () => showLicenseDocument(context, trf('{0} 라이선스', [tr(f.license)]), f.licenseAsset!),
                     child: Text(tr('원문')),
                   ),
               ]),

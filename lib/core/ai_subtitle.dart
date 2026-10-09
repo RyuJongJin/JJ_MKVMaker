@@ -1,3 +1,4 @@
+// l10n-skip-file: 음성인식 결과를 고르는 자료 (말버릇 · 맞장구 목록) 라 번역하지 않는다
 import 'languages.dart';
 import 'srt.dart';
 
