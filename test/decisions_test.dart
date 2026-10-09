@@ -13,6 +13,7 @@ import 'package:jj_mkvmaker/services/app_shell.dart';
 import 'package:jj_mkvmaker/services/platform_services.dart';
 import 'package:jj_mkvmaker/services/secret_store.dart';
 import 'package:jj_mkvmaker/ui/dav_external.dart';
+import 'package:jj_mkvmaker/ui/migration_notice.dart';
 import 'package:path/path.dart' as p;
 
 class _Shell extends NoopShell {
@@ -104,4 +105,37 @@ void main() {
       }
     });
   }
+
+  test('116: 예전 판의 "권한 안내 보임" 표시는 읽지 않는다 (권한이 없으면 이 판에서 한 번 더 안내)', () {
+    expect(AppSettings.fromJson({'allFilesHintShown': true}).allFilesHintShown, isFalse);
+    expect(AppSettings.fromJson((AppSettings()..allFilesHintShown = true).toJson()).allFilesHintShown, isTrue);
+  });
+
+  testWidgets('126: "바뀐 기본 설정" 창을 닫으면 바로 저장 - 강제 종료 뒤 켜도 다시 뜨지 않음', (tester) async {
+    final dir = Directory.systemTemp.createTempSync('jj_migr_');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final file = p.join(dir.path, 'settings.json');
+    // 예전 판이 남긴 설정 (두 창 배치 '화면 모양 따라')
+    File(file).writeAsStringSync('{"explorerOrientation": "auto", "explorerV2": true, "orientationV2": true}');
+    final store = SettingsStore(file, MemorySecretStore());
+    final c = AppController(PlatformServices(mediaTool: ProcessMediaTool('x', 'y'), storage: DesktopStorageService()),
+        settingsStore: store);
+    await tester.runAsync(c.init);
+    expect(c.settings.migrated, contains('explorerOrientation'));
+    await tester.pumpWidget(const MaterialApp(home: Scaffold(body: SizedBox())));
+    final ctx = tester.element(find.byType(SizedBox));
+    unawaited(showMigrationNotice(ctx, c));
+    await tester.pumpAndSettle();
+    expect(find.text('이번 업데이트로 바뀐 기본 설정'), findsOneWidget);
+    await tester.tap(find.text('확인'));
+    // 파일 쓰기 (진짜 입출력) 가 끝나게 몇 번 돌려 준다
+    for (var i = 0; i < 20; i++) {
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+      await tester.pump();
+    }
+    // 강제 종료 뒤 다시 켬 = 파일을 새로 읽음
+    final again = await tester.runAsync(() => SettingsStore(file, MemorySecretStore()).load());
+    expect(again!.migrated, isEmpty);
+    expect(again.explorerOrientation, 'side');
+  });
 }

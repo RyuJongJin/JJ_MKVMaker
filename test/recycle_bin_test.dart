@@ -41,6 +41,8 @@ void main() {
     try {
       expect(hasRecycleBin(f.path), isTrue); // 임시 폴더는 고정 디스크
       expect(moveToRecycleBin(f.path), RecycleResult.recycled);
+      // 수를 세지 않고 휴지통 안의 정보 파일 ($I, 원래 경로) 로 확인할 수 있다
+      expect(recycledInfoExists(f.absolute.path, since: DateTime.now().subtract(const Duration(minutes: 1))), isTrue);
       expect(f.existsSync(), isFalse);
       expect(moveToRecycleBin(d.path), RecycleResult.recycled);
       expect(d.existsSync(), isFalse);
@@ -50,6 +52,18 @@ void main() {
       expect(await _purgeFromRecycleBin(tmp.absolute.path), 2);
     }
   }, skip: !Platform.isWindows);
+
+  test(r'휴지통 정보 파일 ($I) 에서 원래 경로 읽기 - Windows 10 이상 (판 2) · 예전 (판 1)', () {
+    List<int> le(int v, int n) => [for (var i = 0; i < n; i++) v >> (8 * i) & 0xff];
+    List<int> utf16(String s) => [for (final u in s.codeUnits) ...le(u, 2)];
+    const path = r'C:\영상\a b.mkv';
+    final v2 = [...le(2, 8), ...le(1234, 8), ...le(0, 8), ...le(path.length + 1, 4), ...utf16(path), 0, 0];
+    expect(recycledInfoPath(v2), path);
+    final v1 = [...le(1, 8), ...le(1234, 8), ...le(0, 8), ...utf16(path), ...List.filled(520 - path.length * 2, 0)];
+    expect(recycledInfoPath(v1), path);
+    expect(recycledInfoPath([9, 9, 9]), isNull);
+    expect(recycledInfoPath([...le(7, 8), ...List.filled(40, 0)]), isNull);
+  });
 
   test('94: 휴지통이 없는 곳 (네트워크 공유 · 없는 드라이브) 은 휴지통으로 보내지 않는다 · 98: 이유는 읽을 수 있는 말', () {
     expect(hasRecycleBin(r'\\NAS\share\a.mkv'), isFalse);

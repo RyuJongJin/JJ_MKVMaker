@@ -52,19 +52,29 @@ class _DpapiSecretStore implements SecretStore {
 
   Map<String, String>? _cache;
 
+  /// 읽은 파일의 고친 시각 · 크기 (130: 다른 창 · 프로세스가 고쳤으면 다시 읽는다)
+  (DateTime, int)? _stamp;
+
   @override
   String? lostCopy;
 
   @override
   Future<Map<String, String>> readAll() async => Map.of(await _load());
 
+  /// 파일이 읽은 뒤로 바뀌지 않았으면 기억해 둔 것, 바뀌었으면 (두 번째 재생 창 · 다른 실행이 씀) 다시 읽는다
   Future<Map<String, String>> _load() async {
-    if (_cache != null) return _cache!;
     final f = await _file();
-    if (!await f.exists()) return _cache = {};
+    if (!await f.exists()) {
+      _stamp = null;
+      return _cache = {};
+    }
+    final st = await f.stat();
+    final stamp = (st.modified, st.size);
+    if (_cache != null && _stamp == stamp) return _cache!;
     final bytes = await f.readAsBytes();
     try {
       final j = jsonDecode(utf8.decode(_dpapi(bytes, protect: false))) as Map;
+      _stamp = stamp;
       return _cache = {for (final e in j.entries) '${e.key}': '${e.value}'};
     } catch (_) {
       // 풀 수 없음 (다른 PC · 다른 사용자에서 복사해 옴 등): 지우지 않고 보관한 뒤 새로 시작
@@ -87,9 +97,12 @@ class _DpapiSecretStore implements SecretStore {
     final tmp = File('${f.path}.tmp');
     await tmp.writeAsBytes(_dpapi(Uint8List.fromList(utf8.encode(jsonEncode(m))), protect: true), flush: true);
     await tmp.rename(f.path);
+    final st = await f.stat();
+    _stamp = (st.modified, st.size);
     _cache = m;
   }
 
+  /// 130: 쓰기 · 지우기 바로 전에 파일을 다시 읽어 (다른 창이 그사이 바꾼 것과) 합친다
   @override
   Future<void> write(String key, String value) async => _save({...await _load(), key: value});
 

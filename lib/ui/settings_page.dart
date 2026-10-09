@@ -31,6 +31,9 @@ import 'theme.dart';
 import '../l10n/tr.dart';
 import 'setting_tile.dart';
 import 'component_settings.dart';
+import 'browser_page.dart' show deleteExportedCookies;
+import 'security_settings.dart';
+import '../app/master_lock.dart';
 import 'toast_status.dart';
 
 /// 동시 작업 수 고르기: 1 · 5 · 10 · 무한(0) · 직접 입력
@@ -231,6 +234,23 @@ class _SettingsPageState extends State<SettingsPage> {
   late final _hotkey = TextEditingController(text: c.settings.showHotkey);
   String? _hotkeyError;
 
+  /// 124: 마스터 비밀번호를 넣기 전에는 설정을 보이지 않는다 (정해 두었고 묻는 때가 "물어보지 않기" 가 아니면)
+  bool _locked = MasterLock.instance?.needsPrompt() ?? false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_locked) WidgetsBinding.instance.addPostFrameCallback((_) => _unlock());
+  }
+
+  Future<void> _unlock() async {
+    final lock = MasterLock.instance;
+    if (lock == null || !mounted) return;
+    // 128: 시작 창 · 배경 작업과 같은 창 하나로 (사용자가 연 것이니 취소한 적이 있어도 묻는다)
+    final ok = await lock.ensure(force: true, reason: tr('환경 설정을 열려면 마스터 비밀번호를 넣으세요. 앱을 끌 때까지 다시 묻지 않습니다.'));
+    if (mounted) setState(() => _locked = !ok && lock.needsPrompt());
+  }
+
   @override
   void dispose() {
     _hotkey.dispose();
@@ -253,6 +273,24 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (_locked) {
+      return Scaffold(
+        body: Column(children: [
+          AppTopBar(nav: const AppNavButtons(), actions: AppActions(c: c, onSettingsPage: true), middle: Text(tr('환경 설정'))),
+          Expanded(
+            child: Center(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                const Icon(Icons.lock_outline, size: 48, color: JjColors.textDim),
+                const SizedBox(height: 12),
+                Text(tr('마스터 비밀번호로 잠겨 있습니다')),
+                const SizedBox(height: 12),
+                FilledButton(onPressed: _unlock, child: Text(tr('마스터 비밀번호 넣기'))),
+              ]),
+            ),
+          ),
+        ]),
+      );
+    }
     return ListenableBuilder(
       listenable: c,
       builder: (context, _) {
@@ -343,6 +381,8 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                     ),
                   ]),
+                  // 124: 최상 · 마스터 비밀번호
+                  _group('security', Icons.lock_outline, tr('보안'), [SecuritySettings(c: c)]),
                   _group('components', Icons.extension_outlined, tr('컴포넌트'), [ComponentSettings(c: c)]),
                   _group('display', Icons.aspect_ratio, tr('화면'), [
                     if (!desk)
@@ -774,10 +814,51 @@ class _SettingsPageState extends State<SettingsPage> {
                                 ..ytCookiesBrowser = v ?? ''
                                 ..ytCookiesFile = '');
                             }
+                            // 131: 앱 안 브라우저 로그인을 더 쓰지 않으면 내보내 둔 평문 쿠키 파일을 지운다
+                            if (c.settings.ytCookiesBrowser != internalBrowserCookies) {
+                              await deleteExportedCookies(c.settings.webViewDataDir);
+                              if (mounted) setState(() {});
+                            }
                           },
                         ),
                       ]),
                     ),
+                    // 53: 앱 안 브라우저 쿠키 - 어디에 어떻게 저장되는지 · 넘길 사이트 고르기 · 지우기
+                    // 131: 쓰지 않게 바꿨어도 파일이 남아 있으면 지우는 버튼은 보인다
+                    if (s.ytCookiesBrowser == internalBrowserCookies || s.internalCookieFile.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text(
+                              tr('로그인 쿠키는 다운로드 (yt-dlp) 가 쓰도록 이 기기의 앱 폴더에 cookies_youtube.txt 로 저장됩니다 (평문). '
+                                  '이 파일을 가진 사람은 그 계정에 로그인할 수 있으니 기기를 남에게 줄 때는 지우세요. 고른 사이트의 쿠키만 넘깁니다:'),
+                              style: const TextStyle(fontSize: 12, color: JjColors.textDim)),
+                          const SizedBox(height: 6),
+                          Wrap(spacing: 6, runSpacing: 6, children: [
+                            for (final d in loginCookieDomains)
+                              FilterChip(
+                                label: Text(d),
+                                selected: s.loginCookieSites.contains(d),
+                                onSelected: (on) => c.updateSettings((x) => x.loginCookieSites = [
+                                      for (final y in x.loginCookieSites) if (y != d) y,
+                                      if (on) d,
+                                    ]),
+                              ),
+                            OutlinedButton.icon(
+                              icon: const Icon(Icons.cookie_outlined, size: 18),
+                              label: Text(tr('쿠키 파일 지우기')),
+                              onPressed: () async {
+                                await deleteExportedCookies(s.webViewDataDir);
+                                if (!context.mounted) return;
+                                setState(() {});
+                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                                    content: Text(tr('내보낸 쿠키 파일을 지웠습니다. 브라우저의 로그인까지 지우려면 '
+                                        '웹 브라우저 화면의 [쿠키 · 방문 기록 지우기] 를 누르세요.'))));
+                              },
+                            ),
+                          ]),
+                        ]),
+                      ),
                     SettingTile(
                       title: Text(tr('동시 다운로드 수')),
                       subtitle: Text(tr('나머지는 대기했다가 차례로 받습니다')),
@@ -973,11 +1054,13 @@ class _SettingsPageState extends State<SettingsPage> {
   final _groupKeys = <String, GlobalKey>{};
 
   static const _groupIds = [
-    'general', 'components', 'display', 'mkv', 'subtitle', 'play', 'browser', 'files', 'rsync', 'download', 'run', 'cleanup', 'about', //
+    'general', 'security', 'components', 'display', 'mkv', 'subtitle', 'play', 'browser', 'files', 'rsync', 'download', 'run', //
+    'cleanup', 'about',
   ];
 
   String _groupTitle(String id) => switch (id) {
         'general' => tr('일반'),
+        'security' => tr('보안'),
         'display' => tr('화면'),
         'components' => tr('컴포넌트'),
         'mkv' => tr('MKV 만들기'),

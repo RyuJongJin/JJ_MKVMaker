@@ -395,7 +395,14 @@ class LiveSync extends ChangeNotifier {
     } on SourceUnreadableException catch (e) {
       // 68 · 70: 대상은 건드리지 않고 멈춤. 카드에 빨갛게 · 작업 알림에 · 로그에
       problems[k] = e;
-      status[k] = (DateTime.now(), e.empty ? tr('원본 폴더가 비어 있어 멈춤') : tr('원본을 읽을 수 없어 멈춤'));
+      status[k] = (
+        DateTime.now(),
+        e.locked
+            ? tr('마스터 비밀번호가 필요해 기다리는 중')
+            : e.empty
+                ? tr('원본 폴더가 비어 있어 멈춤')
+                : tr('원본을 읽을 수 없어 멈춤')
+      );
       if (e.empty) {
         try {
           emptyDeletes[k] = [for (final d in await diff(asked, limit: 100000)) if (d.startsWith('− ')) d.substring(2)];

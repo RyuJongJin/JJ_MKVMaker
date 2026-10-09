@@ -64,6 +64,8 @@ class _Nav implements WebNav {
   @override
   Future<void> exportCookies() async => exported++;
   @override
+  Future<void> clearData() async {}
+  @override
   Future<Object?> evaluate(String js) async {
     scripts.add(js);
     return null;

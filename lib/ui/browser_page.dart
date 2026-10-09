@@ -12,7 +12,7 @@ import '../app/app_controller.dart';
 import '../app/bookmarks_controller.dart';
 import '../app/download_manager.dart';
 import '../core/bookmarks.dart';
-import '../core/download_detect.dart' show CookieRecord, isLoginCookieDomain, toNetscapeCookies;
+import '../core/download_detect.dart' show CookieExport, CookieRecord, internalBrowserCookies, isLoginCookieDomain, toNetscapeCookies;
 import '../core/web_address.dart';
 import '../core/web_translate.dart';
 import '../app/i18n_controller.dart' show I18nController;
@@ -22,6 +22,7 @@ import '../platform/windows/com_guard.dart';
 import '../services/downloader.dart' show DownloadState;
 import 'app_actions.dart';
 import 'bookmark_ui.dart';
+import 'confirm.dart';
 import 'downloads_page.dart';
 import 'theme.dart';
 import 'work_panel.dart';
@@ -43,6 +44,9 @@ abstract class WebNav {
 
   /// 페이지에서 스크립트 실행 (YouTube 광고 건너뛰기 등)
   Future<void> runScript(String js);
+
+  /// 53: 쿠키 · 사이트 데이터 · 캐시 · 방문 기록 (뒤로 · 앞으로 목록) 지우기 - 엔진이 지원하는 것만
+  Future<void> clearData();
 
   /// 페이지에서 스크립트를 실행하고 결과를 받는다 (페이지 번역). 실패하면 null.
   Future<Object?> evaluate(String js);
@@ -198,6 +202,7 @@ class _BrowserPageState extends State<BrowserPage> with RouteAware {
 
   void _onSettings() {
     if (!mounted) return;
+    _applyCookieExport();
     final s = widget.c.settings;
     if (s.webJavaScript != _lastJs) {
       _lastJs = s.webJavaScript;
@@ -276,8 +281,35 @@ class _BrowserPageState extends State<BrowserPage> with RouteAware {
     _lastTranslate = s.webTranslate;
     _lastJs = s.webJavaScript;
     _lastLang = s.uiLanguage;
+    _applyCookieExport();
     widget.c.addListener(_onSettings);
     if (_trOn) _translateNow();
+  }
+
+  /// 53: 쿠키를 쓰도록 정했을 때만 · 고른 사이트만 내보낸다
+  void _applyCookieExport() {
+    final s = widget.c.settings;
+    CookieExport.enabled = s.ytCookiesBrowser == internalBrowserCookies;
+    CookieExport.sites = s.loginCookieSites;
+  }
+
+  /// 53: 쿠키 · 방문 기록 지우기 (확인 뒤). 다운로드용으로 내보낸 쿠키 파일도 지운다
+  Future<void> _clearData() async {
+    final ok = await confirmAction(
+      context,
+      title: tr('쿠키 · 방문 기록 지우기'),
+      body: tr('앱 안 브라우저의 쿠키 (로그인) · 사이트 데이터 · 캐시 · 방문 기록과, 다운로드용으로 내보낸 쿠키 파일을 지웁니다. '
+          '사이트에 다시 로그인해야 합니다. 즐겨찾기는 그대로입니다.'),
+      ok: tr('지우기'),
+    );
+    if (!ok || !mounted) return;
+    try {
+      await _nav?.clearData();
+    } catch (_) {}
+    await deleteExportedCookies(widget.c.settings.webViewDataDir);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(tr('쿠키 · 방문 기록을 지웠습니다.'))));
+    unawaited(_nav?.reload());
   }
 
   @override
@@ -610,6 +642,7 @@ class _BrowserPageState extends State<BrowserPage> with RouteAware {
           ),
         const SizedBox(width: 4),
         if (!compact) btn(Icons.open_in_new, tr('외부 브라우저로 열기'), () => _openExternal(_url)),
+        if (!compact) btn(Icons.cookie_outlined, tr('쿠키 · 방문 기록 지우기'), _clearData),
         if (widget.c.busy && !_work && !compact)
           InkWell(
             onTap: _toggleWork,
@@ -634,6 +667,7 @@ class _BrowserPageState extends State<BrowserPage> with RouteAware {
               'translate' => _setTranslate(!_trOn, force: true),
               'external' => _openExternal(_url),
               'work' => _toggleWork(),
+              'clear' => _clearData(),
               _ => setState(() => _panel = !_panel),
             },
             itemBuilder: (_) => [
@@ -653,11 +687,25 @@ class _BrowserPageState extends State<BrowserPage> with RouteAware {
               PopupMenuItem(
                   value: 'external',
                   child: ListTile(dense: true, leading: const Icon(Icons.open_in_new), title: Text(tr('외부 브라우저로 열기')))),
+              PopupMenuItem(
+                  value: 'clear',
+                  child: ListTile(dense: true, leading: const Icon(Icons.cookie_outlined), title: Text(tr('쿠키 · 방문 기록 지우기')))),
             ],
           ),
       ]);
       }),
     );
+  }
+}
+
+/// 53: 다운로드용으로 내보낸 로그인 쿠키 파일 (평문) 을 지운다
+Future<void> deleteExportedCookies(String dataDir) async {
+  if (dataDir.isEmpty) return;
+  for (final name in [CookieExport.fileName, '${CookieExport.fileName}.tmp']) {
+    try {
+      final f = File('$dataDir${Platform.pathSeparator}$name');
+      if (await f.exists()) await f.delete();
+    } catch (_) {}
   }
 }
 
@@ -872,11 +920,27 @@ class _InAppNav implements WebNav {
   ];
 
   @override
+  Future<void> clearData() async {
+    Future<void> quiet(Future<void> Function() f) async {
+      try {
+        await f();
+      } catch (_) {} // 그 엔진이 지원하지 않는 것은 건너뛴다
+    }
+
+    await quiet(() => CookieManager.instance(webViewEnvironment: env).deleteAllCookies());
+    await quiet(() => WebStorageManager.instance().deleteAllData());
+    await quiet(() => c.clearHistory());
+    await quiet(() => InAppWebViewController.clearAllCache());
+  }
+
+  @override
   Future<void> exportCookies() async {
     if (dataDir.isEmpty) return;
     final cm = CookieManager.instance(webViewEnvironment: env);
     final all = <CookieRecord>[];
+    if (!CookieExport.enabled) return;
     for (final site in _cookieSites) {
+      if (!isLoginCookieDomain(Uri.parse(site).host)) continue;
       for (final k in await cm.getCookies(url: WebUri(site))) {
         // 만료 시각: Windows 는 초, Android 등은 밀리초로 준다 → 초로 통일
         final raw = k.expiresDate ?? 0;
@@ -1047,8 +1111,24 @@ class _CefNav implements WebNav {
   /// YouTube · Google 등의 쿠키를 yt-dlp 용 cookies.txt 로 (Edge 와 같은 파일 - 지금 쓰는 엔진의 로그인이 쓰인다).
   /// Chrome 엔진은 쿠키의 이름 · 값만 알려 주므로 만료 · 보안 표시는 기본값으로 적는다.
   @override
+  Future<void> clearData() async {
+    // Chrome 엔진은 모두 지우기가 없어 쿠키를 하나씩 지운다
+    try {
+      final raw = await cef.WebviewManager().visitAllCookies();
+      if (raw is Map) {
+        for (final e in raw.entries) {
+          if (e.value is! Map) continue;
+          for (final name in (e.value as Map).keys) {
+            await cef.WebviewManager().deleteCookie('${e.key}', '$name');
+          }
+        }
+      }
+    } catch (_) {}
+  }
+
+  @override
   Future<void> exportCookies() async {
-    if (dataDir.isEmpty) return;
+    if (dataDir.isEmpty || !CookieExport.enabled) return;
     final raw = await cef.WebviewManager().visitAllCookies();
     if (raw is! Map) return;
     final all = <CookieRecord>[];

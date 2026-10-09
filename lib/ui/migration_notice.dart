@@ -15,6 +15,8 @@ Future<void> showMigrationNotice(BuildContext context, AppController c) async {
         'explorerLayout' =>
           tr('파일 탐색기 창: 두 창 → 화면 크기 따라 (폰 세로는 한 창). 되돌리기: 환경 설정 > 파일 탐색기 > 창 배치'),
         'explorerClick' => tr('파일 탐색기 누르기: 한 번 누르면 선택 → 한 번 누르면 바로 실행. 되돌리기: 환경 설정 > 파일 탐색기 > 누르기'),
+        'cookieScope' => tr('앱 안 브라우저의 로그인 쿠키: YouTube · Google 에 더해 Instagram · X · 네이버 (치지직) 로그인도 '
+            '다운로드 (yt-dlp) 에 씁니다. 고르기 · 끄기 · 지우기: 환경 설정 > 다운로드 > YouTube 쿠키'),
         'explorerOrientation' => tr(
             '파일 탐색기 두 창 배치: 화면 모양 따라 → 좌우. 되돌리기: 파일 탐색기의 [좌우 ⇆ / 위아래 ⇅] 버튼 또는 창 배치'),
         'zipComic' => tr('ZIP · CBZ 두 번 누르기: 만화 보기 → 목록. 되돌리기: 환경 설정 > 파일 탐색기 > ZIP · CBZ 를 만화로 보기'),
@@ -47,6 +49,8 @@ Future<void> showMigrationNotice(BuildContext context, AppController c) async {
     ),
   );
   c.settings.migrated = [];
+  // 126: 옮긴 값을 바로 파일에 남긴다 (안 그러면 강제 종료 뒤 켤 때 예전 값을 다시 읽어 이 창이 또 뜬다)
+  await c.updateSettings((_) {});
   if (open == true && context.mounted) {
     await Navigator.push(context, MaterialPageRoute<void>(builder: (_) => SettingsPage(c: c)));
   }

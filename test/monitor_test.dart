@@ -131,7 +131,10 @@ void main() {
       expect(LiveSync.activeNow(pair), isFalse);
       c.settings.liveSyncPairs = [pair];
       final live = LiveSync(c)..start();
-      await Future<void>.delayed(const Duration(seconds: 4)); // 모아서 3초 뒤
+      // 모아서 3초 뒤 (컴퓨터가 바쁘면 늦을 수 있어 정해진 4초가 아니라 될 때까지 - 최대 20초)
+      for (var i = 0; i < 80 && (live.pending[LiveSync.keyOf(pair)]?.length ?? 0) < 2; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 250));
+      }
       expect(live.pending[LiveSync.keyOf(pair)], hasLength(2));
       expect(Directory(target).existsSync(), isFalse); // 일정 밖: 맞추지 않음
       // 지금 맞추기는 늘 된다

@@ -257,6 +257,9 @@ class AppSettings {
 
   /// YouTube 로봇 확인 대응: 쿠키를 가져올 브라우저 (빈 값 = 사용 안 함) 또는 cookies.txt 경로
   String ytCookiesBrowser = internalBrowserCookies; // 기본: 앱 안 브라우저 로그인 사용
+
+  /// 53: 앱 안 브라우저 로그인 쿠키를 넘길 사이트 (처음은 모두 - 28)
+  List<String> loginCookieSites = [...loginCookieDomains];
   String ytCookiesFile = '';
 
   /// 동시에 받는 다운로드 수 (0 = 무제한)
@@ -417,6 +420,7 @@ class AppSettings {
   /// 40 · 54: 비밀번호를 이 기기의 안전 저장소에 기억 (끄면 저장하지 않고 앱을 켤 때마다 다시 넣음)
   bool rememberPasswords = true;
 
+
   /// 65 (Windows): 탐색기에서 지우면 휴지통으로 (끄면 늘 영구 삭제로 묻는다)
   bool recycleOnDelete = true;
 
@@ -529,6 +533,8 @@ class AppSettings {
         'ytPreferH264': ytPreferH264,
         'ytExpandPlaylists': ytExpandPlaylists,
         'ytCookiesBrowser': ytCookiesBrowser,
+        'loginCookieSites': loginCookieSites,
+        'cookieScopeV2': true,
         'ytCookiesFile': ytCookiesFile,
         'maxParallelDownloads': maxParallelDownloads,
         'maxParallelJobs': maxParallelJobs,
@@ -585,7 +591,8 @@ class AppSettings {
         'recycleOnDelete': recycleOnDelete,
         'tripleTapAction': tripleTapAction,
         'davExternalOpen': davExternalOpen,
-        'allFilesHintShown': allFilesHintShown,
+        // 116: 예전 판의 표시 ('allFilesHintShown') 는 권한이 없어진 것을 몰라 다시 띄우지 못했다 → 새 이름으로 한 번 더
+        'allFilesHint2': allFilesHintShown,
         'subtitleScale': subtitleScale,
         'zipComic': zipComic,
         // 예전 기본값 (만화 보기 켜짐) 은 지시와 반대였으므로 한 번 꺼진 상태 (목록) 로
@@ -666,6 +673,9 @@ class AppSettings {
       ..ytQuality = pick(YtQuality.values, j['ytQuality'], YtQuality.best)
       ..ytExpandPlaylists = j['ytExpandPlaylists'] as bool? ?? true
       ..ytCookiesBrowser = j['ytCookiesBrowser'] as String? ?? internalBrowserCookies
+      ..loginCookieSites = j['loginCookieSites'] is List
+          ? [for (final x in j['loginCookieSites'] as List) if (loginCookieDomains.contains(x)) '$x']
+          : [...loginCookieDomains]
       ..ytCookiesFile = j['ytCookiesFile'] as String? ?? ''
       ..maxParallelDownloads = (j['maxParallelDownloads'] as num?)?.toInt() ?? 3
       ..maxParallelJobs = (j['maxParallelJobs'] as num?)?.toInt() ?? 5
@@ -742,7 +752,7 @@ class AppSettings {
       ..recycleOnDelete = j['recycleOnDelete'] != false
       ..tripleTapAction = j['tripleTapAction'] == 'none' ? 'none' : 'move'
       ..davExternalOpen = const ['fetch', 'url'].contains(j['davExternalOpen']) ? j['davExternalOpen'] as String : 'ask'
-      ..allFilesHintShown = j['allFilesHintShown'] == true
+      ..allFilesHintShown = j['allFilesHint2'] == true
       ..subtitleScale = ((j['subtitleScale'] as num?)?.toDouble() ?? 1.0).clamp(0.5, 2.5)
       ..zipComic = j['zipComic'] == true && j['zipComicV2'] == true
       ..webdavServers = [
@@ -826,6 +836,9 @@ class AppSettings {
         if (j['explorerV2'] != true && j['explorerLayout'] == 'dual' && s.explorerLayout == 'auto') 'explorerLayout',
         if (j['explorerV2'] != true && j['explorerClick'] == 'select' && s.explorerClick == 'open') 'explorerClick',
         if (j['explorerOrientV3'] != true && j['explorerOrientation'] == 'auto') 'explorerOrientation',
+        // 53 · 28: 앱 안 브라우저 쿠키를 쓰던 사람에게 넘기는 사이트가 넓어졌음을 한 번 알린다
+        if (j['cookieScopeV2'] != true && j.isNotEmpty && (j['ytCookiesBrowser'] ?? internalBrowserCookies) == internalBrowserCookies)
+          'cookieScope',
         if (j['zipComicV2'] != true && j['zipComic'] != false && j.containsKey('imageExts') && !s.zipComic) 'zipComic',
         if (j['backgroundV2'] != true && j['runInBackground'] == false && s.runInBackground && Platform.isAndroid)
           'background',

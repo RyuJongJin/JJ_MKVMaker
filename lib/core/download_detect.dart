@@ -183,10 +183,21 @@ List<String> ytDlpFormatArgs(YtContainer c, YtQuality q, {bool preferH264 = fals
 /// yt-dlp 에 넘기는 로그인 쿠키의 사이트 (YouTube · Google · Instagram · X · 네이버 / 치지직 - 28)
 const loginCookieDomains = ['youtube.com', 'google.com', 'instagram.com', 'x.com', 'twitter.com', 'naver.com'];
 
-/// [d] (".x.com" 등) 가 [loginCookieDomains] 중 하나이거나 그 아래인지 (netflix.com 이 x.com 으로 잡히지 않게)
+/// 53: 앱 안 브라우저가 로그인 쿠키를 yt-dlp 용 파일로 내보낼지 · 어느 사이트만 (환경 설정 > 다운로드 > YouTube 쿠키)
+class CookieExport {
+  /// 쿠키를 쓰지 않으면 (앱 안 브라우저 로그인 사용이 아니면) 파일을 만들지 않는다
+  static bool enabled = true;
+  static List<String> sites = loginCookieDomains;
+
+  /// 내보낸 파일 이름 (앱 안 브라우저 데이터 폴더)
+  static const fileName = 'cookies_youtube.txt';
+}
+
+/// [d] (".x.com" 등) 가 내보낼 사이트 ([CookieExport.sites], 처음은 [loginCookieDomains] 모두) 중 하나이거나
+/// 그 아래인지 (netflix.com 이 x.com 으로 잡히지 않게)
 bool isLoginCookieDomain(String d) {
   final h = (d.startsWith('.') ? d.substring(1) : d).toLowerCase();
-  return loginCookieDomains.any((x) => h == x || h.endsWith('.$x'));
+  return CookieExport.sites.any((x) => h == x || h.endsWith('.$x'));
 }
 
 /// 앱 안 브라우저(내장 Edge) 의 쿠키를 쓰는 값

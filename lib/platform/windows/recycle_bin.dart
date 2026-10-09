@@ -56,6 +56,62 @@ int? _binCount(String path) {
   }
 }
 
+/// 휴지통 정보 파일 ($I…) 에 적힌 원래 경로. Windows 10 이상 (판 2: 길이 + 경로) · 예전 (판 1: 260자 고정). 모르면 null
+String? recycledInfoPath(List<int> bytes) {
+  if (bytes.length < 28) return null;
+  final version = bytes[0] | bytes[1] << 8;
+  int start, end;
+  if (version == 2) {
+    final n = bytes[24] | bytes[25] << 8 | bytes[26] << 16 | bytes[27] << 24;
+    start = 28;
+    end = start + n * 2;
+  } else if (version == 1) {
+    start = 24;
+    end = 24 + 520;
+  } else {
+    return null;
+  }
+  if (end > bytes.length) end = bytes.length - bytes.length % 2;
+  final units = <int>[];
+  for (var i = start; i + 1 < end; i += 2) {
+    final u = bytes[i] | bytes[i + 1] << 8;
+    if (u == 0) break;
+    units.add(u);
+  }
+  return String.fromCharCodes(units);
+}
+
+/// 그 드라이브 휴지통에 [original] 의 정보 파일이 [since] 뒤에 생겼는지. 휴지통 폴더를 읽을 수 없으면 null
+bool? recycledInfoExists(String original, {required DateTime since}) {
+  final m = RegExp(r'^([a-zA-Z]):').firstMatch(original);
+  if (m == null) return null;
+  final bin = Directory('${m[1]}:\\\$Recycle.Bin');
+  var readable = false;
+  try {
+    for (final user in bin.listSync(followLinks: false).whereType<Directory>()) {
+      List<FileSystemEntity> items;
+      try {
+        items = user.listSync(followLinks: false); // 다른 사용자의 휴지통은 읽을 수 없다
+      } catch (_) {
+        continue;
+      }
+      readable = true;
+      for (final f in items.whereType<File>()) {
+        final name = f.uri.pathSegments.last;
+        if (!name.startsWith(r'$I')) continue;
+        try {
+          if (f.lastModifiedSync().isBefore(since)) continue;
+          final p = recycledInfoPath(f.readAsBytesSync());
+          if (p != null && p.toLowerCase() == original.toLowerCase()) return true;
+        } catch (_) {}
+      }
+    }
+  } catch (_) {
+    return null;
+  }
+  return readable ? false : null;
+}
+
 /// SHFileOperation 의 오류 번호를 사람이 읽을 말로 (98)
 String recycleErrorText(int code) => switch (code) {
       0x02 || 0x03 => tr('찾을 수 없습니다 (이미 지워졌거나 옮겨졌습니다)'),
@@ -77,6 +133,8 @@ RecycleResult moveToRecycleBin(String path) {
   final shell32 = DynamicLibrary.open('shell32.dll');
   final op = shell32.lookupFunction<Int32 Function(Pointer<_ShFileOp>), int Function(Pointer<_ShFileOp>)>('SHFileOperationW');
   final before = _binCount(path);
+  final full = File(path).absolute.path;
+  final started = DateTime.now().subtract(const Duration(seconds: 2));
   // pFrom: 끝에 NUL 두 개 (여러 경로 목록 형식)
   final units = [...File(path).absolute.path.codeUnits, 0, 0];
   final from = calloc<Uint16>(units.length);
@@ -101,11 +159,16 @@ RecycleResult moveToRecycleBin(String path) {
     if (FileSystemEntity.typeSync(path, followLinks: false) != FileSystemEntityType.notFound) {
       return RecycleResult.cancelled;
     }
-    // 휴지통 항목 수가 늘었는지로 실제로 들어갔는지 본다 (수가 늦게 바뀔 수 있어 몇 번 다시 본다)
-    if (before == null) return RecycleResult.recycled;
+    // 휴지통 안에 이 파일의 정보 ($I…, 원래 경로가 적힘) 가 새로 생겼는지로 본다 (늦게 생길 수 있어 몇 번 다시 본다).
+    // 휴지통 폴더를 읽을 수 없으면 항목 수가 늘었는지로.
     for (var k = 0; k < 5; k++) {
-      final after = _binCount(path);
-      if (after == null || after > before) return RecycleResult.recycled;
+      final found = recycledInfoExists(full, since: started);
+      if (found == true) return RecycleResult.recycled;
+      if (found == null) {
+        if (before == null) return RecycleResult.recycled;
+        final after = _binCount(path);
+        if (after == null || after > before) return RecycleResult.recycled;
+      }
       sleep(const Duration(milliseconds: 100));
     }
     return RecycleResult.deletedPermanently;

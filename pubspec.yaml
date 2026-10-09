@@ -69,6 +69,8 @@ dependencies:
   image: ^4.10.1
   # 보기 화면 "계속 보기" 동안 화면이 꺼지지 않게 (media_kit 이 이미 쓰는 것)
   wakelock_plus: ^1.8.0
+  # 시험판이 사용자 데이터와 다른 폴더를 쓰게 (JJ_MKVMAKER_DATA, Windows) - path_provider 가 이미 쓰는 것
+  path_provider_platform_interface: ^2.1.2
 dependency_overrides:
   flutter_inappwebview_android:
     path: packages/flutter_inappwebview_android

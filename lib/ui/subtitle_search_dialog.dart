@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../core/secret_gate.dart';
 import '../app/app_controller.dart';
 import '../core/languages.dart';
 import '../core/models.dart';
@@ -68,6 +69,9 @@ class _SearchDialogState extends State<_SearchDialog> {
   }
 
   Future<void> _search() async {
+    // 124 · 128: 사용자가 직접 찾는 것이니 마스터 창을 한 번 취소했어도 다시 묻는다
+    await SecretGate.pass(force: true);
+    if (!mounted) return;
     setState(() {
       _busy = true;
       _error = null;

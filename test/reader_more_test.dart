@@ -80,22 +80,22 @@ void main() {
     await open(t, c, src);
     expect(find.text('1 / 3'), findsOneWidget);
     await tapAt(t, 850);
-    expect(find.text('2-1 / 3'), findsOneWidget);
+    expect(find.text('2-1 / 3장'), findsOneWidget);
     expect(src.widths[1], contains(1800), reason: '반쪽이 화면 가득이어도 흐리지 않게');
     await tapAt(t, 850);
-    expect(find.text('2-2 / 3'), findsOneWidget);
+    expect(find.text('2-2 / 3장'), findsOneWidget);
     await tapAt(t, 850);
-    expect(find.text('3 / 3'), findsOneWidget);
+    expect(find.text('3 / 3장'), findsOneWidget);
     await tapAt(t, 50);
-    expect(find.text('2-2 / 3'), findsOneWidget);
+    expect(find.text('2-2 / 3장'), findsOneWidget);
 
     // 버튼: 자동 → 켜기 (모든 장) → 끄기 → 자동
     await t.tap(find.byTooltip('두 쪽 나눠 보기: 자동 - 가로로 긴 그림만 (누르면 켜기)'));
     await t.pumpAndSettle();
     expect(c.settings.readerSplit, 'on');
-    expect(find.text('2-2 / 3'), findsOneWidget, reason: '보던 쪽 그대로');
+    expect(find.text('2-2 / 3장'), findsOneWidget, reason: '보던 쪽 그대로');
     await tapAt(t, 850);
-    expect(find.text('3-1 / 3'), findsOneWidget);
+    expect(find.text('3-1 / 3장'), findsOneWidget);
     await t.tap(find.byTooltip('두 쪽 나눠 보기: 켜기 (누르면 끄기)'));
     await t.pumpAndSettle();
     expect(c.settings.readerSplit, 'off');
@@ -109,11 +109,11 @@ void main() {
     final c = controller()..settings.readerRtl = true;
     final src = await source(t, [(200, 100)]);
     await open(t, c, src);
-    expect(find.text('1-1 / 1'), findsOneWidget);
+    expect(find.text('1-1 / 1장'), findsOneWidget);
     Align half() => t.widget<Align>(find.descendant(of: find.byType(ClipRect), matching: find.byType(Align)).first);
     expect(half().alignment, Alignment.centerRight);
     await tapAt(t, 50); // 만화: 왼쪽 = 다음
-    expect(find.text('1-2 / 1'), findsOneWidget);
+    expect(find.text('1-2 / 1장'), findsOneWidget);
     expect(half().alignment, Alignment.centerLeft);
   });
 
@@ -126,7 +126,7 @@ void main() {
     await t.pumpAndSettle();
     expect(t.widget<RotatedBox>(find.descendant(of: find.byType(FittedBox), matching: find.byType(RotatedBox)).first)
         .quarterTurns, 1);
-    expect(find.text('1-1 / 2'), findsOneWidget, reason: '돌리니 가로로 길어져 반씩');
+    expect(find.text('1-1 / 2장'), findsOneWidget, reason: '돌리니 가로로 길어져 반씩');
     await t.tap(find.byTooltip('반대로 90° 회전'));
     await t.pumpAndSettle();
     expect(find.text('1 / 2'), findsOneWidget);

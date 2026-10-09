@@ -5,6 +5,7 @@ import 'package:media_kit/media_kit.dart' as mk;
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:path/path.dart' as p;
 
+import '../../core/secret_gate.dart';
 import '../../core/vfs.dart';
 import '../../services/media_player.dart';
 import '../../l10n/tr.dart';
@@ -127,15 +128,24 @@ class MediaKitFullPlayer implements MediaPlayer {
     _emit();
   }
 
+  /// 플레이어가 처음 가진 인증서 확인 값 (56: 자체 서명 서버를 튼 뒤 다른 것을 틀면 원래대로)
+  String? _tlsDefault;
+
   /// WebDAV 는 받지 않고 바로 스트리밍 (주소 + 인증 헤더, 자체 서명 인증서면 확인 안 함)
   Future<mk.Media> _media(String f) async {
-    if (!isDav(f)) return mk.Media(f);
-    final s = davStream(f);
-    if (s.insecure) {
-      final native = _p.platform;
-      if (native is mk.NativePlayer) await native.setProperty('tls-verify', 'no');
+    final native = _p.platform;
+    final dav = isDav(f) ? davStream(f) : null;
+    if (native is mk.NativePlayer) {
+      _tlsDefault ??= await native.getProperty('tls-verify');
+      // 56: "인증서 확인 안 함" 서버의 것만 확인을 끄고, 그 밖은 원래 값으로 (한 번 끈 것이 계속 남지 않게)
+      final want = dav != null && dav.insecure ? 'no' : _tlsDefault!;
+      await native.setProperty('tls-verify', want);
     }
-    return mk.Media(s.url, httpHeaders: s.headers);
+    if (dav == null) return mk.Media(f);
+    // 124: 저장된 비밀번호로 여는 것이면 (마스터 비밀번호를 정해 두었으면 묻는다)
+    // 사용자가 직접 튼 것이니 한 번 취소했어도 다시 묻는다
+    if (dav.headers.isNotEmpty && !await SecretGate.pass(force: true)) throw Exception(tr(secretGateMessage));
+    return mk.Media(dav.url, httpHeaders: dav.headers);
   }
 
   @override

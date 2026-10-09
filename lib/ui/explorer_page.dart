@@ -13,6 +13,7 @@ import '../app/copy_center.dart';
 import '../app/live_sync.dart';
 import '../app/settings.dart' show CopyTask;
 import '../app/transfer_job.dart';
+import '../core/secret_gate.dart';
 import '../core/sync_tools.dart';
 import '../core/file_ops.dart';
 import '../core/playlist.dart' show isAudioFile, isVideoFile;
@@ -563,6 +564,9 @@ class _ExplorerPageState extends State<ExplorerPage> {
   /// 그 폴더로: 저장 장치부터 그 폴더까지 펼치고 지금 폴더로 정한다
   /// [fresh]: 경로 입력 · 찾기 · 내역으로 갈 때 - 그 폴더를 새로 읽는다 (앱 밖에서 바뀐 것까지 보이게, 122)
   Future<void> _goTo(_Pane pane, String dir, {bool remember = true, bool fresh = false}) async {
+    // 124 · 128: 사용자가 WebDAV 로 간 것이면 마스터 창을 한 번 취소했어도 다시 묻는다 (켤 때 되살리는 것은 [remember] 없음)
+    if (remember && isDav(dir)) await SecretGate.pass(force: true);
+    if (!mounted) return;
     pane.root = _volumeOf(dir);
     final chain = <String>[];
     dir = isDav(dir) ? vNorm(dir) : p.normalize(dir);

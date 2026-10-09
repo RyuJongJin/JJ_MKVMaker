@@ -17,6 +17,8 @@ import 'ui/settings_problem.dart';
 import 'ui/exit_guard.dart' show confirmStopCopies;
 import 'app/copy_center.dart';
 import 'ui/migration_notice.dart';
+import 'platform/windows/data_dir_override.dart';
+import 'ui/master_prompt.dart';
 import 'ui/secret_issue.dart';
 import 'ui/sync_alert.dart';
 import 'app/bookmarks_controller.dart';
@@ -70,13 +72,15 @@ Future<String> _prepare() async {
 
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
+  applyDataDirOverride(); // 시험판: 사용자 데이터와 다른 폴더 (JJ_MKVMAKER_DATA)
   final dataDir = await _prepare();
   if (Platform.isAndroid) return runAndroid(dataDir);
 
   // 이미 실행 중이면 인수(탐색기에서 고른 파일)를 넘기고 끝낸다
   final request = LaunchRequest.parse(args);
   final newWindow = wantsNewPlayerWindow(request, await SettingsStore().load());
-  final instance = SingleInstance();
+  // 시험판은 사용자가 켜 둔 앱에 넘기지 않고 따로 뜬다
+  final instance = SingleInstance(port: dataDirOverride == null ? 47821 : 47822);
   if (!await instance.claim(request, waitForExit: args.contains('--restart'), forward: !newWindow)) {
     // 설정이 "새 창에서" 이고 이미 켜져 있으면: 재생만 하는 창으로 따로 뜬다
     if (newWindow) return runSecondWindow(request.files.where(isVideoFile).toList(), dataDir);
@@ -108,6 +112,7 @@ Future<void> main(List<String> args) async {
   ComponentStore.dataDirectory = dataDir;
   VersionSnapshot.instance = VersionSnapshot(dataDir);
   await controller.init();
+  await setupMasterLock(controller); // 124: 저장된 비밀번호를 쓰기 전에 (실시간 동기화보다 먼저)
   // 실시간 동기화 (환경 설정 > 파일 탐색기): 앱이 켜져 있는 동안. 다시 켤 때 바로 / 골라서 / 시작 안 함
   await findBundledRsync(); // 앱에 들어 있는 rsync
   final live = LiveSync(controller)..start(hold: controller.settings.liveSyncOnStart != 'auto');
@@ -124,6 +129,7 @@ Future<void> main(List<String> args) async {
   );
   final navigatorKey = GlobalKey<NavigatorState>();
   final messengerKey = GlobalKey<ScaffoldMessengerState>();
+  attachMasterPrompt(navigatorKey);
 
   final memory = WindowMemory(p.join(dataDir, 'window.json'), 'main');
 
@@ -335,6 +341,9 @@ Future<void> main(List<String> args) async {
   WidgetsBinding.instance.addPostFrameCallback((_) async {
     final ctx = navigatorKey.currentContext;
     if (ctx == null) return;
+    // 124: "처음 시작 시" 면 마스터 비밀번호
+    await askMasterAtStartup(ctx, controller);
+    if (!ctx.mounted) return;
     if (crashed != null) {
       messengerKey.currentState?.showSnackBar(SnackBar(
         duration: const Duration(seconds: 10),
@@ -465,6 +474,7 @@ Future<void> runAndroid(String dataDir) async {
   } catch (_) {}
   VersionSnapshot.instance = VersionSnapshot(dataDir, sharedDir: sharedSnapshots);
   await controller.init();
+  await setupMasterLock(controller); // 124: 저장된 비밀번호를 쓰기 전에 (실시간 동기화보다 먼저)
   // 실시간 동기화 (환경 설정 > 파일 탐색기): 앱이 켜져 있는 동안. 다시 켤 때 바로 / 골라서 / 시작 안 함
   await findBundledRsync(); // 앱에 들어 있는 rsync
   final live = LiveSync(controller)..start(hold: controller.settings.liveSyncOnStart != 'auto');
@@ -478,6 +488,7 @@ Future<void> runAndroid(String dataDir) async {
   final navigatorKey = GlobalKey<NavigatorState>();
   final messengerKey = GlobalKey<ScaffoldMessengerState>();
   AndroidStorageService.navigatorKey = navigatorKey;
+  attachMasterPrompt(navigatorKey);
 
   // 다운로드 (앱 안 브라우저의 [다운로드] · 다운로드 목록): 앱에 넣은 yt-dlp · aria2c. 클립보드 감시는 하지 않는다.
   AndroidDownloadTools.log = controller.note;
@@ -557,6 +568,9 @@ Future<void> runAndroid(String dataDir) async {
     if (ctxA != null && ctxA.mounted && await allFilesGuideDue(controller, hasAccess: hadAccess) && ctxA.mounted) {
       await showAllFilesGuide(ctxA, AndroidAccess.request);
     }
+    // 124: "처음 시작 시" 면 마스터 비밀번호
+    final ctxM = navigatorKey.currentContext;
+    if (ctxM != null && ctxM.mounted) await askMasterAtStartup(ctxM, controller);
     final home = AppNavButtons.homeId(controller.settings);
     final nav0 = navigatorKey.currentState;
     if (home != 'mkv' && nav0 != null) {
@@ -628,8 +642,12 @@ Future<void> runSecondWindow(List<String> files, String dataDir) async {
   // 화면 언어 (환경 설정 > 화면 언어)
   i18n.init(controller, dataDir);
   await i18n.apply(controller.settings.uiLanguage, save: false);
-  controller.settings = await SettingsStore().load();
+  final store = SettingsStore();
+  controller.settings = await store.load();
   final navigatorKey = GlobalKey<NavigatorState>();
+  // 124: 이 창도 저장된 비밀번호 (WebDAV 재생) 를 쓰기 전에 마스터를 묻는다 (풀린 상태는 창마다)
+  await setupMasterLock(controller, secrets: store.secrets);
+  attachMasterPrompt(navigatorKey);
   runApp(JjMkvMakerApp(controller: controller, navigatorKey: navigatorKey, onExit: endProcessNow));
   WidgetsBinding.instance.addPostFrameCallback((_) async {
     await controller.shareVideoList(p.join(dataDir, 'videos.json'));

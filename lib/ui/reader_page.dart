@@ -644,7 +644,10 @@ class _ReaderPageState extends State<ReaderPage> {
       color: _barColor,
       padding: EdgeInsets.only(bottom: MediaQuery.paddingOf(context).bottom, left: 12, right: 12),
       child: Row(children: [
-        Text('${n == 0 ? 0 : _label(_cur)} / $n', style: const TextStyle(color: Colors.white, fontFamily: 'Consolas')),
+        // 125: 반으로 나눈 쪽이 있으면 전체 수가 파일 수 (장) 임을 단위로 ("2-1 / 3장")
+        Text(
+            count != n ? trf('{0} / {1}장', [_label(_cur), n]) : '${n == 0 ? 0 : _label(_cur)} / $n',
+            style: const TextStyle(color: Colors.white, fontFamily: 'Consolas')),
         Expanded(
           child: count < 2
               ? const SizedBox(height: 48)

@@ -243,9 +243,9 @@ class _LiveSyncTile extends StatelessWidget {
 
   /// 추가 ([old] 없음: 원본 · 대상을 먼저 고른다) · 고치기 ([old])
   static Future<void> _edit(BuildContext context, AppController c, {LiveSyncPair? old}) async {
-    var src = old?.source ?? await pickFolder(context, tr('실시간 동기화: 원본 폴더'));
+    var src = old?.source ?? await pickFolderOrDav(context, tr('실시간 동기화: 원본 폴더'));
     if (src == null || !context.mounted) return;
-    var dst = old?.target ?? await pickFolder(context, tr('실시간 동기화: 대상 폴더'));
+    var dst = old?.target ?? await pickFolderOrDav(context, tr('실시간 동기화: 대상 폴더'));
     if (dst == null || !context.mounted) return;
     var method = old?.method ?? (copyMethodAvailable(CopyMethod.rsync, c.settings) ? 'rsync' : 'builtin');
     var delete = old?.delete ?? false;
@@ -262,7 +262,7 @@ class _LiveSyncTile extends StatelessWidget {
             ),
             TextButton(
               onPressed: () async {
-                final r = await pickFolder(ctx, label);
+                final r = await pickFolderOrDav(ctx, label);
                 if (r != null) onPick(r);
               },
               child: Text(tr('바꾸기')),

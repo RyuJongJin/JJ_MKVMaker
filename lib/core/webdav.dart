@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:xml/xml.dart';
 
 import '../l10n/tr.dart';
+import 'secret_gate.dart';
 
 /// WebDAV 서버 설정 (환경 설정 > 파일 탐색기 > WebDAV). 비밀번호는 안전 저장소에 (설정 파일 · 보관본에는 넣지 않음).
 class DavServer {
@@ -64,6 +65,11 @@ class DavItem {
   const DavItem(this.rel, {required this.isDir, this.size = 0, required this.modified});
 }
 
+/// 124 · 128: 마스터 비밀번호를 넣지 않아 저장된 비밀번호를 쓰지 못함 (원본을 못 읽은 것이 아니라 기다리는 중)
+class DavLockedException extends DavException {
+  const DavLockedException(super.message);
+}
+
 class DavException implements Exception {
   final String message;
   final int? status;
@@ -109,6 +115,8 @@ class DavClient {
       : 'Basic ${base64Encode(utf8.encode('${server.user}:${server.password}'))}';
 
   Future<HttpClientRequest> _open(String method, Uri uri) async {
+    // 124: 저장된 비밀번호로 접속하기 전에 (마스터 비밀번호를 정해 두었으면 묻는다)
+    if (server.password.isNotEmpty && !await SecretGate.pass()) throw DavLockedException(tr(secretGateMessage));
     final req = await _http.openUrl(method, uri);
     final a = _auth;
     if (a != null) req.headers.set(HttpHeaders.authorizationHeader, a);

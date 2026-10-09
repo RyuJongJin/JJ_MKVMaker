@@ -6,6 +6,7 @@ import '../../core/languages.dart';
 import '../../core/subtitle_search.dart';
 import '../../services/subtitle_provider.dart';
 import '../../l10n/tr.dart';
+import '../../core/secret_gate.dart';
 
 /// OpenSubtitles.com REST API (v1). Windows·Android 공용.
 ///
@@ -45,6 +46,8 @@ class OpenSubtitlesProvider implements SubtitleProvider {
 
   Future<Map<String, dynamic>> _request(String method, String path,
       {Map<String, String>? query, Object? body, bool auth = false}) async {
+    // 124: 저장된 API 키 · 비밀번호를 쓰기 전에
+    if (!await SecretGate.pass()) throw SubtitleProviderException(tr(secretGateMessage));
     final uri = Uri.parse('$_api$path').replace(queryParameters: query);
     final req = await _http.openUrl(method, uri);
     req.headers

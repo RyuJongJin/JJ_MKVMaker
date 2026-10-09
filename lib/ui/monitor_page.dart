@@ -9,6 +9,7 @@ import '../app/copy_center.dart';
 import '../app/live_sync.dart';
 import '../app/settings.dart';
 import '../app/transfer_job.dart';
+import '../core/secret_gate.dart';
 import '../core/file_ops.dart';
 import '../core/sync_tools.dart';
 import '../core/vfs.dart';
@@ -750,6 +751,41 @@ class _LiveTabState extends State<_LiveTab> {
     final k = LiveSync.keyOf(x);
     final dels = live.emptyDeletes[k] ?? const <String>[];
     final running = live.isRunning(x);
+    // 128: 마스터 비밀번호를 기다리는 중 - 고장이 아니라 넣으면 이어서 맞춘다
+    if (e.locked) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+        decoration: BoxDecoration(
+          color: JjColors.accent.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: JjColors.accent.withValues(alpha: 0.5)),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            const Icon(Icons.lock_clock_outlined, color: JjColors.accent, size: 20),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(tr('마스터 비밀번호가 필요해 기다리는 중'),
+                  style: const TextStyle(fontWeight: FontWeight.w600, color: JjColors.accent)),
+            ),
+          ]),
+          const SizedBox(height: 4),
+          Text(tr('이 서버의 저장된 비밀번호를 쓰려면 마스터 비밀번호가 필요합니다. 넣으면 이어서 맞춥니다. 대상 파일은 건드리지 않았습니다.'),
+              style: const TextStyle(fontSize: 12)),
+          const SizedBox(height: 6),
+          FilledButton.tonalIcon(
+            onPressed: running
+                ? null
+                : () async {
+                    if (await SecretGate.pass(force: true)) await live.syncNow(x);
+                  },
+            icon: const Icon(Icons.lock_open, size: 18),
+            label: Text(tr('마스터 비밀번호 넣기')),
+          ),
+        ]),
+      );
+    }
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),

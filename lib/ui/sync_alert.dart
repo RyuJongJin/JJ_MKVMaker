@@ -47,7 +47,7 @@ class SyncAlert {
     final more = fresh.length > 1 ? trf(' 외 {0}개', [fresh.length - 1]) : '';
     await shell.notify(
       tr('실시간 동기화가 멈췄습니다'),
-      '${e.empty ? tr('원본 폴더가 비어 있어 멈췄습니다') : tr('원본을 읽을 수 없어 멈췄습니다')}$more\n'
+      '${e.locked ? tr('마스터 비밀번호가 필요해 기다리는 중') : e.empty ? tr('원본 폴더가 비어 있어 멈췄습니다') : tr('원본을 읽을 수 없어 멈췄습니다')}$more\n'
           '${vDisplay(e.path)} · ${tr('대상 파일은 지우지 않았습니다.')}',
       onClick: openLsync,
     );

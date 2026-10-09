@@ -6,7 +6,7 @@ import 'package:path/path.dart' as p;
 import '../l10n/tr.dart';
 import 'playlist.dart' show naturalCompare;
 import 'vfs.dart';
-import 'webdav.dart' show DavException;
+import 'webdav.dart' show DavException, DavLockedException;
 
 /// 파일 탐색기 (X-plore 참고) 의 화면과 상관없는 부분: 폴더 읽기 · 정렬 · 복사 / 이동 / 삭제 · 찾기.
 
@@ -201,6 +201,9 @@ class SourceUnreadableException implements Exception {
   /// 읽기는 됐지만 원본이 비어 있음 (대상에는 파일이 있음)
   final bool empty;
   const SourceUnreadableException(this.path, {this.cause, this.empty = false});
+
+  /// 128: 마스터 비밀번호를 기다리는 중 (읽지 못한 것이 아님)
+  bool get locked => cause is DavLockedException;
 
   /// 원인을 짧게 (예외 원문 대신 - 68)
   String get detail {

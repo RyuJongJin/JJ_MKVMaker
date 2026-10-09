@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../app/app_controller.dart';
+import '../app/settings.dart';
+import '../core/vfs.dart';
+import '../core/secret_gate.dart';
 import '../core/webdav.dart';
 import '../l10n/tr.dart';
 import 'confirm.dart';
@@ -35,7 +38,9 @@ class WebDavSettings extends StatelessWidget {
             dense: true,
             leading: const Icon(Icons.cloud, color: JjColors.accent),
             title: Text(s.label),
-            subtitle: Text('${s.url}${s.user.isEmpty ? '' : '  ·  ${s.user}'}${s.insecure ? '  ·  ${tr('인증서 확인 안 함')}' : ''}',
+            subtitle: Text(
+                '${s.url}${s.user.isEmpty ? '' : '  ·  ${s.user}'}${s.insecure ? '  ·  ${tr('인증서 확인 안 함')}' : ''}'
+                '${isPlainHttp(s.url) ? '  ·  ⚠ ${tr('암호화 안 됨 (http)')}' : ''}',
                 maxLines: 1, overflow: TextOverflow.ellipsis),
             trailing: Row(mainAxisSize: MainAxisSize.min, children: [
               IconButton(
@@ -48,11 +53,17 @@ class WebDavSettings extends StatelessWidget {
                 icon: const Icon(Icons.delete_outline, size: 18, color: JjColors.textDim),
                 // 46: 확인 뒤 (저장된 비밀번호도 함께 지워진다)
                 onPressed: () async {
+                  // 124: 이 서버를 쓰는 실시간 동기화 쌍 · 기억된 작업을 먼저 알린다
+                  final users = davServerUsers(c.settings, s.id);
                   final ok = await confirmAction(
                     context,
                     title: trf('WebDAV 서버 "{0}" 을(를) 지울까요?', [s.label]),
                     body: tr('서버 설정과 이 기기에 저장된 비밀번호를 지웁니다. 서버의 파일은 그대로입니다. '
-                        '이 서버를 쓰는 동기화 · 복사는 다시 넣을 때까지 연결되지 않습니다.'),
+                            '이 서버를 쓰는 동기화 · 복사는 다시 넣을 때까지 연결되지 않습니다.') +
+                        (users.isEmpty
+                            ? ''
+                            : '\n\n${trf('이 서버를 쓰는 것 {0}개 (지워도 목록에는 남고, 실행하면 서버가 없다고 알립니다):', [users.length])}\n'
+                                '${users.take(8).map((u) => '• $u').join('\n')}${users.length > 8 ? '\n…' : ''}'),
                     ok: tr('지우기'),
                   );
                   if (ok) await c.updateSettings((x) => x.webdavServers = [for (final y in x.webdavServers) if (y.id != s.id) y]);
@@ -65,8 +76,25 @@ class WebDavSettings extends StatelessWidget {
   }
 }
 
+/// 56: 암호화하지 않는 http:// 주소인지
+bool isPlainHttp(String url) => url.trim().toLowerCase().startsWith('http://');
+
+/// 124: 서버 [id] 를 쓰는 실시간 동기화 쌍 · 기억된 작업 (모니터링) 의 설명
+List<String> davServerUsers(AppSettings s, String id) {
+  bool on(String path) => isDav(path) && DavPath.parse(path).server == id;
+  return [
+    for (final x in s.liveSyncPairs)
+      if (on(x.source) || on(x.target)) trf('실시간 동기화: {0} → {1}', [vDisplay(x.source), vDisplay(x.target)]),
+    for (final t in s.copyTasks)
+      if (on(t.dest) || t.sources.any(on)) trf('기억된 작업: {0} → {1}', [t.sources.map(vDisplay).join(', '), vDisplay(t.dest)]),
+  ];
+}
+
 /// WebDAV 서버 추가 · 고치기 창. 저장한 서버를 돌려준다 (취소면 null).
 Future<DavServer?> editDavServer(BuildContext context, AppController c, {DavServer? old}) async {
+  // 127: 저장된 비밀번호가 칸에 채워지므로 (눈 버튼으로 보임) 먼저 마스터 비밀번호 (정해 두었으면)
+  if (old != null && old.password.isNotEmpty && !await SecretGate.pass(force: true)) return null;
+  if (!context.mounted) return null;
   final name = TextEditingController(text: old?.name ?? '');
   final url = TextEditingController(text: old?.url ?? 'https://');
   final user = TextEditingController(text: old?.user ?? '');
@@ -133,6 +161,21 @@ Future<DavServer?> editDavServer(BuildContext context, AppController c, {DavServ
                 ),
                 onChanged: (_) => set(() {}),
               ),
+              // 56: http:// 는 아이디 · 비밀번호와 파일이 암호화되지 않고 그대로 간다
+              if (isPlainHttp(url.text))
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    const Icon(Icons.warning_amber_rounded, size: 18, color: Colors.orangeAccent),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                          tr('http:// 주소는 아이디 · 비밀번호와 파일이 암호화되지 않고 그대로 갑니다. 같은 네트워크의 다른 사람이 볼 수 있으니 '
+                              '서버가 https 를 지원하면 https:// 로 바꾸세요.'),
+                          style: const TextStyle(fontSize: 12, color: Colors.orangeAccent)),
+                    ),
+                  ]),
+                ),
               TextField(controller: user, decoration: InputDecoration(labelText: tr('아이디'))),
               TextField(
                 controller: pass,
