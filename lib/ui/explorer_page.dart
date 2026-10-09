@@ -55,6 +55,14 @@ class ExplorerPage extends StatefulWidget {
   final bool rsync;
   const ExplorerPage({super.key, required this.c, this.rsync = false});
 
+  /// 165: 드라이브를 열 수 있는지 (시험에서 응답 없는 드라이브로 바꾼다). 화면을 멈추지 않는 비동기
+  @visibleForTesting
+  static Future<bool> Function(String path) probeDrive = (path) => Directory(path).exists();
+
+  /// 시험: 이 기기의 저장 장치 목록 (null 이면 실제 목록)
+  @visibleForTesting
+  static List<(String, String)> Function()? debugVolumes;
+
   static const routeName = 'explorer';
   static const rsyncRouteName = 'rsync';
   static int _open = 0, _openRsync = 0;
@@ -188,6 +196,33 @@ class _ExplorerPageState extends State<ExplorerPage> {
   /// 이 기기의 저장 장치: (경로, 이름)
   List<(String, String)> _local = [];
 
+  /// 165: 드라이브마다 따로 뒤에서 확인 (Windows). null = 확인 중, true = 열 수 있음, false = 연결 안 됨
+  final Map<String, bool?> _driveOk = {};
+  final Set<String> _networkDrives = {};
+
+  Future<void> _probeDrive(String path) async {
+    if (mounted) setState(() => _driveOk[path] = null);
+    bool ok;
+    try {
+      ok = await ExplorerPage.probeDrive(path);
+    } catch (_) {
+      ok = false;
+    }
+    if (mounted) setState(() => _driveOk[path] = ok);
+  }
+
+  /// 연결 안 된 드라이브를 누르면 다시 연결 (다시 읽기) - 되면 연다
+  Future<void> _reconnect(_Pane pane, String path) async {
+    await _probeDrive(path);
+    if (!mounted) return;
+    if (_driveOk[path] == true) {
+      pane.cache.remove(path);
+      await _goTo(pane, path);
+    } else {
+      _snack(trf('{0} 에 연결할 수 없습니다. 네트워크 · NAS 가 켜져 있는지 확인하세요.', [path]));
+    }
+  }
+
   /// 저장 장치 + WebDAV 서버 (환경 설정 > 파일 탐색기 > WebDAV): (경로, 이름)
   List<(String, String)> get _volumes => [
         ..._local,
@@ -235,8 +270,11 @@ class _ExplorerPageState extends State<ExplorerPage> {
     if (Platform.isAndroid) unawaited(_checkAccess());
     final saved = widget.rsync ? c.settings.rsyncPaths : c.settings.explorerPaths;
     // 창마다 따로 읽는다: 한 창이 WebDAV 서버를 기다려도 다른 창 (이 기기 파일) 은 바로 보이게
+    // 165: 지난 폴더가 느린 네트워크 드라이브여도 화면이 멈추지 않게 (뒤에서 확인, 오래 걸리면 그냥 열어 본다 - 못 읽으면 그 창에 이유)
+    final reach = await Future.wait(
+        [for (var i = 0; i < 2; i++) i < saved.length ? _reachableAsync(saved[i]) : Future.value(false)]);
     final wants = [
-      for (var i = 0; i < 2; i++) i < saved.length && _reachable(saved[i]) ? saved[i] : _local[0].$1,
+      for (var i = 0; i < 2; i++) reach[i] ? saved[i] : _local[0].$1,
     ];
     for (var i = 0; i < 2; i++) {
       _panes[i]
@@ -246,6 +284,13 @@ class _ExplorerPageState extends State<ExplorerPage> {
     }
     if (!mounted) return;
     setState(() => _ready = true);
+    // 165: 드라이브 종류 · 연결은 드라이브마다 따로 뒤에서 (느린 드라이브가 있어도 다른 드라이브 · 창은 바로)
+    if (Platform.isWindows) {
+      for (final (path, _) in _local) {
+        if (isNetworkDrive(path)) _networkDrives.add(path);
+        unawaited(_probeDrive(path));
+      }
+    }
     for (var i = 0; i < 2; i++) {
       final pane = _panes[i];
       unawaited(_goTo(pane, wants[i], remember: false).then((_) => _reveal(pane, pane.current)));
@@ -458,6 +503,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
   }
 
   Future<List<(String, String)>> _loadVolumes() async {
+    if (ExplorerPage.debugVolumes case final f?) return f();
     if (Platform.isWindows) return windowsDrives();
     if (Platform.isAndroid) {
       final v = await AndroidAccess.volumes();
@@ -486,6 +532,16 @@ class _ExplorerPageState extends State<ExplorerPage> {
   bool _reachable(String path) => isDav(path)
       ? DavRegistry.server(DavPath.parse(path).server) != null
       : Directory(path).existsSync();
+
+  /// [_reachable] 을 화면을 멈추지 않고 (2초 넘게 걸리면 있다고 보고 열어 본다)
+  Future<bool> _reachableAsync(String path) async {
+    if (isDav(path)) return _reachable(path);
+    try {
+      return await Directory(path).exists().timeout(const Duration(seconds: 2), onTimeout: () => true);
+    } catch (_) {
+      return false;
+    }
+  }
 
   String _volumeOf(String path) {
     if (isDav(path)) return '$davScheme${DavPath.parse(path).server}/';
@@ -2444,14 +2500,23 @@ class _ExplorerPageState extends State<ExplorerPage> {
                   icon: Icon(
                       isDav(path)
                           ? Icons.cloud_outlined
-                          : Platform.isWindows
-                              ? Icons.storage
-                              : Icons.sd_storage_outlined,
+                          : _networkDrives.contains(path)
+                              ? Icons.lan_outlined
+                              : Platform.isWindows
+                                  ? Icons.storage
+                                  : Icons.sd_storage_outlined,
                       size: 16),
-                  label: Text(label),
+                  // 165: 열 수 없는 드라이브는 숨기지 않고 "연결 안 됨" - 누르면 다시 연결 (다시 읽기)
+                  label: _driveOk[path] == false
+                      ? Text('$label · ${tr('연결 안 됨')} ⟳', style: const TextStyle(color: Colors.orangeAccent))
+                      : Text(label),
                   onPressed: () {
                     setState(() => _active = _panes.indexOf(pane));
-                    _goTo(pane, path);
+                    if (_driveOk[path] == false) {
+                      unawaited(_reconnect(pane, path));
+                    } else {
+                      _goTo(pane, path);
+                    }
                   },
                   onLongPress: isDav(path) ? () => _editDav(pane, path) : null,
                 ),

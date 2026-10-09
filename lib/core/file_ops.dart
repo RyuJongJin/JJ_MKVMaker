@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:ffi';
 import 'dart:io';
 
+import 'package:ffi/ffi.dart';
 import 'package:path/path.dart' as p;
 
 import '../l10n/tr.dart';
@@ -67,11 +69,37 @@ Future<List<FileEntry>> listEntries(String dir, {bool showHidden = false}) async
   return out;
 }
 
-/// 저장 장치 (맨 위 폴더): Windows 는 드라이브 (C:\ …), 그 밖은 주어진 목록
-List<(String path, String label)> windowsDrives() => [
-      for (final c in 'CDEFGHIJKLMNOPQRSTUVWXYZAB'.split(''))
-        if (FileSystemEntity.isDirectorySync('$c:\\')) ('$c:\\', '$c:'),
-    ];
+/// 저장 장치 (맨 위 폴더): Windows 는 드라이브 (C:\ …), 그 밖은 주어진 목록.
+/// 165: 드라이브 문자는 Windows 가 알려 주는 목록 (GetLogicalDrives) 으로 - 드라이브마다 열어 보지 않는다
+/// (끊긴 · 느린 네트워크 드라이브 (NAS) 를 열어 보느라 탐색기가 10초씩 멈췄다)
+List<(String path, String label)> windowsDrives() {
+  int mask;
+  try {
+    mask = DynamicLibrary.open('kernel32.dll').lookupFunction<Uint32 Function(), int Function()>('GetLogicalDrives')();
+  } catch (_) {
+    mask = 0;
+  }
+  if (mask == 0) return [(r'C:\', 'C:')];
+  return [
+    for (final c in 'CDEFGHIJKLMNOPQRSTUVWXYZAB'.split(''))
+      if (mask & (1 << (c.codeUnitAt(0) - 65)) != 0) ('$c:\\', '$c:'),
+  ];
+}
+
+/// 165: 네트워크 드라이브인지 (GetDriveTypeW = DRIVE_REMOTE). 드라이브를 열어 보지 않는다
+bool isNetworkDrive(String root) {
+  if (!Platform.isWindows) return false;
+  final w = root.toNativeUtf16();
+  try {
+    final f = DynamicLibrary.open('kernel32.dll')
+        .lookupFunction<Uint32 Function(Pointer<Utf16>), int Function(Pointer<Utf16>)>('GetDriveTypeW');
+    return f(w) == 4;
+  } catch (_) {
+    return false;
+  } finally {
+    calloc.free(w);
+  }
+}
 
 /// 48: 받는 폴더에 같은 이름이 있을 때
 enum NameConflict {
