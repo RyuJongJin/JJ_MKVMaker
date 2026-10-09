@@ -2,6 +2,7 @@ import 'dart:ffi';
 import 'dart:io';
 
 import 'package:ffi/ffi.dart';
+import 'package:path/path.dart' as p;
 
 import '../../l10n/tr.dart';
 
@@ -110,6 +111,76 @@ bool? recycledInfoExists(String original, {required DateTime since}) {
     return null;
   }
   return readable ? false : null;
+}
+
+/// 지금 사용자의 SID (예: S-1-5-21-…, 휴지통 폴더 이름). 모르면 null
+String? currentUserSid() => _sid ??= () {
+      try {
+        // 전체 경로로 (PATH 에 Git 등의 다른 whoami 가 먼저 있을 수 있다)
+        final exe = '${Platform.environment['SystemRoot'] ?? r'C:\Windows'}\\System32\\whoami.exe';
+        final r = Process.runSync(exe, ['/user', '/fo', 'csv', '/nh']);
+        return RegExp(r'"(S-1-[0-9-]+)"').firstMatch('${r.stdout}')?.group(1);
+      } catch (_) {
+        return null;
+      }
+    }();
+String? _sid;
+
+/// 148: 방금 휴지통으로 보낸 [original] 을 원래 자리로 되돌린다 ([since] 뒤에 생긴 것 중 가장 새것).
+/// 휴지통의 $R… (내용) 을 원래 경로로 옮기고 $I… (정보) 를 지운다. 원래 자리에 이미 무엇이 있으면 덮지 않고 실패.
+/// 실패하면 [FileSystemException] (이유는 읽을 수 있는 말).
+void restoreFromRecycleBin(String original, {required DateTime since}) {
+  final m = RegExp(r'^([a-zA-Z]):').firstMatch(original);
+  if (m == null) throw FileSystemException(tr('휴지통이 없는 곳입니다'), original);
+  if (FileSystemEntity.typeSync(original, followLinks: false) != FileSystemEntityType.notFound) {
+    throw FileSystemException(tr('원래 자리에 같은 이름이 이미 있습니다'), original);
+  }
+  // 원래 폴더가 그사이 지워졌으면 다시 만들지 않는다 (사용자가 지운 폴더를 몰래 되살리지 않게)
+  if (!Directory(p.dirname(original)).existsSync()) {
+    throw FileSystemException(tr('원래 폴더가 없어 되돌리지 못했습니다 (휴지통에서 직접 복원하세요)'), original);
+  }
+  // 이 사용자 (SID) 의 휴지통 폴더에서만 찾는다 (관리자 권한으로 다른 사용자의 휴지통을 읽을 수 있어도)
+  final sid = currentUserSid();
+  if (sid == null) throw FileSystemException(tr('휴지통에서 찾지 못했습니다 (이미 비웠거나 되돌림)'), original);
+  File? info;
+  DateTime? newest;
+  final bin = Directory('${m[1]}:\\\$Recycle.Bin');
+  try {
+    for (final user in [Directory('${bin.path}\\$sid')]) {
+      List<FileSystemEntity> items;
+      try {
+        items = user.listSync(followLinks: false);
+      } catch (_) {
+        continue;
+      }
+      for (final f in items.whereType<File>()) {
+        if (!f.uri.pathSegments.last.startsWith(r'$I')) continue;
+        try {
+          final t = f.lastModifiedSync();
+          if (t.isBefore(since) || (newest != null && t.isBefore(newest))) continue;
+          final was = recycledInfoPath(f.readAsBytesSync());
+          if (was != null && was.toLowerCase() == original.toLowerCase()) {
+            info = f;
+            newest = t;
+          }
+        } catch (_) {}
+      }
+    }
+  } catch (_) {}
+  final i = info;
+  if (i == null) throw FileSystemException(tr('휴지통에서 찾지 못했습니다 (이미 비웠거나 되돌림)'), original);
+  final dir = i.parent.path;
+  final content = '$dir\\\$R${i.uri.pathSegments.last.substring(2)}';
+  final type = FileSystemEntity.typeSync(content, followLinks: false);
+  if (type == FileSystemEntityType.notFound) throw FileSystemException(tr('휴지통에서 찾지 못했습니다 (이미 비웠거나 되돌림)'), original);
+  if (type == FileSystemEntityType.directory) {
+    Directory(content).renameSync(original);
+  } else {
+    File(content).renameSync(original);
+  }
+  try {
+    i.deleteSync();
+  } catch (_) {}
 }
 
 /// 휴지통이 받을 수 있는 경로 길이 (MAX_PATH - 끝의 NUL)

@@ -103,6 +103,15 @@ void main() {
     expect(find.widgetWithText(FilledButton, '복사'), findsNothing, reason: '확인 창이 뜨지 않음');
     expect(find.textContaining('복사할 항목을 고르세요'), findsOneWidget);
     expect(Directory(p.join(right, 'left')).existsSync(), isFalse);
+    // 상위 폴더로 가도 (사용자 이동) 그 폴더를 대상으로 잡지 않는다
+    await tester.runAsync(() => tester.tap(find.text('상위 폴더').first));
+    await settle(tester, () => false, rounds: 15);
+    ScaffoldMessenger.of(tester.element(find.byType(ExplorerPage))).clearSnackBars();
+    await tester.pump();
+    await tester.runAsync(() => tester.tap(find.text('복사').first));
+    await tester.pump();
+    expect(find.widgetWithText(FilledButton, '복사'), findsNothing);
+    expect(find.textContaining('복사할 항목을 고르세요'), findsOneWidget);
   });
 
   testWidgets('52: 복사 중에 화면을 떠났다 돌아와도 진행 막대가 다시 보이고, 끝나면 받는 폴더를 새로 읽는다 (.jjpart 가 남아 보이지 않음)', (tester) async {
@@ -131,6 +140,31 @@ void main() {
     expect(find.text('big.bin'), findsNWidgets(2));
     expect(find.textContaining('.jjpart'), findsNothing);
   });
+
+  testWidgets('148: 휴지통으로 보낸 뒤 알림의 [되돌리기] 를 누르면 원래 자리로', (tester) async {
+    tester.view.physicalSize = const Size(1600, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.runAsync(() => tester.pumpWidget(MaterialApp(home: ExplorerPage(c: c))));
+    await settle(tester, () => find.text('doc.txt').evaluate().length >= 2);
+    await tester.runAsync(() => tester.tap(find.text('doc.txt').first));
+    await settle(tester, () => false, rounds: 10);
+    await tester.runAsync(() => tester.tap(find.text('삭제').first));
+    await tester.pumpAndSettle();
+    await tester.runAsync(() => tester.tap(find.widgetWithText(FilledButton, '휴지통으로')));
+    await settle(tester, () => find.text('되돌리기').evaluate().isNotEmpty);
+    expect(File(p.join(left, 'doc.txt')).existsSync(), isFalse);
+    expect(find.textContaining('1개 항목을 휴지통으로 보냈습니다.'), findsOneWidget);
+    // 알림의 버튼은 시험의 가짜 시간 안에서 누른다 (알림 닫기 애니메이션이 시험 밖에서 돌지 않게)
+    await tester.tap(find.text('되돌리기'));
+    await tester.pump();
+    await settle(tester, () => find.textContaining('되돌렸습니다').evaluate().isNotEmpty);
+    expect(File(p.join(left, 'doc.txt')).readAsStringSync(), 'new');
+    expect(find.textContaining('1개 항목을 되돌렸습니다.'), findsOneWidget);
+    // 알림 (10초) 이 시험이 끝난 뒤에 닫히지 않게 정리
+    ScaffoldMessenger.of(tester.element(find.byType(ExplorerPage))).clearSnackBars();
+    await tester.pumpAndSettle();
+  }, skip: !Platform.isWindows);
 
   testWidgets('48: 건너뛰기를 고르면 그대로 두고 건너뛴 것을 알린다', (tester) async {
     await startCopy(tester);

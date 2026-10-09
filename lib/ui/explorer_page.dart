@@ -301,7 +301,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
     }
     for (var i = 0; i < 2; i++) {
       final pane = _panes[i];
-      unawaited(_goTo(pane, wants[i], remember: false, focus: false).then((_) => _reveal(pane, pane.current)));
+      unawaited(_goTo(pane, wants[i], remember: false).then((_) => _reveal(pane, pane.current)));
     }
   }
 
@@ -594,7 +594,9 @@ class _ExplorerPageState extends State<ExplorerPage> {
 
   /// 그 폴더로: 저장 장치부터 그 폴더까지 펼치고 지금 폴더로 정한다
   /// [fresh]: 경로 입력 · 찾기 · 내역으로 갈 때 - 그 폴더를 새로 읽는다 (앱 밖에서 바뀐 것까지 보이게, 122)
-  Future<void> _goTo(_Pane pane, String dir, {bool remember = true, bool fresh = false, bool focus = true}) async {
+  /// 폴더로 간다. 그 폴더를 "고른 항목" 으로 잡지 않는다 (48 보충 · 관리자: 누르거나 표시하지 않은 폴더가 복사 · 이동 대상이 되지 않게).
+  /// 위치는 지금 폴더 표시 · 스크롤로 보인다. [focus] 는 그 폴더를 일부러 고를 때만
+  Future<void> _goTo(_Pane pane, String dir, {bool remember = true, bool fresh = false, bool focus = false}) async {
     // 124 · 128: 사용자가 WebDAV 로 간 것이면 마스터 창을 한 번 취소했어도 다시 묻는다 (켤 때 되살리는 것은 [remember] 없음)
     if (remember && isDav(dir)) await SecretGate.pass(force: true);
     if (!mounted) return;
@@ -1331,12 +1333,16 @@ class _ExplorerPageState extends State<ExplorerPage> {
     // 하나씩: 실패해도 나머지는 계속. 실제로 어떻게 됐는지 세어 그대로 알린다 (94)
     final failed = <(String, String)>[];
     var recycled = 0, nuked = 0, kept = 0;
+    // 148: 휴지통으로 보낸 것 (되돌리기용) - 정보 파일 시각은 초 단위라 조금 앞에서부터
+    final since = DateTime.now().subtract(const Duration(seconds: 2));
+    final sent = <String>[];
     for (final x in paths) {
       try {
         if (!permanent) {
           switch (moveToRecycleBin(x)) {
             case RecycleResult.recycled:
               recycled++;
+              sent.add(x);
             case RecycleResult.deletedPermanently:
               nuked++;
             case RecycleResult.cancelled:
@@ -1370,13 +1376,19 @@ class _ExplorerPageState extends State<ExplorerPage> {
           actions: [FilledButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('확인')))],
         ),
       );
-    } else if (!permanent) {
-      _snack([
+    } else if (!permanent && mounted) {
+      final text = [
         if (recycled > 0) trf('{0}개 항목을 휴지통으로 보냈습니다.', [recycled]),
         // 휴지통보다 커서 Windows 가 물었고 사용자가 영구 삭제를 골랐다
         if (nuked > 0) trf('{0}개는 휴지통에 들어가지 않아 영구 삭제했습니다 (Windows 가 묻고 고른 대로).', [nuked]),
         if (kept > 0) trf('{0}개는 지우지 않았습니다 (취소).', [kept]),
-      ].join(' '));
+      ].join(' ');
+      // 148: 휴지통으로 보낸 것은 바로 [되돌리기]
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        duration: const Duration(seconds: 10),
+        content: Text(text),
+        action: sent.isEmpty ? null : SnackBarAction(label: tr('되돌리기'), onPressed: () => _undoRecycle(sent, since)),
+      ));
     }
     for (final x in _panes) {
       x.marked.removeAll(paths);
@@ -1385,6 +1397,28 @@ class _ExplorerPageState extends State<ExplorerPage> {
       if (paths.any((s) => isSameOrInside(x.current, s))) x.current = vDirname(paths.first);
     }
     await _refreshAll(paths.map(p.dirname));
+  }
+
+  /// 148: 방금 휴지통으로 보낸 것을 원래 자리로 (원래 자리에 같은 이름이 생겼으면 그것은 두고 알림)
+  Future<void> _undoRecycle(List<String> paths, DateTime since) async {
+    final failed = <String>[];
+    var back = 0;
+    for (final x in paths) {
+      try {
+        restoreFromRecycleBin(x, since: since);
+        back++;
+      } catch (e) {
+        failed.add('${vBasename(x)}: ${e is FileSystemException ? e.message : e}');
+      }
+    }
+    await _refreshAll(paths.map(p.dirname));
+    for (final x in _panes) {
+      x.changed();
+    }
+    _snack([
+      if (back > 0) trf('{0}개 항목을 되돌렸습니다.', [back]),
+      if (failed.isNotEmpty) trf('되돌리지 못함: {0}', [failed.take(3).join(' · ')]),
+    ].join(' '));
   }
 
   /// 다른 창의 지금 폴더로 복사 · 이동 (진행 창 · 취소)
