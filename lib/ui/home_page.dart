@@ -252,21 +252,39 @@ class _TopBar extends StatelessWidget {
       final addTip = Platform.isAndroid ? tr('동영상 추가') : tr('동영상 추가 (탐색기에서 끌어다 놓아도 됩니다)');
 
       // 글이 있는 버튼, 또는 (좁을 때) 아이콘만 있는 버튼
+      // 138: [ai] 는 AI 가 들어가는 버튼 (보라 테두리 · 글자) - 청록 [MKV 만들기] 와 한눈에 구별되게
       Widget action(IconData icon, String label, VoidCallback? onPressed,
-          {required bool text, required String tip, Color? color}) {
+          {required bool text, required String tip, Color? color, bool ai = false}) {
+        final fg = ai ? aiColor : null;
+        final side = BorderSide(color: ai && onPressed != null ? aiColor.withValues(alpha: 0.7) : JjColors.border);
         return Tooltip(
           message: tip,
           child: text
               ? OutlinedButton.icon(
-                  onPressed: onPressed, icon: Icon(icon, size: 18, color: color), label: Text(label))
+                  style: ai ? OutlinedButton.styleFrom(foregroundColor: fg, side: side) : null,
+                  onPressed: onPressed,
+                  icon: Icon(icon, size: 18, color: color ?? fg),
+                  label: Text(label))
               : IconButton.outlined(
                   onPressed: onPressed,
-                  icon: Icon(icon, size: 20, color: onPressed == null ? null : color),
+                  icon: Icon(icon, size: 20, color: onPressed == null ? null : color ?? fg),
                   style: IconButton.styleFrom(
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      side: const BorderSide(color: JjColors.border))),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)), side: side)),
         );
       }
+
+      // AI 버튼 둘 (자막 만들기 · 자막 만들기 & MKV 만들기)
+      List<Widget> aiButtons(bool text) => [
+            action(Icons.auto_awesome, trf('자막 만들기{0}', [count]),
+                canBatch ? () => showAiDialog(context, c, batch.first, targets: batch) : null,
+                text: text, ai: true, tip: trf('자막 만들기: {0}', [_batchHint(c, tr('AI 자막을 만듭니다'))])),
+            const SizedBox(width: 8),
+            action(Icons.auto_awesome_motion, trf('자막 만들기 & MKV 만들기{0}', [count]),
+                canBatch ? () => showAiDialog(context, c, batch.first, targets: batch, thenBuild: true) : null,
+                text: text,
+                ai: true,
+                tip: trf('자막 만들기 & MKV 만들기: {0}', [_batchHint(c, tr('AI 자막을 만들고 이어서 MKV 로 만듭니다'))])),
+          ];
 
       // 2: 좁은 화면 (폰 세로) 에서는 버튼 글자를 숨기지 않고 옆으로 밀어 본다. 가장 많이 쓰는 [MKV 만들기] 를 맨 앞에.
       if (compact) {
@@ -297,20 +315,15 @@ class _TopBar extends StatelessWidget {
                     text: true,
                     tip: tr('선택한 파일 재생: 지금 보고 있는 동영상 (여러 개는 목록에서 체크)')),
               ],
-              if (hasAi) ...[
-                const SizedBox(width: 8),
-                action(Icons.auto_awesome, trf('자막 만들기{0}', [count]),
-                    canBatch ? () => showAiDialog(context, c, batch.first, targets: batch) : null,
-                    text: true, tip: trf('자막 만들기: {0}', [_batchHint(c, tr('AI 자막을 만듭니다'))])),
-                const SizedBox(width: 8),
-                action(Icons.auto_mode, trf('자막 만들기 & MKV 만들기{0}', [count]),
-                    canBatch ? () => showAiDialog(context, c, batch.first, targets: batch, thenBuild: true) : null,
-                    text: true,
-                    tip: trf('자막 만들기 & MKV 만들기: {0}', [_batchHint(c, tr('AI 자막을 만들고 이어서 MKV 로 만듭니다'))])),
-              ],
               const SizedBox(width: 8),
               action(Icons.folder_special_outlined, tr('결과 폴더'), c.selected == null ? null : () => _openOutput(context),
                   text: true, tip: tr('결과 폴더 열기')),
+              // 138: AI 버튼은 [MKV 만들기] 와 떨어뜨려 맨 뒤에, 구분선 너머로
+              if (hasAi) ...[
+                const SizedBox(width: 8),
+                const SizedBox(height: 28, child: VerticalDivider(width: 16, color: JjColors.border)),
+                ...aiButtons(true),
+              ],
               if (c.busy) ...[
                 const SizedBox(width: 8),
                 JobIndicator(c: c, compact: true, iconOnly: false),
@@ -338,20 +351,10 @@ class _TopBar extends StatelessWidget {
                 child: Row(children: [
                   action(Icons.add, tr('동영상 추가'), c.pickVideos,
                       text: leftText, tip: addTip),
+                  // 138: AI 버튼 (보라) 은 왼쪽, [MKV 만들기] (청록) 는 오른쪽 - 떨어져 있다
                   if (hasAi) ...[
                     const SizedBox(width: 8),
-                    action(Icons.auto_awesome, trf('자막 만들기{0}', [count]),
-                        canBatch ? () => showAiDialog(context, c, batch.first, targets: batch) : null,
-                        text: leftText, tip: trf('자막 만들기: {0}', [_batchHint(c, tr('AI 자막을 만듭니다'))])),
-                    const SizedBox(width: 8),
-                    action(
-                        Icons.auto_mode,
-                        trf('자막 만들기 & MKV 만들기{0}', [count]),
-                        canBatch
-                            ? () => showAiDialog(context, c, batch.first, targets: batch, thenBuild: true)
-                            : null,
-                        text: leftText,
-                        tip: trf('자막 만들기 & MKV 만들기: {0}', [_batchHint(c, tr('AI 자막을 만들고 이어서 MKV 로 만듭니다'))])),
+                    ...aiButtons(leftText),
                   ],
                 ]),
               ),
