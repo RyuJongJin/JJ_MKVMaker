@@ -44,7 +44,18 @@ void main() {
         mediaTool: ProcessMediaTool('x', 'y'), storage: DesktopStorageService(), shell: shell));
     c.settings.explorerPaths = [left, right];
   });
-  tearDown(() => tmp.deleteSync(recursive: true));
+  // Windows: 방금 닫은 파일 (65 의 잠금 시험) 이나 색인 · 백신이 잠깐 잡고 있으면 지우기가 실패한다 - 될 때까지 기다린다
+  tearDown(() async {
+    for (var i = 0;; i++) {
+      try {
+        if (tmp.existsSync()) tmp.deleteSync(recursive: true);
+        return;
+      } on FileSystemException {
+        if (i >= 50) rethrow;
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      }
+    }
+  });
 
   Future<void> open(WidgetTester tester) async {
     tester.view.physicalSize = const Size(1600, 900);
