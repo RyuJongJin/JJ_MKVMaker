@@ -98,13 +98,17 @@ class AppNavButtons extends StatelessWidget {
 
   /// AI 그림 화면 자신 (123)
   final bool onAiPage;
+
+  /// 174: MKV 화면 자신 - 홈 화면이 탐색기 등이면 MKV 화면이 맨 처음 화면이 아닐 수 있어 따로 알린다
+  final bool onMkvPage;
   const AppNavButtons(
       {super.key,
       this.onDownloadsPage = false,
       this.onBrowserPage = false,
       this.onExplorerPage = false,
       this.onRsyncPage = false,
-      this.onAiPage = false});
+      this.onAiPage = false,
+      this.onMkvPage = false});
 
   /// 버튼 줄의 가장 넓은 폭 (JJ · 화면 6개 · 뒤로)
   static const double width = 8 * 40;
@@ -214,7 +218,7 @@ class AppNavButtons extends StatelessWidget {
                     ? 'rsync'
                     : onAiPage
                         ? 'aiimage'
-                        : atRoot
+                        : onMkvPage || atRoot
                         ? 'mkv'
                         : '';
     final pages = scope == null ? const <AppComponent>[] : pagesOf(scope);

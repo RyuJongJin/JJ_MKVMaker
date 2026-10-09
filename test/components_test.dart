@@ -137,4 +137,23 @@ void main() {
     expect(AppSettings().browserSwipeHinted, isFalse);
     expect(AppSettings.fromJson((AppSettings()..browserSwipeHinted = true).toJson()).browserSwipeHinted, isTrue);
   });
+
+  testWidgets('174: MKV 화면이 맨 처음 화면이 아니어도 (홈 화면 = 탐색기 등) MKV 아이콘이 "지금 여기"', (tester) async {
+    tester.view.physicalSize = const Size(1500, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final c = _plain();
+    c.settings
+      ..components = ['mkv', 'explorer']
+      ..navOrder = ['mkv', 'explorer'];
+    final navKey = GlobalKey<NavigatorState>();
+    await tester.pumpWidget(MaterialApp(
+      navigatorKey: navKey,
+      builder: (context, child) => AppScope(controller: c, child: child!),
+      home: const Scaffold(body: Text('맨 처음 화면')),
+    ));
+    navKey.currentState!.push(MaterialPageRoute<void>(builder: (_) => HomePage(c: c)));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('MKV 화면 (지금 여기)'), findsOneWidget);
+  });
 }

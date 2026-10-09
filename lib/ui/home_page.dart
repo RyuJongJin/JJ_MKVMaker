@@ -264,7 +264,7 @@ class _TopBar extends StatelessWidget {
         VoidCallback? build0() =>
             !canBuild ? null : (batch.isEmpty ? () => _confirmBuildAll(context) : () => c.buildVideos(batch));
         return AppTopBar(
-          nav: const AppNavButtons(),
+          nav: const AppNavButtons(onMkvPage: true),
           actions: AppActions(c: c, onExit: onExit, showUsage: false),
           middle: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
@@ -315,7 +315,7 @@ class _TopBar extends StatelessWidget {
 
       return AppTopBar(
         // 모든 화면 공통: [JJ 홈] [MKV 화면] [뒤로] [다운로드 목록]
-        nav: const AppNavButtons(),
+        nav: const AppNavButtons(onMkvPage: true),
         // 화면 크기 · 환경 설정 · 종료: 모든 화면에서 같은 자리
         actions: AppActions(c: c, onExit: onExit, showUsage: usage),
         middle: Row(
