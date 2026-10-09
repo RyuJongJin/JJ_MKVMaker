@@ -196,6 +196,8 @@ class WorkPanel extends StatelessWidget {
     if (!AiJobs.instance.busy && AiJobs.instance.lastDone != null)
       Row(children: [
         Expanded(child: Text('✓ ${AiJobs.instance.lastDone}', style: const TextStyle(fontSize: 12))),
+        // 176: 화면을 떠나 끝난 한 장 해상도 올리기 - 비교해 보고 저장
+        if (AiJobs.instance.lastDoneView case final view?) TextButton(onPressed: view, child: Text(tr('보기'))),
         if (AiJobs.instance.lastDoneDir case final dir?)
           TextButton(onPressed: () => openFolderInApp(Navigator.of(context), c, dir), child: Text(tr('열기'))),
       ]),

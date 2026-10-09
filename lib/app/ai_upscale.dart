@@ -71,7 +71,29 @@ Uint8List _finish((Uint8List, int, int, int, String, int) a) {
 /// 그 밖 (Windows · GPU) 은 엔진 기본값
 bool _androidCpu(SdDevice d) => Platform.isAndroid && d.backend == 'cpu';
 int upscaleThreads(SdDevice d) => _androidCpu(d) ? Platform.numberOfProcessors : 0;
-int upscaleTileSize(SdDevice d) => _androidCpu(d) ? 512 : 0;
+int upscaleTileSize(SdDevice d, {int? memTotalMb, int? longSide}) =>
+    _androidCpu(d) ? androidUpscaleTile(memTotalMb: memTotalMb, longSide: longSide) : 0;
+
+/// 176: Android CPU 타일 크기 - 메모리는 타일 넓이에 비례한다 (S10 실측: 타일 512 에서 엔진 6.6GB, 기기의 45%).
+/// 기기 전체 메모리의 20% 안에 드는 가장 큰 타일 (512 · 384 · 320 · 256 · 192). 메모리를 모르면 큰 그림 (긴 변 1000 이상) 은 256.
+int androidUpscaleTile({int? memTotalMb, int? longSide}) {
+  const at512Mb = 6600;
+  if (memTotalMb == null || memTotalMb <= 0) return (longSide ?? 0) >= 1000 ? 256 : 512;
+  for (final t in const [512, 384, 320, 256]) {
+    if (at512Mb * (t / 512) * (t / 512) <= memTotalMb * 0.20) return t;
+  }
+  return 192;
+}
+
+/// 기기 전체 메모리 (MB, /proc/meminfo - Android · Linux). 모르면 null
+int? deviceMemTotalMb() {
+  try {
+    final m = RegExp(r'MemTotal:\s+(\d+)\s*kB').firstMatch(File('/proc/meminfo').readAsStringSync());
+    return m == null ? null : int.parse(m[1]!) ~/ 1024;
+  } catch (_) {
+    return null;
+  }
+}
 
 /// 156-2: 걸린 시간을 기억할 열쇠 (처리 장치 · 모델이 같아야 비교가 된다)
 String upscaleSpeedKey(AiUpscaler up) => '${up.device.backend}|${up.modelId}';
@@ -136,7 +158,15 @@ class AiUpscaler {
     final tmp = await Directory.systemTemp.createTemp('jj_up_');
     final out = p.join(tmp.path, 'up.png');
     try {
-      await runner(device.exe, sdUpscaleArgs(model: modelPath, input: input, out: out, backend: device.backend, threads: upscaleThreads(device), tileSize: upscaleTileSize(device)),
+      // 176: 큰 그림 · 메모리가 적은 기기는 작은 타일 (메모리를 덜 쓴다)
+      int? longSide;
+      try {
+        final bytes = await File(input).openRead(0, 1 << 16).fold<List<int>>([], (a, b) => a..addAll(b));
+        final info = img.findDecoderForData(Uint8List.fromList(bytes))?.startDecode(Uint8List.fromList(bytes));
+        if (info != null) longSide = info.width > info.height ? info.width : info.height;
+      } catch (_) {}
+      final tile = upscaleTileSize(device, memTotalMb: Platform.isAndroid ? deviceMemTotalMb() : null, longSide: longSide);
+      await runner(device.exe, sdUpscaleArgs(model: modelPath, input: input, out: out, backend: device.backend, threads: upscaleThreads(device), tileSize: tile),
           onProgress: (prog) {
             final (v, left) = upscaleProgressOf(prog);
             onProgress?.call(v);

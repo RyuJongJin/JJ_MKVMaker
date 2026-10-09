@@ -54,7 +54,12 @@ Future<(String input, String nameFrom, String outDir)?> readerPageFile(AppContro
 }
 
 /// 준비: 모델 · 엔진이 없으면 그 자리에서 무엇을 받을지 고르고 받는다 (156 - 설정 화면으로 보내지 않음). 못 하면 null
+/// 시험용: 받기 · 엔진 고르기 없이 쓸 업스케일러 (가짜 엔진)
+@visibleForTesting
+AiUpscaler Function()? debugUpscalerForTest;
+
 Future<AiUpscaler?> _prepare(BuildContext context, AppController c) async {
+  if (debugUpscalerForTest case final f?) return f();
   final store = AiStore.instance ??= AiStore(Directory.systemTemp.path);
   Future<AiUpscaler?> ready() =>
       prepareUpscaler(store, modelSetting: c.settings.aiUpModel, device: c.settings.aiDevice, autoDevice: c.settings.aiAutoDevice);
@@ -172,6 +177,11 @@ Future<String?> _estimateText(AppController c, AiUpscaler up, String input) asyn
 
 /// 121: 한 장 올리기 → 진행 (취소) → [원본 / 올린 것] 비교 → [저장] (새 파일, 원본을 덮지 않음). 저장한 경로 (안 하면 null)
 Future<String?> upscaleOne(BuildContext context, AppController c, {required String input, required String nameFrom, required String outDir}) async {
+  // 176: 한 장도 작업 (AiJobs) 으로 - 하나씩만
+  if (AiJobs.instance.busy) {
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(tr('이미 작업 중입니다'))));
+    return null;
+  }
   final up = await _prepare(context, c);
   if (up == null || !context.mounted) return null;
   final progress = ValueNotifier<double?>(null);
@@ -179,6 +189,9 @@ Future<String?> upscaleOne(BuildContext context, AppController c, {required Stri
   final left = ValueNotifier<Duration?>(null);
   var cancelled = false;
   var toPhoto = false;
+  // 176: [뒤에서 계속] - 진행 창만 닫고 작업은 계속 (작업 알림 · 작업 현황에서 보이고, 끝나면 [보기])
+  var background = false;
+  var dialogOpen = true;
   // 관리자: CPU 뿐이라 자동이 만화용을 고르면 사진은 질감이 뭉개질 수 있다 - 알리고 바로 바꿀 수 있게
   final cpuAnime = c.settings.aiUpModel == 'auto' && up.device.backend == 'cpu' && up.modelId == 'esrgan-anime6b';
   final estimate = await _estimateText(c, up, input);
@@ -234,42 +247,89 @@ Future<String?> upscaleOne(BuildContext context, AppController c, {required Stri
           },
           child: Text(tr('취소')),
         ),
+        TextButton(
+          onPressed: () {
+            background = true;
+            Navigator.pop(ctx);
+          },
+          child: Text(tr('뒤에서 계속')),
+        ),
       ],
     ),
-  ));
+  ).whenComplete(() => dialogOpen = false));
   String? four;
   Object? error;
   final watch = Stopwatch()..start();
+  final nameShort = p.basename(nameFrom);
   try {
-    four = await up.upscale4x(input, onProgress: (v) => progress.value = v, onEta: (d) => left.value = d);
-    await _recordSpeed(c, up, input, watch.elapsed);
+    // 176: 작업 (AiJobs) 으로 - 작업 알림 · 앞 서비스 (Android) · 작업 현황에 나오고, 화면을 떠나도 계속한다
+    await AiJobs.instance.runTask(trf('AI 해상도 올리기: {0}', [nameShort]), 1, (_, prog) async {
+      four = await up.upscale4x(input, onProgress: (v) {
+        progress.value = v;
+        prog(v);
+      }, onEta: (d) => left.value = d);
+    }, onCancel: () {
+      cancelled = true;
+      up.cancel();
+    }, uses: const {'esrgan-x4plus', 'esrgan-anime6b', 'engine-vulkan', 'engine-cuda', 'engine-cudart'});
+    if (four != null) await _recordSpeed(c, up, input, watch.elapsed);
   } catch (e) {
     error = e;
   }
-  nav.pop(); // 진행 창
-  if (!context.mounted) return null;
-  if (toPhoto) {
+  if (dialogOpen) nav.pop(); // 진행 창
+  if (toPhoto && context.mounted) {
     await c.updateSettings((x) => x.aiUpModel = 'photo');
     if (!context.mounted) return null;
     return upscaleOne(context, c, input: input, nameFrom: nameFrom, outDir: outDir);
   }
-  if (four == null) {
-    if (!cancelled) ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text('$error')));
+  final result = four;
+  if (result == null) {
+    final text = cancelled ? null : '$error';
+    if (text == null) return null;
+    if (!background && context.mounted) {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(text)));
+    } else {
+      AiJobs.instance.done(trf('{0}: {1}', [nameShort, text]));
+    }
     return null;
   }
+  // 176: 화면에 남아 있으면 바로 비교, 떠났으면 (뒤에서 계속 · 화면 닫음) 결과를 남겨 두고 [보기]
+  if (!background && context.mounted) return _compareAndSave(Navigator.of(context), c, result, input: input, nameFrom: nameFrom, outDir: outDir);
+  final text = trf('{0} 올림 - [보기] 로 비교하고 저장', [nameShort]);
+  AiJobs.instance.done(text,
+      view: () async {
+        AiJobs.instance.clearDoneView();
+        await _compareAndSave(nav, c, result, input: input, nameFrom: nameFrom, outDir: outDir);
+      },
+      dispose: () {
+        try {
+          Directory(p.dirname(result)).deleteSync(recursive: true);
+        } catch (_) {}
+      });
+  c.note('${tr('AI 해상도 올리기')}: $text');
+  if (Platform.isAndroid) {
+    try {
+      await const MethodChannel('jj_mkvmaker/android').invokeMethod<void>('notifyDone', {'title': tr('AI 해상도 올리기'), 'text': text});
+    } catch (_) {}
+  }
+  return null;
+}
+
+/// 4배 결과 [four] 를 [원본 / 올린 것] 비교 → [저장] (새 파일, 원본을 덮지 않음). 끝나면 임시 결과를 지운다
+Future<String?> _compareAndSave(NavigatorState nav, AppController c, String four,
+    {required String input, required String nameFrom, required String outDir}) async {
+  final messenger = ScaffoldMessenger.maybeOf(nav.context);
   try {
-    final save = await Navigator.of(context).push<bool>(MaterialPageRoute(
+    final save = await nav.push<bool>(MaterialPageRoute(
       fullscreenDialog: true,
-      builder: (_) => UpscaleCompareView(original: input, upscaled: four!, title: p.basename(nameFrom)),
+      builder: (_) => UpscaleCompareView(original: input, upscaled: four, title: p.basename(nameFrom)),
     ));
-    if (save != true || !context.mounted) return null;
+    if (save != true) return null;
     final saved = await saveUpscaled(four, source: nameFrom, original: input, o: upscaleOptionsOf(c, outDir: outDir));
-    if (context.mounted) {
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(trf('저장했습니다: {0}', [saved]))));
-    }
+    messenger?.showSnackBar(SnackBar(content: Text(trf('저장했습니다: {0}', [saved]))));
     return saved;
   } catch (e) {
-    if (context.mounted) ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(trf('저장하지 못했습니다: {0}', [e]))));
+    messenger?.showSnackBar(SnackBar(content: Text(trf('저장하지 못했습니다: {0}', [e]))));
     return null;
   } finally {
     try {

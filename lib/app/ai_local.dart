@@ -558,10 +558,33 @@ class AiJobs extends ChangeNotifier {
   String? lastDone;
   String? lastDoneDir;
 
-  void done(String text, {String? dir}) {
+  /// 176: 끝난 일을 다시 볼 것 (화면을 떠나 끝난 한 장 해상도 올리기 → 비교 · 저장). 작업 현황의 [보기]
+  Future<void> Function()? lastDoneView;
+  void Function()? _lastDoneDispose;
+
+  /// [dispose]: 다음 일을 시작하거나 다른 끝난 일로 바뀔 때 (남겨 둔 임시 결과 지우기 등)
+  void done(String text, {String? dir, Future<void> Function()? view, void Function()? dispose}) {
+    _clearDone();
     lastDone = text;
     lastDoneDir = dir;
+    lastDoneView = view;
+    _lastDoneDispose = dispose;
     notifyListeners();
+  }
+
+  /// [보기] 를 한 번 쓰면 (비교 화면에서 저장 · 버림) 지운다
+  void clearDoneView() {
+    lastDoneView = null;
+    _lastDoneDispose = null;
+    notifyListeners();
+  }
+
+  void _clearDone() {
+    _lastDoneDispose?.call();
+    _lastDoneDispose = null;
+    lastDoneView = null;
+    lastDone = null;
+    lastDoneDir = null;
   }
 
   void start(String t, ImageAiEngine engine, int count) {
@@ -571,8 +594,7 @@ class AiJobs extends ChangeNotifier {
     remaining = count;
     progress = 0;
     eta = null;
-    lastDone = null;
-    lastDoneDir = null;
+    _clearDone();
     notifyListeners();
   }
 
@@ -609,8 +631,7 @@ class AiJobs extends ChangeNotifier {
       {required void Function() onCancel, Set<String> uses = const {}}) async {
     if (busy) throw ImageAiException(tr('이미 작업 중입니다'));
     inUse = uses;
-    lastDone = null;
-    lastDoneDir = null;
+    _clearDone();
     var stop = false;
     this.title = title;
     total = count;
