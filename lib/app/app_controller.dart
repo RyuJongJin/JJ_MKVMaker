@@ -525,6 +525,15 @@ class AppController extends ChangeNotifier {
         errors.add(trf('{0}: 이미 이동 폴더에 있습니다', [v.fileName]));
         continue;
       }
+      // 옮기기 시작하면 바로 목록에서 뺀다 (다른 드라이브 · NAS 로는 복사라 큰 동영상은 몇 초 넘게 남아 보였다).
+      // 옮기지 못하면 원래 자리 · 표시 · 선택으로 되돌린다.
+      final at = videos.indexOf(v);
+      final wasChecked = checked.contains(v);
+      final wasSelected = selected == v;
+      videos.remove(v);
+      checked.remove(v);
+      if (wasSelected) selected = videos.elementAtOrNull(at) ?? videos.lastOrNull;
+      notifyListeners();
       try {
         final side = {
           for (final s in v.subtitles)
@@ -551,11 +560,15 @@ class AppController extends ChangeNotifier {
             if (results > 0) trf(' (결과물 {0}개 함께)', [results]),
           ].join(),
         ]));
-        videos.remove(v);
-        checked.remove(v);
         moved++;
       } catch (e) {
         errors.add('${v.fileName}: $e');
+        if (File(v.path).existsSync() && !videos.contains(v)) {
+          videos.insert(at.clamp(0, videos.length), v);
+          if (wasChecked) checked.add(v);
+          if (wasSelected) selected = v;
+          notifyListeners();
+        }
       }
     }
     if (selected != null && !videos.contains(selected)) selected = videos.firstOrNull;
@@ -594,8 +607,16 @@ class AppController extends ChangeNotifier {
     try {
       await File(from).rename(to);
     } on FileSystemException {
-      await File(from).copy(to);
-      await File(from).delete();
+      try {
+        await File(from).copy(to);
+        await File(from).delete();
+      } catch (_) {
+        // 원본을 지우지 못하면 (열려 있음 등) 옮긴 것이 아니다 - 방금 만든 사본을 지워 두 벌이 남지 않게 (원본은 그대로)
+        try {
+          if (File(from).existsSync()) await File(to).delete();
+        } catch (_) {}
+        rethrow;
+      }
     }
     return to;
   }

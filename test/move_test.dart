@@ -61,6 +61,61 @@ void main() {
     expect(c.selected, busy);
   });
 
+  test('옮기기 시작하면 바로 목록에서 빠지고, 옮기지 못하면 원래 자리 · 표시 · 선택으로 돌아온다', () async {
+    final c = _controller();
+    final dest = p.join(dir.path, 'done');
+    final a = VideoItem(make('a.mp4').path);
+    final b = VideoItem(make('b.mp4').path);
+    final d = VideoItem(make('d.mp4').path);
+    c.videos.addAll([a, b, d]);
+    c.checked.add(b);
+    c.selected = b;
+    // 처음 알릴 때 (옮기는 중) 이미 목록에 없다
+    List<String>? whileMoving;
+    void first() => whileMoving ??= c.videos.map((v) => v.fileName).toList();
+    c.addListener(first);
+    // Windows: 열려 있는 파일은 옮길 수 없다
+    final h = File(b.path).openSync(mode: FileMode.append);
+    try {
+      final (moved, errors) = await c.moveVideos([b], dest);
+      expect(moved, 0);
+      expect(errors.single, contains('b.mp4'));
+    } finally {
+      h.closeSync();
+      c.removeListener(first);
+    }
+    expect(whileMoving, ['a.mp4', 'd.mp4']);
+    expect(c.videos, [a, b, d]);
+    expect(c.checked, {b});
+    expect(c.selected, b);
+    expect(File(b.path).existsSync(), isTrue);
+    expect(File(p.join(dest, 'b.mp4')).existsSync(), isFalse, reason: '옮기다 만 사본을 남기지 않는다');
+  }, skip: !Platform.isWindows);
+
+  test('함께 옮기는 자막 · 결과물을 옮기지 못하면 원본은 그대로 두고 대상에 사본을 남기지 않는다', () async {
+    final c = _controller();
+    final dest = p.join(dir.path, 'done');
+    final a = VideoItem(make('a.mp4').path)
+      ..subtitles.add(SubtitleEntry.external(path: make('a.ko.srt').path, language: undetermined));
+    make(p.join('jj_mkv', 'a.mkv'));
+    c.videos.add(a);
+    // Windows: 열려 있는 파일은 옮길 수 없다 (옆 자막 · jj_mkv 결과물)
+    final h1 = File(p.join(dir.path, 'a.ko.srt')).openSync(mode: FileMode.append);
+    final h2 = File(p.join(dir.path, 'jj_mkv', 'a.mkv')).openSync(mode: FileMode.append);
+    try {
+      final (moved, _) = await c.moveVideos([a], dest);
+      expect(moved, 1, reason: '동영상은 옮긴다');
+    } finally {
+      h1.closeSync();
+      h2.closeSync();
+    }
+    expect(File(p.join(dest, 'a.mp4')).existsSync(), isTrue);
+    expect(File(p.join(dir.path, 'a.ko.srt')).existsSync(), isTrue);
+    expect(File(p.join(dest, 'a.ko.srt')).existsSync(), isFalse, reason: '자막 사본이 두 벌로 남지 않는다');
+    expect(File(p.join(dir.path, 'jj_mkv', 'a.mkv')).existsSync(), isTrue);
+    expect(File(p.join(dest, 'jj_mkv', 'a.mkv')).existsSync(), isFalse, reason: '결과물 사본이 두 벌로 남지 않는다');
+  }, skip: !Platform.isWindows);
+
   test('목록에 다시 넣으면 (앱을 다시 켜도) 전에 만든 자막 (jj_mkv 의 파일명_ko.srt 등) 이 다시 붙는다', () async {
     final c = _controller();
     final video = make('강의.mp4').path;
