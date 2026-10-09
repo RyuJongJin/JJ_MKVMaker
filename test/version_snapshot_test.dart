@@ -42,6 +42,8 @@ void main() {
     await snap.save('2026.10.05_003');
     await snap.save('2026.10.07_001');
     expect(File(p.join(shared, '2026.10.05_003', 'settings.json')).existsSync(), isTrue);
+    // 한국어 이름 폴더 ("설정 보관") 를 알아보게 README.txt (영어 · 한국어) - 보관본 고르기에는 끼지 않는다
+    expect(File(p.join(shared, 'README.txt')).readAsStringSync(), startsWith('JJ_MKVMaker settings backup / 설정 보관'));
     expect(p.basename(snap.sharedFor('2026.10.05_003')!), '2026.10.05_003');
     expect(p.basename(snap.sharedFor('2026.10.01_001')!), '2026.10.07_001');
     expect(VersionSnapshot(data.path).sharedFor('x'), isNull);

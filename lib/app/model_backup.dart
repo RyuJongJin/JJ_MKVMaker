@@ -5,6 +5,7 @@ import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 
 import 'component_store.dart' show AccumulatorSink;
+import 'folder_readme.dart';
 
 /// P0 (되돌리기): Android 에서 예전 버전으로 되돌리면 앱을 지워야 해서 앱 안에 받은 AI 모델이 사라진다.
 /// 공용 폴더 (Download/JJ_MKVMaker/AI 모델 보관) 에 옮겨 두었다가, 다시 설치한 앱 (이 기능이 있는 판) 이 켜질 때
@@ -20,6 +21,7 @@ class ModelBackup {
   /// 공용 폴더 Download/JJ_MKVMaker (Android, main 에서 정함)
   static String? sharedRoot;
 
+  // l10n-skip: 실제 폴더 이름 (예전 보관을 찾아야 하므로 바꾸지 않음)
   static ModelBackup? get shared => sharedRoot == null ? null : ModelBackup(p.join(sharedRoot!, 'AI 모델 보관'));
 
   File get _manifest => File(p.join(dir, 'manifest.json'));
@@ -89,6 +91,7 @@ class ModelBackup {
         });
         list.add({'root': root, 'rel': p.posix.joinAll(p.split(rel)), 'size': f.lengthSync(), 'sha256': sha});
       }
+      writeFolderReadme(dir, modelBackupReadme); // "AI 모델 보관" 은 한국어 이름이라 (영어 · 한국어)
       // 목록은 마지막에 (목록이 있으면 다 복사된 것)
       await _manifest.writeAsString(jsonEncode({'saved': DateTime.now().toIso8601String(), 'files': list}));
     } catch (_) {

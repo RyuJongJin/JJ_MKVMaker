@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import '../core/app_update.dart';
+import 'folder_readme.dart';
 
 /// 버전을 바꿀 때 (업데이트 · 예전 버전으로 되돌리기) 그 버전의 설정을 보관하고, 그 버전으로 돌아오면 되살린다.
 ///
@@ -60,6 +61,8 @@ class VersionSnapshot {
 
   /// 지금 버전 ([version]) 의 설정을 보관한다 (같은 버전의 보관본은 새것으로). 공용 폴더에도 (있으면).
   Future<void> save(String version) async {
+    // Download 아래 "설정 보관" 은 한국어 이름이라 안에 README.txt (영어 · 한국어)
+    if (sharedDir != null) writeFolderReadme(sharedDir!, settingsBackupReadme);
     for (final dir in [dirOf(version), if (sharedDir != null) p.join(sharedDir!, version)]) {
       final d = Directory(dir);
       if (await d.exists()) await d.delete(recursive: true);

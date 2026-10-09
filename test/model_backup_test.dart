@@ -38,6 +38,7 @@ void main() {
     expect(progress.last, size);
     expect(backup.exists, true);
     expect(backup.savedSize, size);
+    expect(File(p.join(backup.dir, 'README.txt')).readAsStringSync(), startsWith('JJ_MKVMaker AI model backup / AI 모델 보관'));
     final before = File(p.join(roots['ai']!, 'models', 'sd15.safetensors')).readAsBytesSync();
     wipeAppData(); // 앱을 지움
     final r = await backup.restore(roots);
