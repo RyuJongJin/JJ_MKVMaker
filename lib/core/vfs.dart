@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import 'webdav.dart';
+import '../l10n/tr.dart';
 
 /// 로컬 경로와 WebDAV 경로 (`dav://<서버 id>/<경로>`) 를 같이 다루는 도구.
 /// 로컬 경로는 원래 코드 (dart:io) 를 그대로 쓰고, dav:// 만 여기서 WebDAV 로 처리한다.
@@ -198,7 +199,7 @@ Future<void> vRename(String from, String to) async {
       return;
     }
   }
-  if (isDav(from) || isDav(to)) throw FileSystemException('다른 저장소로는 이름만 바꿀 수 없습니다', from);
+  if (isDav(from) || isDav(to)) throw FileSystemException(tr('다른 저장소로는 이름만 바꿀 수 없습니다'), from);
   if (FileSystemEntity.isDirectorySync(from)) {
     await Directory(from).rename(to);
   } else {

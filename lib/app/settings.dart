@@ -14,6 +14,7 @@ import '../core/webdav.dart';
 import '../services/image_ai.dart' show AiService;
 import '../services/app_shell.dart' show appIconOf;
 import '../services/secret_store.dart';
+import '../l10n/tr.dart';
 
 /// MKV 세부 정보의 이동 버튼 하나: 표시 이름 · 옮길 폴더
 class MoveTarget {
@@ -1238,7 +1239,7 @@ class SettingsStore {
       if (await bak.exists()) {
         try {
           final s = _parse(await bak.readAsString());
-          problem = SettingsLoadProblem(restoredFromBackup: true, brokenCopy: null, error: 'settings.json 없음');
+          problem = SettingsLoadProblem(restoredFromBackup: true, brokenCopy: null, error: tr('settings.json 없음'));
           _scrub.add(bak);
           return s;
         } catch (_) {}

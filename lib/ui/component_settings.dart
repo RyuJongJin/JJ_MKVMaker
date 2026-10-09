@@ -128,15 +128,8 @@ Future<void> _setDownloaded(BuildContext context, AppComponent x, bool on) async
     ),
   );
   try {
-    // 단계 글 ("받는 중: 파일") 의 앞부분만 번역
-    String trStep(String s) {
-      for (final k in ['받는 중', '푸는 중', '확장 설치']) {
-        if (s.startsWith('$k:')) return '${tr(k)}:${s.substring(k.length + 1)}';
-      }
-      return s;
-    }
-
-    await store.install(x.id, onProgress: (s, d) => step.value = (trStep(s), d));
+    // 단계 글 ("받는 중: 파일") 은 ComponentStore 가 화면 언어로 만들어 보낸다 (59)
+    await store.install(x.id, onProgress: (s, d) => step.value = (s, d));
     done = true;
   } catch (e) {
     error = e;

@@ -569,7 +569,7 @@ class FileOps {
   static Future<String> rename(String path, String newName) async {
     final name = newName.trim();
     if (name.isEmpty || name.contains(RegExp(r'[\\/:*?"<>|]'))) {
-      throw FileSystemException('쓸 수 없는 이름입니다', name);
+      throw FileSystemException(tr('쓸 수 없는 이름입니다'), name);
     }
     if (isDav(path)) {
       final target = vJoin(vDirname(path), name);

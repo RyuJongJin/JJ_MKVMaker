@@ -140,14 +140,15 @@ class DavClient {
     final hint = switch (res.statusCode) {
       // 54: 비밀번호가 틀린 것이 아니라 저장된 것이 없다 (동기화 · 복사 오류에도 그대로 보인다)
       401 when server.password.isEmpty => ' (${tr('저장된 비밀번호가 없습니다. 한 번만 다시 넣어 주세요')})',
-      401 => ' (아이디 · 비밀번호를 확인하세요)',
-      403 => ' (권한 없음)',
-      404 => ' (없는 경로)',
-      405 => ' (서버가 이 기능을 허용하지 않음)',
-      507 => ' (서버 저장 공간 부족)',
+      401 => ' (${tr('아이디 · 비밀번호를 확인하세요')})',
+      403 => ' (${tr('권한 없음')})',
+      404 => ' (${tr('없는 경로')})',
+      405 => ' (${tr('서버가 이 기능을 허용하지 않음')})',
+      507 => ' (${tr('서버 저장 공간 부족')})',
       _ => '',
     };
-    throw DavException('WebDAV $what 실패: ${res.statusCode} ${res.reasonPhrase}$hint', status: res.statusCode);
+    // 상태 번호 앞의 빈칸은 그대로 둔다 (explainFileError 가 " 401" 등으로 오류 종류를 가른다)
+    throw DavException(trf('WebDAV {0} 실패: {1} {2}{3}', [what, res.statusCode, res.reasonPhrase, hint]), status: res.statusCode);
   }
 
   static const _propfindBody = '<?xml version="1.0" encoding="utf-8"?>'
@@ -164,8 +165,8 @@ class DavClient {
     req.add(bytes);
     final res = await req.close();
     final text = await res.transform(utf8.decoder).join();
-    if (res.statusCode == 404) throw DavException('없는 경로: $rel', status: 404);
-    if (res.statusCode != 207 && res.statusCode != 200) _fail('목록', res, text);
+    if (res.statusCode == 404) throw DavException(trf('없는 경로: {0}', [rel]), status: 404);
+    if (res.statusCode != 207 && res.statusCode != 200) _fail(tr('목록'), res, text);
     return text;
   }
 
@@ -231,7 +232,7 @@ class DavClient {
     await res.drain<void>();
     if (res.statusCode == 201 || res.statusCode == 200) return;
     if (res.statusCode == 405 && (await stat(rel))?.isDir == true) return; // 이미 있음
-    _fail('폴더 만들기', res);
+    _fail(tr('폴더 만들기'), res);
   }
 
   /// 위 폴더까지 차례로 만든다
@@ -249,7 +250,7 @@ class DavClient {
     final res = await (await _open('DELETE', uriOf(rel, dir: st?.isDir ?? false))).close();
     await res.drain<void>();
     if (res.statusCode == 404) return;
-    if (res.statusCode >= 300) _fail('지우기', res);
+    if (res.statusCode >= 300) _fail(tr('지우기'), res);
   }
 
   Future<void> _moveOrCopy(String method, String from, String to, {bool overwrite = false}) async {
@@ -261,7 +262,7 @@ class DavClient {
     if (st?.isDir ?? false) req.headers.set('Depth', 'infinity');
     final res = await req.close();
     await res.drain<void>();
-    if (res.statusCode >= 300) _fail(method == 'MOVE' ? '이동' : '복사', res);
+    if (res.statusCode >= 300) _fail(method == 'MOVE' ? tr('이동') : tr('복사'), res);
   }
 
   Future<void> move(String from, String to, {bool overwrite = false}) => _moveOrCopy('MOVE', from, to, overwrite: overwrite);
@@ -272,7 +273,7 @@ class DavClient {
     final res = await (await _open('GET', uriOf(rel))).close();
     if (res.statusCode != 200) {
       await res.drain<void>();
-      _fail('받기', res);
+      _fail(tr('받기'), res);
     }
     return res;
   }
@@ -284,7 +285,7 @@ class DavClient {
     await req.addStream(data);
     final res = await req.close();
     await res.drain<void>();
-    if (res.statusCode >= 300) _fail('올리기', res);
+    if (res.statusCode >= 300) _fail(tr('올리기'), res);
   }
 
   /// 남은 용량 · 쓴 용량 (바이트, 서버가 알려 주지 않으면 null)
@@ -338,7 +339,7 @@ class DavRegistry {
 
   static DavClient client(String id) {
     final s = _servers[id];
-    if (s == null) throw DavException('WebDAV 서버 설정이 없습니다 ($id)');
+    if (s == null) throw DavException(trf('WebDAV 서버 설정이 없습니다 ({0})', [id]));
     return _clients.putIfAbsent(id, () => DavClient(s));
   }
 }

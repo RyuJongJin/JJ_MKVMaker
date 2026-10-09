@@ -25,6 +25,8 @@ if (isLockedError(e)) {
   return (tr('마스터 비밀번호가 필요합니다'), tr('이 서버의 저장된 비밀번호를 쓰려면 마스터 비밀번호를 넣으세요.'));
 }
   final s = e.toLowerCase();
+  // 59: 오류 글은 화면 언어로 바뀌어 온다 - 한국어 글과 바뀐 글 둘 다 본다
+  bool has(String ko) => s.contains(ko.toLowerCase()) || s.contains(tr(ko).toLowerCase());
   if (dav && (s.contains('socketexception') || s.contains('connection refused') || s.contains('failed host lookup') ||
       s.contains('network is unreachable') || s.contains('no route') || s.contains('timed out') ||
       s.contains('timeoutexception') || s.contains('connection reset') || s.contains('connection closed'))) {
@@ -33,7 +35,7 @@ if (isLockedError(e)) {
       tr('서버와 같은 네트워크에 있거나 VPN (예: Tailscale) 이 켜져 있어야 합니다. 켠 뒤 [다시 시도] 를 누르세요.'),
     );
   }
-  if (s.contains(' 401') || s.contains('status: 401') || s.contains('아이디 · 비밀번호')) {
+  if (s.contains(' 401') || s.contains('status: 401') || has('아이디 · 비밀번호를 확인하세요')) {
     // 54: 비밀번호가 틀린 것이 아니라 저장된 것이 없다 (예전 판 설치 · 앱 다시 설치 등)
     if (noPassword) {
       return (
@@ -49,8 +51,8 @@ if (isLockedError(e)) {
       tr('집 NAS 처럼 자체 서명 인증서면 [서버 설정 고치기] 에서 "인증서 확인 안 함" 을 켜세요.'),
     );
   }
-  if (s.contains(' 403') || s.contains('권한 없음')) return (tr('이 폴더를 볼 권한이 없습니다'), tr('서버에서 이 계정의 권한을 확인하세요.'));
-  if (s.contains(' 404') || s.contains('없는 경로')) return (tr('폴더가 없습니다'), tr('다른 곳에서 지웠거나 옮겼을 수 있습니다. 위 폴더로 가 보세요.'));
+  if (s.contains(' 403') || has('권한 없음')) return (tr('이 폴더를 볼 권한이 없습니다'), tr('서버에서 이 계정의 권한을 확인하세요.'));
+  if (s.contains(' 404') || has('없는 경로')) return (tr('폴더가 없습니다'), tr('다른 곳에서 지웠거나 옮겼을 수 있습니다. 위 폴더로 가 보세요.'));
   if (s.contains('permission denied') || s.contains('pathaccessexception') || s.contains('errno = 13')) {
     return (
       tr('이 폴더를 읽을 권한이 없습니다'),

@@ -7,6 +7,7 @@ import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 
 import '../core/app_update.dart' show updateRepo;
+import '../l10n/tr.dart';
 
 /// 컴포넌트 목록 (GitHub 릴리스 "components" 의 components.json) 주소
 const componentsManifestUrl = 'https://github.com/$updateRepo/releases/download/components/components.json';
@@ -95,7 +96,7 @@ class ComponentStore {
     final req = await _http.getUrl(Uri.parse(manifestUrl));
     final res = await req.close();
     final body = await res.transform(utf8.decoder).join();
-    if (res.statusCode != 200) throw ComponentException('컴포넌트 목록을 받을 수 없습니다 (${res.statusCode})');
+    if (res.statusCode != 200) throw ComponentException(trf('컴포넌트 목록을 받을 수 없습니다 ({0})', [res.statusCode]));
     return ComponentManifest.parse(body);
   }
 
@@ -105,7 +106,7 @@ class ComponentStore {
     _cancel = false;
     final m = await manifest();
     final files = m.files(id, platform);
-    if (files == null) throw const ComponentException('이 기기에서는 쓸 수 없는 컴포넌트입니다');
+    if (files == null) throw ComponentException(tr('이 기기에서는 쓸 수 없는 컴포넌트입니다'));
     final dir = dirOf(id);
     final dl = Directory(p.join(dir.path, '_download'));
     await dl.create(recursive: true);
@@ -113,20 +114,20 @@ class ComponentStore {
       final got = <(ComponentFile, File)>[];
       for (final f in files) {
         final out = File(p.join(dl.path, f.name.isEmpty ? p.basename(Uri.parse(f.url).path) : f.name));
-        await _download(f, out, (d) => onProgress?.call('받는 중: ${f.name}', d));
+        await _download(f, out, (d) => onProgress?.call(trf('받는 중: {0}', [f.name]), d));
         got.add((f, out));
       }
       for (final (f, file) in got) {
-        if (_cancel) throw const ComponentException('취소했습니다');
+        if (_cancel) throw ComponentException(tr('취소했습니다'));
         switch (f.kind) {
           case 'msi':
-            onProgress?.call('푸는 중: ${f.name}', null);
+            onProgress?.call(trf('푸는 중: {0}', [f.name]), null);
             await _runMsiAdmin(file.path, p.join(dir.path, 'app'));
           case 'zip':
-            onProgress?.call('푸는 중: ${f.name}', null);
+            onProgress?.call(trf('푸는 중: {0}', [f.name]), null);
             await extractFileToDisk(file.path, p.join(dir.path, 'jre'));
           case 'oxt':
-            onProgress?.call('확장 설치: ${f.name}', null);
+            onProgress?.call(trf('확장 설치: {0}', [f.name]), null);
             await _addExtension(id, file.path);
           default:
             await file.copy(p.join(dir.path, p.basename(file.path)));
@@ -148,7 +149,7 @@ class ComponentStore {
   Future<void> _download(ComponentFile f, File out, void Function(double? progress) onProgress) async {
     final req = await _http.getUrl(Uri.parse(f.url));
     final res = await req.close();
-    if (res.statusCode != 200) throw ComponentException('받을 수 없습니다 (${res.statusCode}): ${f.url}');
+    if (res.statusCode != 200) throw ComponentException(trf('받을 수 없습니다 ({0}): {1}', [res.statusCode, f.url]));
     final total = res.contentLength > 0 ? res.contentLength : f.size;
     final sink = out.openWrite();
     final hash = AccumulatorSink<Digest>();
@@ -156,7 +157,7 @@ class ComponentStore {
     var done = 0;
     try {
       await for (final chunk in res) {
-        if (_cancel) throw const ComponentException('취소했습니다');
+        if (_cancel) throw ComponentException(tr('취소했습니다'));
         sink.add(chunk);
         hasher.add(chunk);
         done += chunk.length;
@@ -169,7 +170,7 @@ class ComponentStore {
     final sum = hash.events.single.toString();
     if (f.sha256 != null && f.sha256!.isNotEmpty && sum != f.sha256) {
       await out.delete();
-      throw ComponentException('파일이 손상되었습니다 (SHA-256 다름): ${f.name}');
+      throw ComponentException(trf('파일이 손상되었습니다 (SHA-256 다름): {0}', [f.name]));
     }
   }
 
@@ -177,7 +178,7 @@ class ComponentStore {
   Future<void> _runMsiAdmin(String msi, String target) async {
     await Directory(target).create(recursive: true);
     final r = await Process.run('msiexec', ['/a', msi, '/qn', 'TARGETDIR=$target']);
-    if (r.exitCode != 0) throw ComponentException('설치 파일을 풀 수 없습니다 (msiexec ${r.exitCode})');
+    if (r.exitCode != 0) throw ComponentException(trf('설치 파일을 풀 수 없습니다 (msiexec {0})', [r.exitCode]));
   }
 
   // ───────── 문서 미리보기 (LibreOffice) ─────────
@@ -217,17 +218,17 @@ class ComponentStore {
 
   Future<void> _addExtension(String id, String oxt) async {
     final office = soffice(id);
-    if (office == null) throw const ComponentException('LibreOffice 를 먼저 설치해야 합니다');
+    if (office == null) throw ComponentException(tr('LibreOffice 를 먼저 설치해야 합니다'));
     final unopkg = p.join(p.dirname(office), 'unopkg.com');
     final r = await Process.run(unopkg, ['add', '--suppress-license', '-env:UserInstallation=${_profileUrl(id)}', oxt],
         environment: _env(id));
-    if (r.exitCode != 0) throw ComponentException('확장을 설치할 수 없습니다 (${r.exitCode}): ${r.stderr}');
+    if (r.exitCode != 0) throw ComponentException(trf('확장을 설치할 수 없습니다 ({0}): {1}', [r.exitCode, r.stderr]));
   }
 
   /// 문서를 PDF 로 ([outDir] 에 만든 PDF 경로)
   Future<String> convertToPdf(String input, String outDir, {String id = 'docs'}) async {
     final office = soffice(id);
-    if (office == null) throw const ComponentException('문서 미리보기 컴포넌트를 먼저 설치하세요');
+    if (office == null) throw ComponentException(tr('문서 미리보기 컴포넌트를 먼저 설치하세요'));
     await Directory(outDir).create(recursive: true);
     final r = await Process.run(office, [
       '--headless', '--norestore', '--nologo', '--nodefault',
@@ -236,7 +237,7 @@ class ComponentStore {
     ], environment: _env(id)).timeout(const Duration(minutes: 3));
     final out = p.join(outDir, '${p.basenameWithoutExtension(input)}.pdf');
     if (!File(out).existsSync()) {
-      throw ComponentException('PDF 로 바꾸지 못했습니다 (${r.exitCode}) ${'${r.stderr}'.trim()}');
+      throw ComponentException(trf('PDF 로 바꾸지 못했습니다 ({0}) {1}', [r.exitCode, '${r.stderr}'.trim()]));
     }
     return out;
   }

@@ -6,6 +6,8 @@
 /// 예: "0 9-17 * * 1-5" 평일 9시~17시 59분, "0 0-5 * * *" 매일 0시~5시 59분, "0 */2 * * 0,6" 주말 2시간마다 1시간씩.
 library;
 
+import '../l10n/tr.dart';
+
 /// cron 글 한 줄
 class CronExpr {
   final Set<int> minutes, hours, days, months, weekdays;
@@ -23,7 +25,7 @@ class CronExpr {
   /// 잘못된 글이면 FormatException
   static CronExpr parse(String text) {
     final f = text.trim().split(RegExp(r'\s+'));
-    if (f.length != 5) throw FormatException('cron 은 다섯 칸입니다 (분 시 일 월 요일)', text);
+    if (f.length != 5) throw FormatException(tr('cron 은 다섯 칸입니다 (분 시 일 월 요일)'), text);
     final wd = _field(f[4], 0, 7, _dows).map((d) => d == 7 ? 0 : d).toSet();
     return CronExpr._(text.trim(), _field(f[0], 0, 59), _field(f[1], 0, 23), _field(f[2], 1, 31), _field(f[3], 1, 12, _mons),
         wd, f[2] == '*', f[4] == '*');
@@ -40,16 +42,16 @@ class CronExpr {
   static Set<int> _field(String s, int lo, int hi, [Map<String, int> names = const {}]) {
     int num(String x) {
       final n = names[x.toUpperCase()] ?? int.tryParse(x);
-      if (n == null || n < lo || n > hi) throw FormatException('범위 밖 값: $x ($lo~$hi)');
+      if (n == null || n < lo || n > hi) throw FormatException(trf('범위 밖 값: {0} ({1}~{2})', [x, lo, hi]));
       return n;
     }
 
     final out = <int>{};
     for (final part in s.split(',')) {
       final stepParts = part.split('/');
-      if (stepParts.length > 2) throw FormatException('잘못된 칸: $part');
+      if (stepParts.length > 2) throw FormatException(trf('잘못된 칸: {0}', [part]));
       final step = stepParts.length == 2 ? int.tryParse(stepParts[1]) : 1;
-      if (step == null || step < 1) throw FormatException('잘못된 간격: $part');
+      if (step == null || step < 1) throw FormatException(trf('잘못된 간격: {0}', [part]));
       final range = stepParts[0];
       int a, b;
       if (range == '*') {
@@ -57,10 +59,10 @@ class CronExpr {
         b = hi;
       } else if (range.contains('-')) {
         final r = range.split('-');
-        if (r.length != 2) throw FormatException('잘못된 범위: $part');
+        if (r.length != 2) throw FormatException(trf('잘못된 범위: {0}', [part]));
         a = num(r[0]);
         b = num(r[1]);
-        if (b < a) throw FormatException('거꾸로 된 범위: $part');
+        if (b < a) throw FormatException(trf('거꾸로 된 범위: {0}', [part]));
       } else {
         a = num(range);
         b = stepParts.length == 2 ? hi : a;

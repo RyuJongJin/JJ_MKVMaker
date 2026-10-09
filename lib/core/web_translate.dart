@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import '../l10n/tr.dart';
 
 /// 앱 안 웹 브라우저의 페이지 번역 (환경 설정 > 웹 브라우저 > 웹 페이지 자동 번역).
 ///
@@ -256,7 +257,7 @@ class WebPageTranslator {
   static List<(String, String)> parseGoogleResponse(String body, int count) {
     final v = jsonDecode(body);
     if (v is! List || v.length != count) {
-      throw FormatException('번역 응답의 개수가 다릅니다 (${v is List ? v.length : '?'} / $count)');
+      throw FormatException(trf('번역 응답의 개수가 다릅니다 ({0} / {1})', [v is List ? v.length : '?', count]));
     }
     return [
       for (final x in v)
@@ -272,7 +273,7 @@ class WebPageTranslator {
       req.add(utf8.encode(body));
       final res = await req.close().timeout(const Duration(seconds: 20));
       final text = await res.transform(utf8.decoder).join().timeout(const Duration(seconds: 20));
-      if (res.statusCode != 200) throw HttpException('번역 서버 응답 ${res.statusCode}', uri: url);
+      if (res.statusCode != 200) throw HttpException(trf('번역 서버 응답 {0}', [res.statusCode]), uri: url);
       return text;
     } finally {
       client.close(force: true);

@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../../core/sync_tools.dart';
+import '../../l10n/tr.dart';
 
 /// Windows 용 rsync: 처음 쓸 때 MSYS2 공식 저장소에서 패키지를 받아 (SHA256 고정 검증)
 /// 설정 폴더의 rsync\ 에 rsync.exe 와 필요한 DLL 만 풀어 둔다 (앱 업데이트로 지워지지 않게).
@@ -34,10 +35,10 @@ class RsyncInstaller {
         final f = File(p.join(work.path, name));
         final req = await http.getUrl(Uri.parse('$msys2Repo$name'));
         final res = await req.close();
-        if (res.statusCode != 200) throw HttpException('$name 을(를) 받지 못했습니다 (${res.statusCode})');
+        if (res.statusCode != 200) throw HttpException(trf('{0} 을(를) 받지 못했습니다 ({1})', [name, res.statusCode]));
         await res.pipe(f.openWrite());
         final got = (await sha256.bind(f.openRead()).first).toString();
-        if (got != sha) throw StateError('$name 의 SHA256 이 다릅니다 (손상되었거나 다른 파일). 설치를 멈췄습니다.');
+        if (got != sha) throw StateError(trf('{0} 의 SHA256 이 다릅니다 (손상되었거나 다른 파일). 설치를 멈췄습니다.', [name]));
         final t = await Process.run('tar', ['-xf', f.path, '-C', work.path, 'usr/bin']);
         if (t.exitCode != 0) throw ProcessException('tar', [f.path], '${t.stderr}', t.exitCode);
       }
@@ -45,7 +46,7 @@ class RsyncInstaller {
       await Directory(target).create(recursive: true);
       for (final n in msys2RsyncFiles) {
         final src = File(p.join(bin.path, n));
-        if (!await src.exists()) throw StateError('패키지에 $n 이 없습니다');
+        if (!await src.exists()) throw StateError(trf('패키지에 {0} 이 없습니다', [n]));
         await src.copy(p.join(target, n));
       }
       final exe = p.join(target, 'rsync.exe');

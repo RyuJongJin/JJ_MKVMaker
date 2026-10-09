@@ -9,6 +9,7 @@ import '../core/file_ops.dart';
 import '../core/sync_preview.dart' show isRsyncDeleteOption;
 import '../core/sync_tools.dart';
 import '../core/vfs.dart';
+import '../l10n/tr.dart';
 
 /// 복사 · 이동 한 번 (파일 탐색기). 방법 (현재 방식 · rsync · robocopy) 과 상관없이 같은 진행 상태를 알린다:
 /// - 위쪽: 고른 항목 (폴더) 중 몇 번째인지 · 전체 진행률
@@ -184,7 +185,7 @@ class TransferJob extends ChangeNotifier {
       for (var i = 0; i < sources.length; i++) {
         final s = sources[i];
         if ((isDav(s) || FileSystemEntity.isDirectorySync(s)) && isSameOrInside(dest, s)) {
-          throw FileSystemException('폴더를 자기 안으로 복사 · 이동할 수 없습니다', s);
+          throw FileSystemException(tr('폴더를 자기 안으로 복사 · 이동할 수 없습니다'), s);
         }
         filesTotal[i] = await countFiles(s);
         // 앱이 직접 복사할 때만 (robocopy · rsync 는 그 프로그램이 진행을 알려 줌)
@@ -290,7 +291,7 @@ class TransferJob extends ChangeNotifier {
 
   Future<void> _runRsync() async {
     final exe = rsyncExe;
-    if (exe == null || exe.isEmpty) throw StateError('rsync 실행 파일이 없습니다');
+    if (exe == null || exe.isEmpty) throw StateError(tr('rsync 실행 파일이 없습니다'));
     final windows = Platform.isWindows;
     Future<void> one(List<int> idx) async {
       final out = RsyncOutput();
@@ -328,7 +329,7 @@ class TransferJob extends ChangeNotifier {
         },
       );
       if (cancelled) return;
-      if (!rsyncOk(code)) throw ProcessException(exe, const [], 'rsync 종료 코드 $code\n${log.take(8).join('\n')}', code);
+      if (!rsyncOk(code)) throw ProcessException(exe, const [], '${trf('rsync 종료 코드 {0}', [code])}\n${log.take(8).join('\n')}', code);
       for (final i in idx) {
         filesDone[i] = filesTotal[i];
         made.add(p.join(dest, p.basename(sources[i])));
@@ -386,7 +387,7 @@ class TransferJob extends ChangeNotifier {
           },
         );
         if (cancelled) return;
-        if (!robocopyOk(code)) throw ProcessException('robocopy', const [], 'robocopy 종료 코드 $code', code);
+        if (!robocopyOk(code)) throw ProcessException('robocopy', const [], trf('robocopy 종료 코드 {0}', [code]), code);
       }
       filesDone[index] = filesTotal[index];
       made.add(p.join(dest, p.basename(s)));

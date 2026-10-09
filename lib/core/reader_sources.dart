@@ -11,6 +11,7 @@ import 'package:pdfrx/pdfrx.dart';
 
 import 'playlist.dart' show naturalCompare;
 import 'vfs.dart';
+import '../l10n/tr.dart';
 
 /// 그림 보기 (만화 보기) 의 기본 대상 확장자 (환경 설정에서 바꿈)
 const defaultImageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'];
@@ -207,7 +208,7 @@ Future<PdfDocument> imagePageDocument(String path, {required String tempDir, req
   final local = await vLocalCopy(path, tempDir);
   final bytes = await File(local).readAsBytes();
   final decoded = img.decodeImage(bytes);
-  if (decoded == null) throw FormatException('그림을 읽을 수 없습니다', vBasename(path));
+  if (decoded == null) throw FormatException(tr('그림을 읽을 수 없습니다'), vBasename(path));
   final jpeg = extOf(path) == 'jpg' || extOf(path) == 'jpeg' ? bytes : Uint8List.fromList(img.encodeJpg(decoded, quality: 92));
   return PdfDocument.createFromJpegData(jpeg,
       width: decoded.width * 0.75, height: decoded.height * 0.75, sourceName: sourceName);
