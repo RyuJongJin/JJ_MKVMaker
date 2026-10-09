@@ -14,6 +14,8 @@ class AiFile {
   final String license;
   final String licenseUrl;
   final String? terms;
+  /// 175: 라이선스 원문 (저작권 줄 · 허가 문구 그대로, assets/licenses) - 받기 화면 [원문] · 라이선스 화면
+  final String? licenseAsset;
 
   /// 'windows' · 'android' (비어 있으면 모두)
   final List<String> platforms;
@@ -31,6 +33,7 @@ class AiFile {
     required this.license,
     required this.licenseUrl,
     this.terms,
+    this.licenseAsset,
     this.platforms = const [],
     this.needs,
   });
@@ -58,7 +61,8 @@ const aiCatalog = <AiFile>[
     size: 4265146304,
     kind: 'model',
     license: 'CreativeML OpenRAIL-M',
-    licenseUrl: 'https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5/blob/main/LICENSE.md',
+    licenseUrl: 'https://github.com/CompVis/stable-diffusion/blob/main/LICENSE',
+    licenseAsset: 'assets/licenses/CREATIVEML_OPENRAIL_M.txt',
     terms: openRailTerms,
   ),
   AiFile(
@@ -70,6 +74,7 @@ const aiCatalog = <AiFile>[
     kind: 'lora',
     license: 'OpenRAIL++',
     licenseUrl: 'https://huggingface.co/latent-consistency/lcm-lora-sdv1-5',
+    licenseAsset: 'assets/licenses/CREATIVEML_OPENRAIL_PP_M.txt',
   ),
   AiFile(
     id: 'taesd',
@@ -80,6 +85,7 @@ const aiCatalog = <AiFile>[
     kind: 'taesd',
     license: 'MIT',
     licenseUrl: 'https://huggingface.co/madebyollin/taesd',
+    licenseAsset: 'assets/licenses/TAESD_LICENSE.txt',
   ),
   // 121: 해상도 올리기 (Real-ESRGAN, BSD-3 - 상업 사용 가능). stable-diffusion.cpp 가 읽는 RRDBNet 형식만
   AiFile(
@@ -91,6 +97,7 @@ const aiCatalog = <AiFile>[
     kind: 'upscale',
     license: 'BSD-3-Clause',
     licenseUrl: 'https://github.com/xinntao/Real-ESRGAN/blob/master/LICENSE',
+    licenseAsset: 'assets/licenses/REAL_ESRGAN_LICENSE.txt',
   ),
   AiFile(
     id: 'esrgan-x4plus',
@@ -101,6 +108,7 @@ const aiCatalog = <AiFile>[
     kind: 'upscale',
     license: 'BSD-3-Clause',
     licenseUrl: 'https://github.com/xinntao/Real-ESRGAN/blob/master/LICENSE',
+    licenseAsset: 'assets/licenses/REAL_ESRGAN_LICENSE.txt',
   ),
   AiFile(
     id: 'engine-vulkan',
@@ -111,6 +119,7 @@ const aiCatalog = <AiFile>[
     kind: 'engine',
     license: 'MIT',
     licenseUrl: 'https://github.com/leejet/stable-diffusion.cpp/blob/master/LICENSE',
+    licenseAsset: 'assets/licenses/STABLE_DIFFUSION_CPP_LICENSES.txt',
     platforms: ['windows'],
   ),
   AiFile(
@@ -122,6 +131,7 @@ const aiCatalog = <AiFile>[
     kind: 'engine',
     license: 'MIT',
     licenseUrl: 'https://github.com/leejet/stable-diffusion.cpp/blob/master/LICENSE',
+    licenseAsset: 'assets/licenses/STABLE_DIFFUSION_CPP_LICENSES.txt',
     platforms: ['windows'],
     needs: 'nvidia',
   ),
@@ -144,11 +154,21 @@ AiFile aiFile(String id) => aiCatalog.firstWhere((f) => f.id == id);
 /// 그림 만들기 "SD1.5 + LCM" 에 꼭 필요한 파일 (TAESD 는 고를 수 있음)
 const sd15LcmFiles = ['sd15', 'lcm-lora-sd15'];
 
-/// 앱 안 라이선스 화면 (showLicensePage) 에 넣을 AI 구성 요소 (패키지 이름, 글)
-List<(String, String)> aiLicenseTexts() => [
-      ('stable-diffusion.cpp', 'MIT License - https://github.com/leejet/stable-diffusion.cpp ($sdCppVersion)'),
+/// stable-diffusion.cpp (sd-cli) 와 그 안에 함께 묶인 구성 요소 (ggml · libwebp · libwebm · Oniguruma 등) 의 원문
+const sdCppLicenseAsset = 'assets/licenses/STABLE_DIFFUSION_CPP_LICENSES.txt';
+
+/// 앱 안 라이선스 화면 (showLicensePage) 에 넣을 AI 구성 요소 (패키지 이름, 요약, 원문 asset)
+List<(String, String, String?)> aiLicenseTexts() => [
+      (
+        'stable-diffusion.cpp',
+        'MIT License - https://github.com/leejet/stable-diffusion.cpp ($sdCppVersion)\n\n'
+            '함께 묶인 구성 요소: ggml (MIT) · libwebp · libwebm (BSD-3) · Oniguruma · Darts-clone (BSD-2) · utf8proc · '
+            'nlohmann/json · miniz · stb (MIT) · zip (Unlicense)',
+        sdCppLicenseAsset,
+      ),
       for (final f in aiCatalog)
-        if (f.kind != 'engine') (f.name, '${f.license} - ${f.licenseUrl}${f.terms == null ? '' : '\n\n${f.terms}'}'),
+        if (f.kind != 'engine' || f.licenseAsset == null)
+          (f.name, '${f.license} - ${f.licenseUrl}${f.terms == null ? '' : '\n\n${f.terms}'}', f.licenseAsset),
     ];
 
 /// 121: 해상도 올리기 모델 (설정 'auto' · 'photo' · 'anime'). 자동은 폰이면 가볍고 빠른 만화용, PC 면 사진용 (x4plus)

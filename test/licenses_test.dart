@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart' show LicenseRegistry;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:jj_mkvmaker/core/ai_catalog.dart';
 import 'package:jj_mkvmaker/ui/license_texts.dart';
 
 void main() {
@@ -26,6 +27,55 @@ void main() {
     for (final s in ['GPL-3.0-or-later', 'yt-dlp 2026', 'chromium/7811', 'H2Orestart/tree/v0.7.14', 'rsync-3.5.1.tar.gz',
         'ffmpeg-9.0.2', 'Android 판은 위의 GPLv3']) {
       expect(notices, contains(s));
+    }
+  });
+
+  test('175: MIT · BSD 항목은 저작권 줄과 허가 문구 원문을 함께 (이름 · 주소 한 줄이 아니라)', () async {
+    registerAppLicenses();
+    final entries = await LicenseRegistry.licenses.toList();
+    String find(String name) {
+      final e = entries.firstWhere((e) => e.packages.any((p) => p.startsWith(name)), orElse: () => throw 'no entry: $name');
+      return e.paragraphs.map((p) => p.text).join('\n');
+    }
+
+    const mit = 'Permission is hereby granted';
+    const bsd = 'Redistribution and use';
+    // (라이선스 화면 이름, 꼭 있어야 할 저작권 줄, 허가 문구)
+    final want = [
+      ('stable-diffusion.cpp', 'Copyright (c) 2023 leejet', mit),
+      ('stable-diffusion.cpp', 'The ggml authors', mit), // 함께 묶인 ggml
+      ('stable-diffusion.cpp', 'Copyright (c) 2010, Google Inc.', bsd), // libwebp · libwebm
+      ('stable-diffusion.cpp', 'K.Kosako', bsd), // Oniguruma
+      ('stable-diffusion.cpp', 'Niels Lohmann', mit), // nlohmann/json
+      ('stable-diffusion.cpp', 'Rich Geldreich', mit), // miniz
+      ('stable-diffusion.cpp', 'Sean Barrett', mit), // stb
+      ('whisper.cpp', 'The ggml authors', mit),
+      ('ONNX Runtime', 'Copyright (c) Microsoft Corporation', mit),
+      ('Whisper 모델', 'Copyright (c) 2022 OpenAI', mit),
+      ('TAESD', 'Ollin Boer Bohan', mit),
+      ('Real-ESRGAN x4plus (사진)', 'Copyright (c) 2021, Xintao Wang', bsd),
+      ('Real-ESRGAN x4plus anime', 'Copyright (c) 2021, Xintao Wang', bsd),
+    ];
+    for (final (name, copyright, grant) in want) {
+      final t = find(name);
+      expect(t, contains(copyright), reason: name);
+      expect(t, contains(grant), reason: name);
+    }
+    // OpenRAIL 계열은 원문 (부속서 A 의 용도 제한까지)
+    expect(find('Stable Diffusion v1.5'), contains('Attachment A'));
+    expect(find('Stable Diffusion v1.5'), contains('Copyright (c) 2022 Robin Rombach'));
+    expect(find('LCM-LoRA'), contains('CreativeML Open RAIL++-M'));
+    expect(find('LCM-LoRA'), contains('Attachment A'));
+    // NLLB: CC BY-NC 4.0 원문 (비상업적 이용만)
+    expect(find('NLLB-200'), contains('Attribution-NonCommercial 4.0 International'));
+    expect(find('NLLB-200'), contains('NonCommercial means not primarily intended for or directed towards'));
+  });
+
+  test('175: AI 받기 목록의 MIT · BSD · OpenRAIL 파일은 원문 asset 이 있고, 그 파일이 실제로 있다', () {
+    for (final f in aiCatalog) {
+      if (f.license.contains('NVIDIA')) continue; // CUDA 런타임: NVIDIA EULA (주소)
+      expect(f.licenseAsset, isNotNull, reason: f.id);
+      expect(File(f.licenseAsset!).existsSync(), isTrue, reason: f.licenseAsset);
     }
   });
 

@@ -5,7 +5,10 @@ JJ_MKVMaker - 포함된 오픈 소스 구성 요소 및 라이선스 고지
 각 구성 요소는 해당 라이선스를 따릅니다. 라이선스 원문은 프로그램 안의 "환경 설정 > 프로그램 정보 >
 오픈 소스 라이선스" 화면 (Windows · Android 모두) 과, Windows 판은 data\flutter_assets\assets\licenses\
 (GPL-2.0.txt · GPL-3.0.txt · LGPL-2.1.txt · PDFIUM_LICENSES.txt · YT-DLP_THIRD_PARTY_LICENSES.txt ·
-RSYNC_COPYING.txt) 및 ffmpeg\, tools\, rsync\ 폴더의 *_LICENSE*, *_COPYING* 파일에서 볼 수 있습니다.
+RSYNC_COPYING.txt · WHISPER_CPP_LICENSE.txt · ONNXRUNTIME_LICENSES.txt · STABLE_DIFFUSION_CPP_LICENSES.txt ·
+CREATIVEML_OPENRAIL_M.txt · CREATIVEML_OPENRAIL_PP_M.txt · TAESD_LICENSE.txt · REAL_ESRGAN_LICENSE.txt ·
+WHISPER_MODEL_LICENSE.txt · NLLB_CC_BY_NC_4.0.txt) 및 ffmpeg\, tools\, rsync\ 폴더의 *_LICENSE*, *_COPYING* 파일에서 볼 수 있습니다.
+WHISPER_CPP_LICENSE.txt · ONNXRUNTIME_LICENSES.txt 는 실행 파일 옆에도 둡니다.
 
 [프로그램에 연결된 라이브러리]
 
@@ -27,9 +30,11 @@ RSYNC_COPYING.txt) 및 ffmpeg\, tools\, rsync\ 폴더의 *_LICENSE*, *_COPYING* 
 - pdfrx, pdfrx_engine, pdfium_dart, pdfium_flutter  MIT  https://github.com/espresso3389/pdfrx
 - ANGLE (libEGL.dll, libGLESv2.dll)    BSD 3-Clause          https://chromium.googlesource.com/angle/angle
 - whisper.cpp / ggml                   MIT                   https://github.com/ggml-org/whisper.cpp
+  판: v1.9.1 (whisper_ggml 안에 함께 빌드)   원문: WHISPER_CPP_LICENSE.txt
 - whisper_ggml (JJ_MKVMaker 수정본)       MIT                   https://pub.dev/packages/whisper_ggml
   수정 내용: app\packages\whisper_ggml\JJ_PATCH.md
 - ONNX Runtime (onnxruntime.dll)       MIT                   https://github.com/microsoft/onnxruntime
+  판: 1.15.1   원문: ONNXRUNTIME_LICENSES.txt (MIT 원문 + ONNX Runtime Third Party Notices)
 - onnxruntime (Dart)                   MIT                   https://pub.dev/packages/onnxruntime
 - window_manager, tray_manager, hotkey_manager, screen_retriever, nativeapi
                                        MIT                   https://github.com/leanflutter
@@ -91,6 +96,8 @@ RSYNC_COPYING.txt) 및 ffmpeg\, tools\, rsync\ 폴더의 *_LICENSE*, *_COPYING* 
 - libmpv (media_kit_libs_android_video) LGPL-2.1+ (원문: LGPL-2.1.txt)             https://github.com/media-kit/libmpv-android-video-build
 - stable-diffusion.cpp · ggml (libsdcli.so 라는 이름의 실행 파일)  MIT  https://github.com/leejet/stable-diffusion.cpp
   커밋 228c707 을 고치지 않고 Android NDK 로 빌드 (AI 그림 · 해상도 올리기). 빌드 방법: app/tool/build_sdcpp_android.sh
+  함께 묶인 구성 요소: ggml (MIT) · libwebp · libwebm (BSD-3) · Oniguruma · Darts-clone (BSD-2) · utf8proc · nlohmann/json ·
+  miniz · stb (MIT) · zip (Unlicense)   원문: STABLE_DIFFUSION_CPP_LICENSES.txt
 
 Android 판은 위의 GPLv3 구성 요소를 포함하며, 앱 자체의 대응 소스는 같은 판 번호의 GitHub 태그에 있습니다:
   https://github.com/RyuJongJin/JJ_MKVMaker/tags (예: v1.2.3 판 → 태그 v1.2.3). 원문: GPL-3.0.txt
@@ -109,9 +116,11 @@ Android 판은 위의 GPLv3 구성 요소를 포함하며, 앱 자체의 대응 
 [처음 사용할 때 내려받는 AI 모델]
 
 - Whisper 모델 (ggml-base.bin 등)       MIT (OpenAI Whisper)  https://huggingface.co/ggerganov/whisper.cpp
+  원문: WHISPER_MODEL_LICENSE.txt
 - NLLB-200 distilled 600M (ONNX)        CC-BY-NC 4.0 (비상업적 이용만 허용)
                                         https://huggingface.co/facebook/nllb-200-distilled-600M
                                         변환본: https://huggingface.co/Xenova/nllb-200-distilled-600M
+  원문: NLLB_CC_BY_NC_4.0.txt (받는 화면 · 번역 창의 [원문] 에서도)
   ※ NLLB 번역 모델은 상업적 용도로 쓸 수 없습니다. 판매·유료 서비스에 쓰려면
     상업 이용이 가능한 번역 모델로 바꿔야 합니다.
 
@@ -119,16 +128,21 @@ Android 판은 위의 GPLv3 구성 요소를 포함하며, 앱 자체의 대응 
 
 - stable-diffusion.cpp Windows 실행 파일 (Vulkan · CUDA 12 판)  MIT
                                         https://github.com/leejet/stable-diffusion.cpp/releases (master-948-228c707)
+  원문 (함께 묶인 구성 요소 포함): STABLE_DIFFUSION_CPP_LICENSES.txt
 - NVIDIA CUDA 12 런타임 DLL (CUDA 판과 함께, NVIDIA 그래픽카드가 있을 때만)  NVIDIA CUDA Toolkit EULA (재배포 허용 파일)
 - Stable Diffusion v1.5 (v1-5-pruned-emaonly.safetensors)  CreativeML OpenRAIL-M
                                         https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5
   ※ 상업적 사용을 포함해 쓸 수 있지만 라이선스 부속서 A 의 용도 제한을 따라야 합니다: 법을 어기는 일, 미성년자를 해치거나
     이용하는 일, 남을 해치려는 거짓 정보, 개인 정보로 사람을 해치는 일, 차별 · 괴롭힘, 의료 · 법률 판단을 대신하는 일 등.
     만든 그림에 대한 책임은 쓰는 사람에게 있습니다. 받기 전에 앱에서 이 조건을 보여 주고 동의를 받습니다.
+  원문: CREATIVEML_OPENRAIL_M.txt (받기 화면의 [원문] 에서도)
 - LCM-LoRA (lcm-lora-sdv1-5)              OpenRAIL++  https://huggingface.co/latent-consistency/lcm-lora-sdv1-5
+  원문: CREATIVEML_OPENRAIL_PP_M.txt (받기 화면의 [원문] 에서도)
 - TAESD (빠른 디코더)                     MIT          https://huggingface.co/madebyollin/taesd
+  원문: TAESD_LICENSE.txt (받기 화면의 [원문] 에서도)
 - Real-ESRGAN x4plus · x4plus_anime_6B (해상도 올리기)  BSD-3-Clause  https://github.com/xinntao/Real-ESRGAN
                                         공식 릴리스 (v0.1.0 · v0.2.2.4) 의 .pth 파일
+  원문: REAL_ESRGAN_LICENSE.txt (받기 화면의 [원문] 에서도)
 
 [인터넷 서비스]
 

@@ -6,6 +6,7 @@ import '../app/app_controller.dart';
 import '../core/languages.dart';
 import '../core/models.dart';
 import '../services/model_store.dart';
+import 'license_texts.dart' show NllbLicenseNote;
 import 'theme.dart';
 import '../l10n/tr.dart';
 
@@ -93,6 +94,7 @@ class _TranslateDialogState extends State<_TranslateDialog> {
                 Text(_installed! ? tr('설치됨') : trf('처음 사용 시 내려받기 {0}', [nllbModel.sizeLabel]),
                     style: TextStyle(fontSize: 11, color: _installed! ? JjColors.success : JjColors.textDim)),
             ]),
+            const NllbLicenseNote(),
             const SizedBox(height: 8),
             Text(tr('※ 다른 작업 중이면 대기열에 넣고 차례대로 합니다. 번역하는 동안 브라우저를 써도 됩니다.'),
                 style: TextStyle(fontSize: 11, color: JjColors.textDim)),

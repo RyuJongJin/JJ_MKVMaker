@@ -6,6 +6,7 @@ import '../app/app_controller.dart';
 import '../core/languages.dart';
 import '../core/models.dart';
 import '../services/model_store.dart';
+import 'license_texts.dart' show NllbLicenseNote;
 import 'theme.dart';
 import '../l10n/tr.dart';
 
@@ -138,6 +139,7 @@ class _AiDialogState extends State<_AiDialog> {
                 Text(tr('번역 모델: NLLB-200 (로컬)  '), style: TextStyle(fontSize: 13)),
                 _status(nllbModel),
               ]),
+              const NllbLicenseNote(),
               if (widget.videoCount > 1) ...[
                 const SizedBox(height: 8),
                 CheckboxListTile(

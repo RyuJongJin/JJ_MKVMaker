@@ -4,6 +4,7 @@ import '../app/i18n_controller.dart';
 import '../core/languages.dart';
 import '../l10n/tr.dart';
 import '../services/ai_services.dart';
+import 'license_texts.dart' show NllbLicenseNote;
 import 'theme.dart';
 import 'setting_tile.dart';
 
@@ -110,6 +111,7 @@ Future<void> addLanguageDialog(BuildContext context) async {
           const SizedBox(height: 8),
           Text(tr('화면 글자 전체를 이 기기에서 번역합니다. 몇 분 걸릴 수 있습니다.'),
               style: const TextStyle(fontSize: 12, color: JjColors.textDim)),
+          const NllbLicenseNote(),
         ]),
       ),
       actions: [TextButton(onPressed: i18n.cancel, child: Text(tr('취소')))],

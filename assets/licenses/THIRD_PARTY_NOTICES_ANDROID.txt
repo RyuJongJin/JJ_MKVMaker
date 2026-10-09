@@ -23,8 +23,10 @@ JJ_MKVMaker (Android) - 포함된 오픈 소스 구성 요소 및 라이선스 �
   fast_float, simdutf, zlib, LLVM libc ([패키지 라이선스] 의 "PDFium")
 - pdfrx, pdfrx_engine, pdfium_dart, pdfium_flutter  MIT  https://github.com/espresso3389/pdfrx
 - whisper.cpp / ggml                   MIT                   https://github.com/ggml-org/whisper.cpp
+  판: v1.9.1 (whisper_ggml 안에 함께 빌드). 원문: [패키지 라이선스] 의 "whisper.cpp · ggml"
 - whisper_ggml (JJ_MKVMaker 수정본)     MIT                   https://pub.dev/packages/whisper_ggml
 - ONNX Runtime · onnxruntime (Dart)    MIT                   https://github.com/microsoft/onnxruntime
+  판: 1.15.1 (libonnxruntime.so). 원문 (Third Party Notices 포함): [패키지 라이선스] 의 "ONNX Runtime 1.15.1"
 - flutter_inappwebview (JJ_MKVMaker 수정본)  Apache-2.0      https://pub.dev/packages/flutter_inappwebview
 - file_picker · android_file_picker    MIT                   https://pub.dev/packages/file_picker
 - charset (Apache-2.0) · cp949_codec (BSD) · 그 밖의 Dart 패키지: [패키지 라이선스]
@@ -43,19 +45,25 @@ JJ_MKVMaker (Android) - 포함된 오픈 소스 구성 요소 및 라이선스 �
   (빌드 방법: 소스의 tool/build_rsync_android.sh)
 - stable-diffusion.cpp · ggml (libsdcli.so 라는 이름의 실행 파일)  MIT  https://github.com/leejet/stable-diffusion.cpp
   커밋 228c707 을 고치지 않고 Android NDK 로 빌드 (AI 그림 · 해상도 올리기, 빌드 방법: 소스의 tool/build_sdcpp_android.sh)
+  함께 묶인 구성 요소: ggml (MIT) · libwebp · libwebm (BSD-3) · Oniguruma · Darts-clone (BSD-2) · utf8proc · nlohmann/json ·
+  miniz · stb (MIT) · zip (Unlicense). 원문: [패키지 라이선스] 의 "stable-diffusion.cpp"
 
 [처음 사용할 때 내려받는 AI 모델]
 
 - Whisper 모델 (ggml-base.bin 등)       MIT (OpenAI Whisper)  https://huggingface.co/ggerganov/whisper.cpp
+  원문: [패키지 라이선스] 의 "Whisper 모델 (OpenAI)"
 - NLLB-200 distilled 600M (ONNX)        CC-BY-NC 4.0 (비상업적 이용만 허용)
                                         https://huggingface.co/facebook/nllb-200-distilled-600M
   ※ NLLB 번역 모델은 상업적 용도로 쓸 수 없습니다.
+  원문: [패키지 라이선스] 의 "NLLB-200 번역 모델" (AI 자막 · 번역 창의 [원문] 에서도)
 - Stable Diffusion v1.5                 CreativeML OpenRAIL-M  https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5
   ※ 라이선스 부속서 A 의 용도 제한을 따라야 합니다 (받기 전에 앱에서 보여 주고 동의를 받습니다).
     만든 그림에 대한 책임은 쓰는 사람에게 있습니다.
 - LCM-LoRA (lcm-lora-sdv1-5)            OpenRAIL++            https://huggingface.co/latent-consistency/lcm-lora-sdv1-5
 - TAESD (빠른 디코더)                   MIT                   https://huggingface.co/madebyollin/taesd
 - Real-ESRGAN x4plus · x4plus_anime_6B  BSD-3-Clause          https://github.com/xinntao/Real-ESRGAN
+  위 AI 모델 (Stable Diffusion · LCM-LoRA · TAESD · Real-ESRGAN) 의 원문은 [패키지 라이선스] 의 모델 이름과
+  받기 화면 (환경 설정 > AI 그림) 의 [원문] 에서 볼 수 있습니다.
 
 [인터넷 서비스]
 

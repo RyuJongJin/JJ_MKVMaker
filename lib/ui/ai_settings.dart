@@ -12,6 +12,7 @@ import '../services/image_ai.dart';
 import 'ai_image_page.dart' show aiSaveDir;
 import 'confirm.dart';
 import 'folder_picker.dart';
+import 'license_texts.dart' show showLicenseDocument;
 import 'setting_tile.dart';
 import 'theme.dart';
 
@@ -90,6 +91,11 @@ class _AiSettingsState extends State<AiSettings> {
             Text(tr(f.terms!)),
             const SizedBox(height: 8),
             SelectableText(f.licenseUrl, style: const TextStyle(fontSize: 12, color: JjColors.textDim)),
+            if (f.licenseAsset != null)
+              TextButton(
+                onPressed: () => showLicenseDocument(ctx, trf('{0} 라이선스', [f.license]), f.licenseAsset!),
+                child: Text(tr('라이선스 원문 보기')),
+              ),
           ]),
         ),
         actions: [
@@ -355,15 +361,25 @@ class _AiSettingsState extends State<AiSettings> {
                 const SizedBox(height: 2),
                 Text(store.progressText(f.id) ?? '', style: const TextStyle(fontSize: 12)),
               ])
-            : Text([
-                AiStore.sizeText(f.size),
-                f.license,
-                if (installed) tr('받음'),
-                // 받을 때 SHA-256 을 공식 값과 맞춰 보았다
-                if (installed && store.isVerified(f)) tr('확인됨'),
-                if (waiting) tr('차례 기다림'),
-                ?store.failures[f.id],
-              ].join(' · ')),
+            : Wrap(crossAxisAlignment: WrapCrossAlignment.center, children: [
+                Text([
+                  AiStore.sizeText(f.size),
+                  f.license,
+                  if (installed) tr('받음'),
+                  // 받을 때 SHA-256 을 공식 값과 맞춰 보았다
+                  if (installed && store.isVerified(f)) tr('확인됨'),
+                  if (waiting) tr('차례 기다림'),
+                  ?store.failures[f.id],
+                ].join(' · ')),
+                // 175: 라이선스 원문 (저작권 줄 · 허가 문구 그대로)
+                if (f.licenseAsset != null)
+                  TextButton(
+                    style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact, padding: const EdgeInsets.symmetric(horizontal: 6)),
+                    onPressed: () => showLicenseDocument(context, trf('{0} 라이선스', [f.license]), f.licenseAsset!),
+                    child: Text(tr('원문')),
+                  ),
+              ]),
         trailing: busy || waiting
             ? TextButton(onPressed: () => store.cancel(f.id), child: Text(tr('취소')))
             : installed
