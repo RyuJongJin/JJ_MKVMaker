@@ -146,6 +146,14 @@ void main() {
       expect(looksLikeVideoPage('https://tv.naver.com/v/123'), isTrue);
       expect(looksLikeVideoPage('https://www.google.com/'), isFalse);
     });
+    test('137: 다운로드 버튼을 눈에 띄게 할지 - YouTube 첫 화면 · 구독 목록은 미리보기 <video> 가 있어도 아님', () {
+      expect(downloadLooksUseful('https://www.youtube.com/', pageHasVideo: true), isFalse);
+      expect(downloadLooksUseful('https://m.youtube.com/feed/subscriptions', pageHasVideo: true), isFalse);
+      expect(downloadLooksUseful('https://www.youtube.com/watch?v=abc', pageHasVideo: false), isTrue);
+      // 주소로 판단하지 않는 사이트는 페이지 안의 <video> 로
+      expect(downloadLooksUseful('https://example.com/post/1', pageHasVideo: true), isTrue);
+      expect(downloadLooksUseful('https://example.com/post/1', pageHasVideo: false), isFalse);
+    });
     test('앱 안 브라우저 쿠키 → yt-dlp', () {
       // 내보낸 cookies.txt 가 없으면 쿠키 없이 (프로필 폴더를 직접 읽지 않는다)
       expect(ytDlpCookieArgs(browser: internalBrowserCookies, internalProfile: r'C:\w\EBWebView\Default'), isEmpty);
@@ -382,9 +390,11 @@ void main() {
     expect(find.text('수정 · 이동'), findsOneWidget);
     await tester.tapAt(const Offset(5, 880));
     await tester.pumpAndSettle();
-    FilledButton dl() => tester.widget<FilledButton>(find.ancestor(of: find.text('다운로드'), matching: find.byWidgetPredicate((w) => w is FilledButton)));
-    // 27: 동영상 페이지가 아니어도 받아 볼 수 있다 (덜 눈에 띄는 버튼 · 안내)
+    ButtonStyleButton dl() =>
+        tester.widget<ButtonStyleButton>(find.ancestor(of: find.text('다운로드'), matching: find.byWidgetPredicate((w) => w is ButtonStyleButton)));
+    // 27: 동영상 페이지가 아니어도 받아 볼 수 있다 (덜 눈에 띄는 버튼 · 안내). 137: 테두리만 있는 버튼
     expect(dl().onPressed, isNotNull);
+    expect(dl(), isA<OutlinedButton>());
     expect(find.byTooltip('다운로드 (이 페이지에서 동영상을 찾지 못했지만 받아 볼 수 있습니다)'), findsOneWidget);
 
     // 주소창 입력 → 이동
@@ -395,6 +405,7 @@ void main() {
     host.onTitle('재미있는 영상');
     await tester.pump();
     expect(dl().onPressed, isNotNull);
+    expect(dl(), isA<FilledButton>(), reason: '137: 동영상 페이지는 진한 버튼');
     await tester.tap(find.text('다운로드'));
     await tester.pump();
     expect(video.started, ['https://www.youtube.com/watch?v=abc']);

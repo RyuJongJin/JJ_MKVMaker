@@ -24,3 +24,15 @@ bool looksLikeVideoPage(String url) {
     caseSensitive: false,
   ).hasMatch(url);
 }
+
+/// 137: 동영상 페이지 주소가 정해져 있는 사이트 (YouTube 등). 이런 사이트는 주소만으로 판단한다 -
+/// 첫 화면 · 구독 목록에도 미리보기 &lt;video&gt; 가 있어 "동영상 있음" 으로 보였다.
+bool isKnownVideoSite(String url) => RegExp(
+      r'^https?://([\w-]+\.)*(youtube\.com|youtu\.be|vimeo\.com|dailymotion\.com|twitch\.tv|tiktok\.com|instagram\.com|'
+      r'tv\.naver\.com|chzzk\.naver\.com|bilibili\.com|nicovideo\.jp)(/|$)',
+      caseSensitive: false,
+    ).hasMatch(url);
+
+/// 137: 다운로드 버튼을 눈에 띄게 (채움) 할지 - 주소가 동영상 페이지이거나, 주소로 판단하지 않는 사이트에서 &lt;video&gt; 를 찾았을 때
+bool downloadLooksUseful(String url, {required bool pageHasVideo}) =>
+    looksLikeVideoPage(url) || (pageHasVideo && !isKnownVideoSite(url));

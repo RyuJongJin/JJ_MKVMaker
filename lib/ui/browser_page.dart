@@ -399,8 +399,8 @@ class _BrowserPageState extends State<BrowserPage> with RouteAware {
   /// 27: 어느 사이트에서나 받아 볼 수 있다 (yt-dlp 가 지원하면 받고, 아니면 다운로드 목록에 이유가 보인다)
   bool get _canDownload => widget.downloads != null && _url.startsWith('http');
 
-  /// 동영상이 있어 보이는 페이지 (버튼을 눈에 띄게)
-  bool get _likelyVideo => looksLikeVideoPage(_url) || _hasVideo;
+  /// 동영상이 있어 보이는 페이지 (버튼을 눈에 띄게). 137: 못 찾은 페이지는 테두리만 있는 버튼
+  bool get _likelyVideo => downloadLooksUseful(_url, pageHasVideo: _hasVideo);
 
   String get _downloadTip =>
       _likelyVideo ? tr('다운로드') : tr('다운로드 (이 페이지에서 동영상을 찾지 못했지만 받아 볼 수 있습니다)');
@@ -650,7 +650,7 @@ class _BrowserPageState extends State<BrowserPage> with RouteAware {
                   onPressed: _canDownload ? _download : null,
                   icon: const Icon(Icons.download, size: 18),
                 )
-              : IconButton.filledTonal(
+              : IconButton.outlined(
                   tooltip: _downloadTip,
                   visualDensity: VisualDensity.compact,
                   onPressed: _canDownload ? _download : null,
@@ -665,7 +665,7 @@ class _BrowserPageState extends State<BrowserPage> with RouteAware {
                     icon: const Icon(Icons.download, size: 18),
                     label: Text(tr('다운로드')),
                   )
-                : FilledButton.tonalIcon(
+                : OutlinedButton.icon(
                     onPressed: _canDownload ? _download : null,
                     icon: const Icon(Icons.download, size: 18),
                     label: Text(tr('다운로드')),
