@@ -106,7 +106,7 @@ void main() {
     await tester.tapAt(tester.getCenter(find.text('둘째.mp4').first), buttons: kSecondaryButton);
     await tester.pumpAndSettle();
     expect(c.selected, c.videos[1]);
-    for (final label in ['대상 폴더 열기', '자막 파일 추가', '삭제 (목록에서 제거)']) {
+    for (final label in ['대상 폴더 열기', '자막 파일 추가', '목록에서 빼기 (파일은 그대로)']) {
       expect(find.text(label), findsWidgets, reason: label);
     }
     await tester.tap(find.text('대상 폴더 열기'));
@@ -116,9 +116,32 @@ void main() {
     // 삭제
     await tester.tapAt(tester.getCenter(find.text('둘째.mp4').first), buttons: kSecondaryButton);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('삭제 (목록에서 제거)'));
+    await tester.tap(find.text('목록에서 빼기 (파일은 그대로)'));
     await tester.pumpAndSettle();
     expect([for (final v in c.videos) v.fileName], ['첫째.mp4']);
+  });
+
+  testWidgets('51: 터치 화면 - 동영상 줄을 길게 누르면 오른쪽 클릭과 같은 메뉴 (그 줄이 선택됨)', (tester) async {
+    tester.view.physicalSize = const Size(1500, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final c = AppController(PlatformServices(mediaTool: ProcessMediaTool('x', 'y'), storage: DesktopStorageService()));
+    c.videos.addAll([VideoItem(r'D:\v\첫째.mp4'), VideoItem(r'D:\v\둘째.mp4')]);
+    c.selected = c.videos.first;
+    await tester.pumpWidget(MaterialApp(home: HomePage(c: c)));
+    await tester.longPress(find.text('둘째.mp4').first);
+    await tester.pumpAndSettle();
+    expect(c.selected, c.videos[1]);
+    for (final label in ['대상 폴더 열기', '자막 파일 추가', '목록에서 빼기 (파일은 그대로)']) {
+      expect(find.text(label), findsWidgets, reason: label);
+    }
+    // 한 번 누르기는 그대로 (메뉴 없이 보기)
+    await tester.tapAt(const Offset(5, 5));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('첫째.mp4').first);
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(c.selected, c.videos.first);
+    expect(find.text('대상 폴더 열기'), findsNothing);
   });
 
   testWidgets('MKV 화면 위쪽 막대: 창이 좁아도 넘치지 않고 설정 · 종료 버튼이 창 안에 있다', (tester) async {

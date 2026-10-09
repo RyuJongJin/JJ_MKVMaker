@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show HapticFeedback;
 
 import '../app/app_controller.dart';
 import '../app/bookmarks_controller.dart';
@@ -686,7 +687,7 @@ class _VideoTile extends StatelessWidget {
           item('search', Icons.travel_explore, tr('인터넷 자막 찾기'), enabled: !busy),
         item('subtitle', Icons.subtitles_outlined, tr('자막 파일 추가'), enabled: !busy),
         const PopupMenuDivider(),
-        item('remove', Icons.close, tr('삭제 (목록에서 제거)'), enabled: !busy),
+        item('remove', Icons.close, tr('목록에서 빼기 (파일은 그대로)'), enabled: !busy),
       ],
     );
     if (pick == null || !context.mounted) return;
@@ -734,7 +735,13 @@ class _VideoTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final isSel = c.selected == v;
     final subs = v.subtitles.where((s) => s.enabled).length;
-    return InkWell(
+    // 51: 터치 화면에서는 길게 누르면 오른쪽 클릭과 같은 메뉴 (누른 자리에)
+    return GestureDetector(
+      onLongPressStart: (d) {
+        HapticFeedback.selectionClick();
+        _menu(context, d.globalPosition);
+      },
+      child: InkWell(
       // 한 번: 보기 · 두 번: 재생 · 세 번 이상: 이동 폴더로 옮기기
       onTap: () => _tapped(context),
       // 오른쪽 클릭: 이 동영상으로 할 수 있는 일
@@ -805,7 +812,7 @@ class _VideoTile extends StatelessWidget {
           ],
         ),
       ),
-    );
+    ));
   }
 }
 
