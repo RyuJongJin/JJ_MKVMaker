@@ -9,6 +9,7 @@ import 'package:jj_mkvmaker/services/platform_services.dart';
 import 'package:jj_mkvmaker/ui/app_actions.dart';
 import 'package:jj_mkvmaker/ui/component_settings.dart';
 import 'package:jj_mkvmaker/ui/home_page.dart';
+import 'package:jj_mkvmaker/ui/theme.dart';
 
 AppController _plain() =>
     AppController(PlatformServices(mediaTool: ProcessMediaTool('x', 'y'), storage: DesktopStorageService()));
@@ -97,12 +98,21 @@ void main() {
       await tester.pump(const Duration(milliseconds: 500));
     }
 
-    await swipe(-600); // 왼쪽으로 → 다음 (파일 탐색기)
+    // 66-2: 민 쪽으로 미끄러져 들어온다 (오른쪽에서) · 지금 화면 아이콘은 파랗게
+    await tester.flingFrom(const Offset(750, 450), const Offset(-600, 0), 2000);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 80));
+    expect(find.byType(SlideTransition), findsWidgets);
+    await tester.pump(const Duration(milliseconds: 500));
     expect(find.byTooltip('파일 탐색기 (지금 여기)'), findsOneWidget);
+    final here = tester.widget<IconButton>(find.ancestor(of: find.byTooltip('파일 탐색기 (지금 여기)'), matching: find.byType(IconButton)).first);
+    expect(here.style?.foregroundColor?.resolve({}), JjColors.accent);
     await swipe(-600);
     expect(find.byTooltip('Rsync (지금 여기)'), findsOneWidget);
     await swipe(-600); // 마지막 다음은 처음
     expect(find.byTooltip('MKV 화면 (지금 여기)'), findsOneWidget);
+    // 66-2: 끝에서 처음으로 넘어가면 알린다
+    expect(find.textContaining('처음으로: MKV 만들기'), findsOneWidget);
     await swipe(600); // 오른쪽으로 → 이전 (끝으로)
     expect(find.byTooltip('Rsync (지금 여기)'), findsOneWidget);
     // 102: 끝에서 처음으로 돌기를 끄면 끝에서 멈춘다
@@ -110,6 +120,7 @@ void main() {
     await tester.pump();
     await swipe(-600);
     expect(find.byTooltip('Rsync (지금 여기)'), findsOneWidget);
+    expect(find.textContaining('마지막 화면입니다'), findsOneWidget, reason: '끝에서 멈출 때도 왜 안 넘어가는지 알림');
     await swipe(600);
     expect(find.byTooltip('파일 탐색기 (지금 여기)'), findsOneWidget);
     await swipe(-600);
@@ -120,5 +131,10 @@ void main() {
     await tester.pump();
     await swipe(600);
     expect(find.byTooltip('Rsync (지금 여기)'), findsOneWidget);
+  });
+
+  test('66-2: 웹 브라우저 화면 옮기기 안내는 한 번만 (설정에 남음)', () {
+    expect(AppSettings().browserSwipeHinted, isFalse);
+    expect(AppSettings.fromJson((AppSettings()..browserSwipeHinted = true).toJson()).browserSwipeHinted, isTrue);
   });
 }

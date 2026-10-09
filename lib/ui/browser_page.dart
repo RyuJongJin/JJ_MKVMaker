@@ -284,7 +284,37 @@ class _BrowserPageState extends State<BrowserPage> with RouteAware {
     _applyCookieExport();
     widget.c.addListener(_onSettings);
     if (_trOn) _translateNow();
+    // 66-2: 브라우저 가운데는 페이지가 좌우로 밀리므로 화면 옮기기는 위쪽 막대에서 - 처음 한 번만 알린다.
+    // 알림 (SnackBar) 은 다른 알림 (다운로드 등) 을 뒤로 밀어 기다리게 하므로 위쪽 막대 아래의 한 줄로
+    if (s.swipeNav && !s.browserSwipeHinted) {
+      _swipeHint = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) => widget.c.updateSettings((x) => x.browserSwipeHinted = true));
+    }
   }
+
+  /// 66-2: 화면 옮기기 안내 한 줄 (처음 한 번, ✕ 로 닫음)
+  bool _swipeHint = false;
+
+  Widget _swipeHintBar() => Material(
+        color: JjColors.accent.withValues(alpha: 0.14),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 2, 4, 2),
+          child: Row(children: [
+            const Icon(Icons.swipe, size: 16, color: JjColors.accent),
+            const SizedBox(width: 8),
+            Expanded(
+                child: Text(tr('웹 브라우저에서는 위쪽 막대를 좌우로 밀면 다른 화면으로 옮깁니다 (가운데는 페이지가 밀립니다).'),
+                    style: const TextStyle(fontSize: 12))),
+            IconButton(
+              tooltip: tr('안내 닫기'),
+              visualDensity: VisualDensity.compact,
+              iconSize: 16,
+              icon: const Icon(Icons.close),
+              onPressed: () => setState(() => _swipeHint = false),
+            ),
+          ]),
+        ),
+      );
 
   /// 53: 쿠키를 쓰도록 정했을 때만 · 고른 사이트만 내보낸다
   void _applyCookieExport() {
@@ -475,6 +505,7 @@ class _BrowserPageState extends State<BrowserPage> with RouteAware {
             listenable: Listenable.merge([bm, widget.c]),
             builder: (context, _) => Column(children: [
               _toolbar(),
+              if (_swipeHint) _swipeHintBar(),
               Expanded(child: Row(children: [
               if (_panel)
                 SizedBox(

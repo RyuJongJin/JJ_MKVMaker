@@ -121,12 +121,26 @@ void main() {
     await until(t, () => find.byType(SnackBar).evaluate().isNotEmpty);
     await shot(t, 'b3_48_done');
     expect(File(p.join(right, 'doc.txt')).readAsStringSync(), 'new');
-    // 처음 열고 아무것도 고르지 않고 [복사]
+  });
+
+  testWidgets('154 · 155: 처음 열고 아무것도 고르지 않고 [복사] · [이동] → "…할 항목을 고르세요"', (t) async {
     await show(t, ExplorerPage(c: c));
     await until(t, () => find.text('doc.txt').evaluate().isNotEmpty);
+    final messenger = ScaffoldMessenger.of(t.element(find.byType(ExplorerPage)));
+    messenger.clearSnackBars(); // 앞 단계의 알림이 남지 않게
+    await settle(t, 2);
     await t.tap(find.text('복사').first);
-    await settle(t, 3);
+    await until(t, () => find.textContaining('복사할 항목을 고르세요').evaluate().isNotEmpty);
+    expect(find.textContaining('복사할 항목을 고르세요'), findsOneWidget);
     await shot(t, 'b3_154_nothing_selected');
+    messenger.clearSnackBars();
+    await settle(t, 2);
+    await t.tap(find.text('이동').first);
+    await until(t, () => find.textContaining('옮길 항목을 고르세요').evaluate().isNotEmpty);
+    expect(find.textContaining('옮길 항목을 고르세요'), findsOneWidget);
+    await shot(t, 'b3_155_nothing_selected_move');
+    messenger.clearSnackBars();
+    await settle(t, 2);
   });
 
   testWidgets('52: 복사 중에 다른 화면에 갔다 와도 진행 막대', (t) async {

@@ -412,6 +412,9 @@ class AppSettings {
   /// 66: 좌우로 밀 때 끝에서 처음으로 (끄면 끝에서 멈춤)
   bool swipeWrap = true;
 
+  /// 66-2: 웹 브라우저에서 화면 옮기기 (위쪽 막대를 좌우로) 안내를 한 번 보였는지
+  bool browserSwipeHinted = false;
+
   /// 저장 공간 정리 창에서 미리 체크할 묶음 (작업 임시 파일 · 받다 만 다운로드)
   List<String> cleanupPrechecked = ['work', 'download'];
 
@@ -648,6 +651,7 @@ class AppSettings {
         'startMenuShortcut': startMenuShortcut,
         'syncStopToast': syncStopToast,
         'swipeWrap': swipeWrap,
+        'browserSwipeHinted': browserSwipeHinted,
         'cleanupPrechecked': cleanupPrechecked,
         'migrationNotice': migrationNotice,
         'allowInnerToOuter': allowInnerToOuter,
@@ -839,6 +843,7 @@ class AppSettings {
       ..startMenuShortcut = j['startMenuShortcut'] != false
       ..syncStopToast = j['syncStopToast'] != false
       ..swipeWrap = j['swipeWrap'] != false
+      ..browserSwipeHinted = j['browserSwipeHinted'] == true
       ..cleanupPrechecked = j['cleanupPrechecked'] is List
           ? [for (final x in j['cleanupPrechecked'] as List) '$x']
           : ['work', 'download']

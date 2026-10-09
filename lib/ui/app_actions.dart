@@ -171,8 +171,26 @@ class AppNavButtons extends StatelessWidget {
     if (i < 0) i = 0;
     final j = i + step;
     // 102 · 66: 끝에서 처음으로 돌기를 끄면 끝에서 멈춘다
-    if (!scope.controller.settings.swipeWrap && (j < 0 || j >= pages.length)) return;
-    open(context, pages[j % pages.length].id);
+    final wraps = j < 0 || j >= pages.length;
+    if (!scope.controller.settings.swipeWrap && wraps) {
+      _hint(context, step > 0 ? tr('마지막 화면입니다') : tr('첫 화면입니다'));
+      return;
+    }
+    final target = pages[j % pages.length];
+    // 66-2: 민 방향으로 미끄러져 들어오게 (다음 = 오른쪽에서, 이전 = 왼쪽에서). 이미 열린 화면으로 돌아가면 그 화면의 전환대로
+    NavSlide.pending = step > 0 ? 1 : -1;
+    Future<void>.delayed(const Duration(milliseconds: 600), () => NavSlide.pending = 0);
+    // 66-2: 끝에서 처음으로 (처음에서 끝으로) 넘어갈 때 알린다 - 어디로 갔는지 몰라 헤매지 않게
+    if (wraps) {
+      _hint(context, step > 0 ? trf('처음으로: {0}', [tr(target.name)]) : trf('마지막으로: {0}', [tr(target.name)]));
+    }
+    open(context, target.id);
+  }
+
+  static void _hint(BuildContext context, String text) {
+    final m = ScaffoldMessenger.maybeOf(context);
+    m?.hideCurrentSnackBar();
+    m?.showSnackBar(SnackBar(content: Text(text), duration: const Duration(milliseconds: 1500)));
   }
 
   @override
@@ -224,7 +242,11 @@ class AppNavButtons extends StatelessWidget {
             child: InkWell(
               onTap: f,
               borderRadius: BorderRadius.circular(8),
-              child: SizedBox(
+              // 66-2: 지금 화면 아이콘은 파랗게 · 뒤에 옅은 바탕
+              child: Container(
+                decoration: here
+                    ? BoxDecoration(color: JjColors.accent.withValues(alpha: 0.16), borderRadius: BorderRadius.circular(8))
+                    : null,
                 width: 54,
                 height: 46,
                 child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
@@ -249,6 +271,11 @@ class AppNavButtons extends StatelessWidget {
               tooltip: tip,
               padding: EdgeInsets.zero,
               isSelected: here,
+              // 66-2: 지금 화면 아이콘은 파랗게 · 뒤에 옅은 바탕 (넓은 화면에서도 어디인지 보이게)
+              style: here
+                  ? IconButton.styleFrom(
+                      foregroundColor: JjColors.accent, backgroundColor: JjColors.accent.withValues(alpha: 0.16))
+                  : null,
               icon: icon,
               onPressed: f,
             ),

@@ -476,4 +476,38 @@ void main() {
     expect(b.tree.bar.children!.first.title, 'B');
     expect(b.tree.bar.children!.any((n) => n.isFolder && n.title == '영상'), isTrue);
   });
+
+  testWidgets('66-2: 처음 열면 위쪽 막대 아래에 화면 옮기기 안내 한 줄 (알림을 막지 않음) · ✕ 로 닫고 다시 열면 없음', (tester) async {
+    tester.view.physicalSize = const Size(1500, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final dir = Directory.systemTemp.createTempSync('jj_hint_');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final c = AppController(PlatformServices(mediaTool: ProcessMediaTool('x', 'y'), storage: DesktopStorageService()));
+    final bm = BookmarksController(p.join(dir.path, 'bookmarks.json'));
+    Widget page() => MaterialApp(
+          home: BrowserPage(
+            c: c,
+            bookmarks: bm,
+            initialUrl: 'https://example.com/',
+            viewBuilder: (h, url) {
+              h.attach(_Nav());
+              return const ColoredBox(color: Colors.white);
+            },
+          ),
+        );
+    await tester.pumpWidget(page());
+    await tester.pumpAndSettle();
+    expect(find.textContaining('위쪽 막대를 좌우로 밀면'), findsOneWidget);
+    expect(find.byType(SnackBar), findsNothing, reason: '알림 (다운로드 등) 을 뒤로 밀지 않게 알림이 아니라 한 줄');
+    expect(c.settings.browserSwipeHinted, isTrue);
+    await tester.tap(find.byTooltip('안내 닫기'));
+    await tester.pump();
+    expect(find.textContaining('위쪽 막대를 좌우로 밀면'), findsNothing);
+    // 다시 열면 없음 (한 번만)
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpWidget(page());
+    await tester.pumpAndSettle();
+    expect(find.textContaining('위쪽 막대를 좌우로 밀면'), findsNothing);
+  });
 }
