@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/cupertino.dart' show CupertinoLocalizations, DefaultCupertinoLocalizations;
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path/path.dart' as p;
@@ -686,8 +688,47 @@ class JjMkvMakerApp extends StatelessWidget {
     this.onExit,
   });
 
+  /// 140 · 158: Flutter 기본 글 (뒤로 · Licenses 등) 을 화면 언어로 - 앱 언어 코드 → Locale
+  /// 앱이 더한 언어 (기계 번역 사전) 도 Flutter 가 아는 언어면 그 언어로, 모르는 언어일 때만 영어로 (한국어가 섞이지 않게).
+  /// "zh-Hant" · "pt-BR" 같은 코드는 글자 체계 (4글자) · 나라 (2글자 · 숫자) 로 나눈다.
+  static Locale localeOf(String code) {
+    final parts = code.split(RegExp('[-_]'));
+    String? script;
+    String? country;
+    for (final s in parts.skip(1)) {
+      if (s.length == 4) {
+        script = s;
+      } else if (s.isNotEmpty) {
+        country = s;
+      }
+    }
+    final l = Locale.fromSubtags(languageCode: parts.first.toLowerCase(), scriptCode: script, countryCode: country?.toUpperCase());
+    return GlobalMaterialLocalizations.delegate.isSupported(l) ? l : const Locale('en');
+  }
+
+  /// Flutter 기본 글 사전들. Material 은 알고 Cupertino 는 모르는 언어 (예: ps) 에서도 Cupertino 글이 비지 않게 영어로 채운다.
+  static const localizationsDelegates = [...GlobalMaterialLocalizations.delegates, _CupertinoFallbackDelegate()];
+
+  /// Flutter 가 아는 모든 언어. 지금 언어를 맨 앞에 두어 글자 체계 · 나라까지 그대로 고르게 ("zh-Hant" 가 간체로 바뀌지 않게).
+  static List<Locale> supportedLocalesFor(Locale current) => [
+        current,
+        for (final c in kMaterialSupportedLanguages)
+          if (c != current.languageCode || current.scriptCode != null || current.countryCode != null) Locale(c),
+      ];
+
   @override
-  Widget build(BuildContext context) => MaterialApp(
+  Widget build(BuildContext context) => ListenableBuilder(
+        // 화면 언어를 바꾸면 (i18n) Flutter 기본 글도 그 언어로
+        listenable: i18n,
+        builder: (context, _) => _app(context),
+      );
+
+  Widget _app(BuildContext context) {
+    final locale = localeOf(uiLanguage);
+    return MaterialApp(
+        locale: locale,
+        supportedLocales: supportedLocalesFor(locale),
+        localizationsDelegates: localizationsDelegates,
         title: appTitle,
         debugShowCheckedModeBanner: false,
         theme: buildTheme(),
@@ -703,6 +744,21 @@ class JjMkvMakerApp extends StatelessWidget {
             child: AppDropArea(c: controller, child: _SystemBarsArea(child: UiScaler(c: controller, child: child!)))),
         home: HomePage(c: controller, downloads: downloads, onExit: onExit, bookmarks: bookmarks),
       );
+  }
+}
+
+/// Cupertino 글이 없는 언어만 영어로 (GlobalCupertinoLocalizations 뒤에 두어 그쪽이 아는 언어는 그쪽이 먼저)
+class _CupertinoFallbackDelegate extends LocalizationsDelegate<CupertinoLocalizations> {
+  const _CupertinoFallbackDelegate();
+
+  @override
+  bool isSupported(Locale locale) => true;
+
+  @override
+  Future<CupertinoLocalizations> load(Locale locale) => DefaultCupertinoLocalizations.load(locale);
+
+  @override
+  bool shouldReload(_CupertinoFallbackDelegate old) => false;
 }
 
 /// Android: 앱 화면이 상태 표시줄 · 아래쪽 작업 표시줄 밑까지 그려지므로 (Android 15 부터 기본)
