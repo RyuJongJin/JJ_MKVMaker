@@ -197,9 +197,10 @@ class RobocopyOutput {
   final _buf = StringBuffer();
   double? currentPercent;
 
-  static final _file = RegExp(
-      r'^\s*(New File|Newer|Older|Changed|Same|Tweaked|Modified|\*EXTRA File|새 파일|최신|이전|변경됨|같음)\s+[\d.]+\s*[kmgt]?\s+(.+)$',
-      caseSensitive: false);
+  /// 파일 줄: 탭 · 종류 · 탭 탭 · 크기 · 탭 · 경로. 61: 종류 글은 Windows 언어마다 다르므로
+  /// ("New File" · "새 파일" · "新しいファイル" · "新文件") 글이 아니라 탭 모양으로 알아본다.
+  /// 종류가 * 로 시작하면 (*EXTRA File 등) 대상에만 있는 것이라 세지 않는다.
+  static final _file = RegExp(r'^\t+\s*([^\t\s\d][^\t]*?)\s*\t+\s*[\d.]+\s*[kmgt]?\s*\t(.+)$', caseSensitive: false);
 
   List<String> feed(String chunk) {
     _buf.write(chunk);
@@ -218,7 +219,7 @@ class RobocopyOutput {
         continue;
       }
       final m = _file.firstMatch(raw);
-      if (m != null && !m[1]!.toLowerCase().startsWith('*extra')) {
+      if (m != null && !m[1]!.startsWith('*')) {
         currentPercent = null;
         done.add(m[2]!.trim());
       }

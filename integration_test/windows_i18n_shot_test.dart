@@ -77,4 +77,19 @@ void main() {
       await t.runAsync(() => i18n.apply('ko', save: false));
     });
   }
+
+  // 61: 일본어 가로 (태블릿 크기) 에서 맨 위 버튼 글이 잘리는지 - 첫 화면 (MKV) 과 각 화면의 맨 위 줄
+  for (final size in [const Size(1280, 800), const Size(1138, 712), const Size(960, 600)]) {
+    testWidgets('61: 일본어 가로 ${size.width.toInt()}x${size.height.toInt()} - 맨 위 버튼', (t) async {
+      t.view.physicalSize = size;
+      t.view.devicePixelRatio = 1;
+      addTearDown(t.view.reset);
+      final c = AppController(PlatformServices(mediaTool: ProcessMediaTool('x', 'y'), storage: DesktopStorageService()));
+      await t.runAsync(() => i18n.apply('ja', save: false));
+      await t.runAsync(() => t.pumpWidget(RepaintBoundary(key: shotKey, child: JjMkvMakerApp(controller: c, navigatorKey: navKey))));
+      await settle(t, 20);
+      await shot(t, 'i18n_ja_home_${size.width.toInt()}');
+      await t.runAsync(() => i18n.apply('ko', save: false));
+    });
+  }
 }

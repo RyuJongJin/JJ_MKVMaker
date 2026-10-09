@@ -349,6 +349,8 @@
  "{0}개 풀기": "Extract {0}",
  "{0}개 항목을 {1}": "{0} items {1}",
  "{0}개 항목을 다음 폴더로 {1}\n{2}": "{0} items to this folder — {1}\n{2}",
+ "{0}개 항목을 다음 폴더로 복사할까요?\n{1}": "Copy {0} items to this folder?\n{1}",
+ "{0}개 항목을 다음 폴더로 옮길까요?\n{1}": "Move {0} items to this folder?\n{1}",
  "{0}개 항목을 담았습니다. 넣을 폴더에서 [붙여넣기] 를 누르세요 ({1}).": "{0} items held. Press [Paste] in the destination folder ({1}).",
  "{0}개 항목을 되돌렸습니다.": "Restored {0} item(s).",
  "{0}개 항목을 지울까요? 되돌릴 수 없습니다.": "Delete {0} items? This cannot be undone.",

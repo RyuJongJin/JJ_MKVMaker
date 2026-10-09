@@ -8,6 +8,7 @@ import 'package:path/path.dart' as p;
 import 'package:window_manager/window_manager.dart';
 
 import '../app/app_controller.dart';
+import '../core/languages.dart';
 import '../core/playlist.dart';
 import '../core/srt.dart' show formatSrtTime;
 import '../services/media_player.dart';
@@ -102,15 +103,15 @@ class _PlayerPageState extends State<PlayerPage> {
       c.externalSubtitlesFor(pl.playlist[i]).then((s) async {
         if (!mounted) return;
         setState(() => _externalSubs = s);
-        // 켜진 자막이 없으면 하나를 켠다 (한국어 먼저, 없으면 첫 번째). mpv 가 같은 폴더 자막을 불러와도
+        // 켜진 자막이 없으면 하나를 켠다 (화면 언어의 자막 먼저 - 61, 없으면 첫 번째). mpv 가 같은 폴더 자막을 불러와도
         // 켜지 않는 일이 있어 (Android) 그 뒤에 (1초) 확인한다.
         await Future<void>.delayed(const Duration(seconds: 1));
         final st = pl.state.value;
         if (!mounted || st.index != i || st.subtitleId != null) return;
         final all = _subtitleChoices();
         if (all.isEmpty) return;
-        final ko = RegExp(r'[._-](ko|kor)[._]|한국어|\(ko\)|\bkor\b', caseSensitive: false);
-        await _setSub(all.firstWhere((t) => ko.hasMatch(t.label) || ko.hasMatch(p.basename(t.file ?? '')),
+        final mine = preferredSubtitlePattern();
+        await _setSub(all.firstWhere((t) => mine.hasMatch(t.label) || mine.hasMatch(p.basename(t.file ?? '')),
             orElse: () => all.first));
       });
     }

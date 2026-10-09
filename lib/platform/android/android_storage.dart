@@ -36,12 +36,21 @@ class AndroidAccess {
       final list = await _ch.invokeMethod<List<Object?>>('storageVolumes') ?? const [];
       final out = [
         for (final v in list.cast<Map<Object?, Object?>>())
-          (v['path'] as String, v['label'] as String? ?? '', v['removable'] == true),
+          (v['path'] as String, volumeLabel(v['label'] as String? ?? '', primary: v['primary'] == true, removable: v['removable'] == true),
+              v['removable'] == true),
       ];
       out.sort((a, b) => (a.$3 ? 1 : 0) - (b.$3 ? 1 : 0));
       if (out.isNotEmpty) return out;
     } catch (_) {}
     return [(await storageRoot(), tr('내장 저장소'), false)];
+  }
+
+  /// 61: 저장소 이름을 앱 화면 언어로. 기기가 주는 이름 ("디바이스 저장공간" · "SD 카드") 은 기기 언어라
+  /// 내장 저장소 · SD 카드는 앱의 글로 바꾸고, 그 밖 (USB 메모리 등) 은 기기 이름 그대로.
+  static String volumeLabel(String device, {required bool primary, required bool removable}) {
+    if (primary) return tr('내장 저장소');
+    if (removable && !device.toUpperCase().contains('USB')) return tr('SD 카드');
+    return device;
   }
 
   /// 내장 저장소 맨 위 (예: /storage/emulated/0)

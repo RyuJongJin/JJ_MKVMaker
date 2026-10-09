@@ -340,6 +340,7 @@ class MainActivity : FlutterActivity() {
                     "path" to dir.absolutePath,
                     "label" to (v.getDescription(this) ?: dir.name),
                     "removable" to v.isRemovable,
+                    "primary" to v.isPrimary,
                 )
             )
         }

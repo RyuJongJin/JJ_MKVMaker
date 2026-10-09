@@ -97,6 +97,18 @@ void main() {
       expect(o.currentPercent, 0.45);
       expect(o.feed('100%  \n\t    Newer     \t\t     200\tC:\\t\\src\\b.txt\n\t*EXTRA File \t\t 1\tC:\\x\n'), [r'C:\t\src\b.txt']);
     });
+
+    test('61: robocopy 파일 줄은 Windows 언어와 상관없이 (일본어 · 중국어 · 한국어 종류 글)', () {
+      final o = RobocopyOutput();
+      expect(o.feed('\t    新しいファイル  \t\t 3000000\tC:\\t\\a b.txt\r\n 34%  \r\n'), [r'C:\t\a b.txt']);
+      expect(o.currentPercent, 0.34);
+      expect(o.feed('\t    新文件  \t\t       1\tC:\\t\\c.txt\n\t    새 파일  \t\t  12.5 m\tC:\\t\\d.mkv\n'), [r'C:\t\c.txt', r'C:\t\d.mkv']);
+      // 대상에만 있는 것 (* 로 시작) · 폴더 줄 (종류 없이 수 · 경로) · 오류 줄은 세지 않는다
+      expect(
+          o.feed('\t*追加ファイル  \t\t 1\tC:\\x\n\t\t\t\t    2\tC:\\t\\sub\\\n'
+              '2026/10/10 01:00:00 ERROR 5 (0x00000005) Copying File C:\\t\\e.txt\n'),
+          isEmpty);
+    });
   });
 
   group('실제 복사', () {

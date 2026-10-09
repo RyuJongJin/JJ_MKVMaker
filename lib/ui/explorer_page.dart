@@ -1727,7 +1727,8 @@ class _ExplorerPageState extends State<ExplorerPage> {
           scrollable: true,
           title: Text(move ? tr('이동') : tr('복사')),
           content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('${trf('{0}개 항목을 다음 폴더로 {1}\n{2}', [sources.length, move ? tr('옮길까요?') : tr('복사할까요?'), vDisplay(dest)])}'
+            // 61: 문장 조각을 이어 붙이지 않는다 (언어마다 어순이 달라 "…로 {복사할까요?}" 가 깨졌다)
+            Text('${move ? trf('{0}개 항목을 다음 폴더로 옮길까요?\n{1}', [sources.length, vDisplay(dest)]) : trf('{0}개 항목을 다음 폴더로 복사할까요?\n{1}', [sources.length, vDisplay(dest)])}'
                 '\n${_namesOf(sources)}'
                 '${skippedHere.isEmpty ? '' : '\n${trf('이미 이 폴더에 있어 건너뜀: {0}', [_namesOf(skippedHere)])}'}'
                 '\n\n${trf('방법: {0}', [tr(method.label)])}'

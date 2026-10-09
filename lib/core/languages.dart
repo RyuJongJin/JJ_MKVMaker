@@ -80,3 +80,13 @@ Language languageOf(String? token) {
   // MKV 태그의 639-2/T 표기 (zho, deu 등)는 별칭에 포함되어 있음
   return undetermined;
 }
+
+/// 61: 플레이어가 먼저 켤 자막을 알아보는 글 (화면 언어의 자막: 파일 이름의 코드 · 트랙 이름). 예전에는 늘 한국어.
+/// 화면 언어가 자막 언어 목록에 없으면 한국어.
+RegExp preferredSubtitlePattern([String? ui]) {
+  var l = languageOf(ui ?? uiLanguage);
+  if (l == undetermined) l = languageOf('ko');
+  final codes = {l.code.toLowerCase(), l.mkv, ...l.aliases.where((a) => RegExp(r'^[a-z-]+$').hasMatch(a))}.map(RegExp.escape).join('|');
+  final names = {l.koName, l.name, ...l.aliases.where((a) => !RegExp(r'^[a-z-]+$').hasMatch(a))}.map(RegExp.escape).join('|');
+  return RegExp('[._-]($codes)[._]|\\(($codes)\\)|\\b(${l.mkv})\\b|$names', caseSensitive: false);
+}

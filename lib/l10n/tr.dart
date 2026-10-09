@@ -28,7 +28,26 @@ String tr(String ko) {
 final _slot = RegExp(r'\{(\d+)\}');
 
 /// 자리 표시 ({0}, {1} …) 가 있는 글자: `trf('동영상 {0}개', [n])`
-String trf(String ko, List<Object?> args) => tr(ko).replaceAllMapped(_slot, (m) {
-      final i = int.parse(m.group(1)!);
-      return i < args.length ? '${args[i]}' : m.group(0)!;
-    });
+String trf(String ko, List<Object?> args) {
+  final s = tr(ko).replaceAllMapped(_slot, (m) {
+    final i = int.parse(m.group(1)!);
+    return i < args.length ? '${args[i]}' : m.group(0)!;
+  });
+  // 61: 영어 글이면 "1 videos" → "1 video" (영어 사전 · 영어로 대신 보인 글)
+  final english = _lang == 'en' || (_lang != 'ko' && !_dict.containsKey(ko) && _fallback.containsKey(ko));
+  return english ? englishSingular(s) : s;
+}
+
+/// 수가 1 인 영어 복수 명사를 단수로 ("1 videos" · "(1 files)" → "1 video" · "(1 file)"). 11 · 21 · 1.5 는 그대로.
+String englishSingular(String s) => s.replaceAllMapped(_one, (m) => '${m[1]}1 ${_singularOf[m[2]!]}');
+
+const _singularOf = {
+  'videos': 'video', 'files': 'file', 'items': 'item', 'subtitles': 'subtitle', 'downloads': 'download',
+  'images': 'image', 'lines': 'line', 'results': 'result', 'characters': 'character', 'syncs': 'sync',
+  'MKVs': 'MKV', 'links': 'link', 'folders': 'folder', 'pages': 'page', 'times': 'time', 'pairs': 'pair',
+  'servers': 'server', 'tracks': 'track', 'languages': 'language', 'models': 'model', 'bookmarks': 'bookmark',
+  'errors': 'error', 'seconds': 'second', 'minutes': 'minute', 'hours': 'hour', 'days': 'day', 'tasks': 'task',
+  'copies': 'copy', 'entries': 'entry', 'episodes': 'episode', 'changes': 'change', 'components': 'component',
+};
+
+final _one = RegExp('(^|[^\\d.,])1 (${_singularOf.keys.join('|')})\\b');

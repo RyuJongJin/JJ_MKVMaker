@@ -4,20 +4,38 @@ import 'dart:math' as math;
 /// 즐겨찾기 항목 (주소) 또는 폴더 (children 이 있음)
 class BookmarkNode {
   final String id;
-  String title;
+
+  /// 저장된 이름 그대로 (기본 즐겨찾기는 한국어 열쇠)
+  String rawTitle;
   String? url;
   final List<BookmarkNode>? children;
 
-  BookmarkNode.link(this.id, this.title, String this.url) : children = null;
-  BookmarkNode.folder(this.id, this.title, [List<BookmarkNode>? items])
+  BookmarkNode.link(this.id, this.rawTitle, String this.url) : children = null;
+  BookmarkNode.folder(this.id, this.rawTitle, [List<BookmarkNode>? items])
       : url = null,
         children = items ?? [];
+
+  /// 화면에 보일 이름. 61: 기본 즐겨찾기 ("YouTube 구독" · 표시줄 · 기타) 는 이름을 바꾸지 않았으면 지금 화면 언어로
+  /// (처음 켤 때의 언어로 저장돼 그 뒤 언어를 바꿔도 그대로였다). 사용자가 바꾼 이름은 그대로.
+  String get title {
+    final names = _defaultNames[id];
+    return names != null && names.contains(rawTitle) ? tr(names.first) : rawTitle;
+  }
+
+  set title(String v) => rawTitle = v;
+
+  /// 기본 즐겨찾기의 이름: 한국어 열쇠 (맨 앞) 와 예전 판이 저장했을 수 있는 번역 (en · ja · zh-Hans)
+  static const _defaultNames = {
+    'b2': ['YouTube 구독', 'YouTube subscriptions', 'YouTube 登録チャンネル', 'YouTube 订阅'],
+    BookmarkTree.barId: ['즐겨찾기 표시줄', 'Bookmarks bar', 'ブックマークバー', '书签栏'],
+    BookmarkTree.otherId: ['기타 즐겨찾기', 'Other bookmarks', 'その他のブックマーク', '其他书签'],
+  };
 
   bool get isFolder => children != null;
 
   Map<String, Object?> toJson() => {
         'id': id,
-        'title': title,
+        'title': rawTitle,
         if (url != null) 'url': url,
         if (children != null) 'children': [for (final c in children!) c.toJson()],
       };
@@ -43,12 +61,13 @@ class BookmarkTree {
 
   /// 처음 쓰는 경우 기본 즐겨찾기
   factory BookmarkTree.defaults() => BookmarkTree(
-        BookmarkNode.folder(barId, tr('즐겨찾기 표시줄'), [
+        // 이름은 한국어 열쇠로 저장하고 보일 때 화면 언어로 (BookmarkNode.title)
+        BookmarkNode.folder(barId, '즐겨찾기 표시줄', [
           BookmarkNode.link('b1', 'YouTube', 'https://www.youtube.com/'),
-          BookmarkNode.link('b2', tr('YouTube 구독'), 'https://www.youtube.com/feed/subscriptions'),
+          BookmarkNode.link('b2', 'YouTube 구독', 'https://www.youtube.com/feed/subscriptions'),
           BookmarkNode.link('b3', 'OpenSubtitles', 'https://www.opensubtitles.com/'),
         ]),
-        BookmarkNode.folder(otherId, tr('기타 즐겨찾기')),
+        BookmarkNode.folder(otherId, '기타 즐겨찾기'),
       );
 
   String newId() => 'n${++_seq}${math.Random().nextInt(1 << 20)}';

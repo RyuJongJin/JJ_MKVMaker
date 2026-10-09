@@ -1,5 +1,7 @@
 import 'encode_options.dart';
 import 'models.dart';
+import 'languages.dart';
+import '../l10n/tr.dart';
 
 /// MKV 에 그대로 복사 가능한 자막 코덱
 const _copyableSubtitleCodecs = {
@@ -13,8 +15,12 @@ String _externalCodec(String ext) => switch (ext) {
       _ => 'srt', // srt, smi, sami, vtt
     };
 
-/// 기본 자막으로 표시할 언어 (MKV 태그)
-const preferredDefaultLanguage = 'kor';
+/// 기본 자막으로 표시할 언어 (MKV 태그). 61: 화면 언어를 따른다 (예전에는 늘 한국어 'kor').
+/// 화면 언어가 자막 언어 목록에 없으면 한국어.
+String get preferredDefaultLanguage {
+  final l = languageOf(uiLanguage);
+  return l == undetermined ? 'kor' : l.mkv;
+}
 
 /// 동영상 + 자막 → MKV 로 합치는 FFmpeg 인수.
 ///
