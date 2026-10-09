@@ -105,6 +105,33 @@ void main() {
     expect(Directory(p.join(right, 'left')).existsSync(), isFalse);
   });
 
+  testWidgets('52: 복사 중에 화면을 떠났다 돌아와도 진행 막대가 다시 보이고, 끝나면 받는 폴더를 새로 읽는다 (.jjpart 가 남아 보이지 않음)', (tester) async {
+    File(p.join(left, 'big.bin')).writeAsBytesSync(List.filled(150 * 1024, 3));
+    c.settings.copyBandwidthKBps = 60; // 약 2.5초 걸리게
+    tester.view.physicalSize = const Size(1600, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.runAsync(() => tester.pumpWidget(MaterialApp(home: ExplorerPage(c: c))));
+    await settle(tester, () => find.text('big.bin').evaluate().isNotEmpty);
+    await tester.runAsync(() => tester.tap(find.text('big.bin')));
+    await settle(tester, () => false, rounds: 10);
+    await tester.runAsync(() => tester.tap(find.text('복사').first));
+    await tester.pump();
+    await tester.runAsync(() => tester.tap(find.widgetWithText(FilledButton, '복사')));
+    await settle(tester, () => find.byType(LinearProgressIndicator).evaluate().isNotEmpty);
+    // 다른 화면으로 (탐색기 화면이 없어짐) → 돌아옴
+    await tester.runAsync(() => tester.pumpWidget(const MaterialApp(home: Scaffold(body: Text('다른 화면')))));
+    await tester.pump();
+    await tester.runAsync(() => tester.pumpWidget(MaterialApp(home: ExplorerPage(c: c))));
+    await settle(tester, () => find.byType(LinearProgressIndicator).evaluate().isNotEmpty, rounds: 30);
+    expect(find.byType(LinearProgressIndicator), findsWidgets, reason: '돌아와도 진행 막대');
+    // 끝나면 오른쪽 창에 big.bin 이 보이고 .jjpart 는 없다
+    await settle(tester, () => File(p.join(right, 'big.bin')).existsSync() && find.text('big.bin').evaluate().length >= 2,
+        rounds: 300);
+    expect(find.text('big.bin'), findsNWidgets(2));
+    expect(find.textContaining('.jjpart'), findsNothing);
+  });
+
   testWidgets('48: 건너뛰기를 고르면 그대로 두고 건너뛴 것을 알린다', (tester) async {
     await startCopy(tester);
     await tester.tap(find.text('건너뛰기'));

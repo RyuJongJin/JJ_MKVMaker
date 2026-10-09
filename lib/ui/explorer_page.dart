@@ -285,6 +285,13 @@ class _ExplorerPageState extends State<ExplorerPage> {
     }
     if (!mounted) return;
     setState(() => _ready = true);
+    // 52: 다른 화면에 다녀와도 아직 도는 복사 · 이동의 진행 막대를 다시 보이고, 끝나면 그 폴더들을 새로 읽는다
+    final center = CopyCenter.peekOf(c);
+    if (center != null) {
+      for (final job in center.jobs.values.where((j) => !j.finished)) {
+        _adoptJob(job);
+      }
+    }
     // 165: 드라이브 종류 · 연결은 드라이브마다 따로 뒤에서 (느린 드라이브가 있어도 다른 드라이브 · 창은 바로)
     if (Platform.isWindows) {
       for (final (path, _) in _local) {
@@ -1445,6 +1452,21 @@ class _ExplorerPageState extends State<ExplorerPage> {
   /// 지금 도는 복사 · 이동 (아래에서 올라오는 진행 막대)
   /// (Rsync 화면의 ⇄ 는 둘이 함께)
   List<TransferJob> _jobs = const [];
+
+  /// 52: 이 화면을 떠난 사이에 시작된 (또는 앞의 화면이 시작한) 작업을 다시 보이고, 끝나면 새로 읽고 막대를 내린다
+  void _adoptJob(TransferJob job) {
+    if (_jobs.contains(job)) return;
+    setState(() => _jobs = [..._jobs, job]);
+    unawaited(job.done.then((_) async {
+      if (!mounted) return;
+      await _refreshAll([job.dest, ...job.sources.map(vDirname)]);
+      for (final x in _panes) {
+        x.changed();
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 1200));
+      if (mounted && _jobs.contains(job)) setState(() => _jobs = [for (final j in _jobs) if (j != job) j]);
+    }));
+  }
 
   /// 한쪽이라도 WebDAV 면 rsync 대신 앱이 직접 맞춘다 (rsync 는 WebDAV 를 모름)
   bool _viaDav(Iterable<String> paths) => paths.any(isDav);
