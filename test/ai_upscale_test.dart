@@ -56,14 +56,18 @@ void main() {
   test('121: 여러 장 작업 - 진행 · 남은 장 · 취소하면 지금 장에서 멈춤', () async {
     final jobs = AiJobs.instance;
     final seen = <int>[];
+    final lines = <String?>[];
     var cancelled = 0;
     final done = await jobs.runTask('올리기', 5, (i, progress) async {
       progress(0.5);
       seen.add(jobs.remaining);
+      lines.add(jobs.statusLine);
       if (i == 2) jobs.cancel();
     }, onCancel: () => cancelled++);
     expect(done, 3);
     expect(seen, [5, 4, 3]);
+    // 161: 알림 · 작업 현황에 "5장 중 m장째"
+    expect(lines.map((l) => l!.split(' · ').take(2).join(' · ')), ['올리기 · 5장 중 1장째', '올리기 · 5장 중 2장째', '올리기 · 5장 중 3장째']);
     expect(cancelled, 1);
     expect(jobs.busy, isFalse);
   });

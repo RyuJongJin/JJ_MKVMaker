@@ -567,6 +567,7 @@ class AiJobs extends ChangeNotifier {
   void start(String t, ImageAiEngine engine, int count) {
     title = t;
     _engine = engine;
+    total = count;
     remaining = count;
     progress = 0;
     eta = null;
@@ -590,6 +591,7 @@ class AiJobs extends ChangeNotifier {
     inUse = const {};
     title = null;
     progress = null;
+    total = 0;
     remaining = 0;
     eta = null;
     _engine = null;
@@ -611,6 +613,7 @@ class AiJobs extends ChangeNotifier {
     lastDoneDir = null;
     var stop = false;
     this.title = title;
+    total = count;
     remaining = count;
     progress = 0;
     eta = null;
@@ -630,7 +633,6 @@ class AiJobs extends ChangeNotifier {
             progress: overall,
             remaining: count - i,
             eta: overall > 0.02 ? spent * ((1 - overall) / overall) : null,
-            title: '$title ${i + 1}/$count',
           );
         });
         done++;
@@ -682,8 +684,13 @@ class AiJobs extends ChangeNotifier {
     final t = title;
     if (t == null) return null;
     final left = eta == null ? '' : ' · ${trf('남은 약 {0}', [_dur(eta!)])}';
-    return '$t${remaining > 1 ? ' · ${trf('남은 {0}장', [remaining])}' : ''}$left';
+    // 161: 여러 장이면 "10장 중 3장째" (알림 · 작업 현황 · 그림 화면)
+    final at = total > 1 ? ' · ${trf('{0}장 중 {1}장째', [total, (total - remaining + 1).clamp(1, total)])}' : '';
+    return '$t$at$left';
   }
+
+  /// 161: 이번 작업의 장 수 (남은 장 [remaining] 과 함께 "n장 중 m장째")
+  int total = 0;
 
   static String durationText(Duration d) => _dur(d);
 
