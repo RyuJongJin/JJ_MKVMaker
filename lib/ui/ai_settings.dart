@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../app/ai_local.dart';
 import '../app/app_controller.dart';
+import '../app/copy_center.dart' show diskSpace;
 import '../core/ai_catalog.dart';
 import '../core/secret_gate.dart';
 import '../l10n/tr.dart';
@@ -76,7 +77,8 @@ class _AiSettingsState extends State<AiSettings> {
 
   /// 받기 전에 라이선스 조건 (있으면) 을 보여 주고 동의를 받는다
   Future<bool> _agree(AiFile f) async {
-    if (f.terms == null) return true;
+    // 149-④: 한 번 동의했으면 다시 묻지 않는다
+    if (f.terms == null || c.settings.aiAgreed.contains(f.id)) return true;
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -96,19 +98,26 @@ class _AiSettingsState extends State<AiSettings> {
         ],
       ),
     );
+    if (ok == true) await c.updateSettings((x) => x.aiAgreed = {...x.aiAgreed, f.id}.toList());
     return ok == true;
   }
 
+  /// 받기: 조건 동의를 먼저 모두 받은 뒤 차례로 (기다리는 것은 "차례 기다림")
   Future<void> _install(List<AiFile> files) async {
+    final agreed = <AiFile>[];
     for (final f in files) {
-      if (store.isInstalled(f.id) || !await _agree(f)) continue;
-      try {
-        setState(() => _error = null);
-        await store.install(f.id);
-      } catch (e) {
-        if (mounted) setState(() => _error = '$e');
-        return;
-      }
+      if (store.isFileInstalled(f)) continue;
+      if (await _agree(f)) agreed.add(f);
+    }
+    if (agreed.isEmpty) return;
+    try {
+      setState(() => _error = null);
+      await store.installAll(agreed);
+    } on ImageAiException catch (e) {
+      if (mounted) setState(() => _error = e.message);
+    } catch (_) {
+      // 쉬운 말로만 (원문 · 주소는 보이지 않게)
+      if (mounted) setState(() => _error = tr('받지 못했습니다. 잠시 뒤 [이어 받기] 를 눌러 주세요'));
     }
     await _refresh();
   }
@@ -132,6 +141,24 @@ class _AiSettingsState extends State<AiSettings> {
                 ? null
                 : FilledButton.tonal(onPressed: () => _install(missing), child: Text(tr('필요한 것 모두 받기'))),
           ),
+          // 149-③: 받기 전에 필요한 공간과 지금 남은 공간을 늘 한 줄로
+          if (missing.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+              child: FutureBuilder<(int, int)?>(
+                future: diskSpace(store.root),
+                builder: (context, snap) {
+                  final need = missing.fold<int>(0, (a, f) => a + store.neededSpace(f));
+                  final free = snap.data?.$1;
+                  return Text(
+                    free == null
+                        ? trf('필요한 공간 {0}', [AiStore.sizeText(need)])
+                        : trf('필요한 공간 {0} · 남은 공간 {1}', [AiStore.sizeText(need), AiStore.sizeText(free)]),
+                    style: TextStyle(fontSize: 12, color: free != null && free < need ? Colors.redAccent : JjColors.textDim),
+                  );
+                },
+              ),
+            ),
           if (_error != null)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -232,6 +259,9 @@ class _AiSettingsState extends State<AiSettings> {
     final installed = store.isInstalled(f.id);
     final prog = store.progress[f.id];
     final busy = store.progress.containsKey(f.id);
+    final waiting = store.queued.contains(f.id);
+    // 받다가 끊겨 조각이 남아 있으면 [이어 받기]
+    final partial = !installed && !busy && store.neededSpace(f) < (f.kind == 'engine' ? f.size * 3 : f.size);
     return Padding(
       padding: const EdgeInsets.only(left: 16),
       child: SettingTile(
@@ -239,10 +269,21 @@ class _AiSettingsState extends State<AiSettings> {
         leading: Icon(installed ? Icons.check_circle : Icons.download_outlined,
             color: installed ? JjColors.success : JjColors.textDim, size: 20),
         title: Text(tr(f.name)),
+        // 149-①②: 진행 막대 옆에 % · 받은 크기 / 전체 · 남은 시간, 기다리는 것은 "차례 기다림"
         subtitle: busy
-            ? LinearProgressIndicator(value: prog)
-            : Text('${AiStore.sizeText(f.size)} · ${f.license}${installed ? ' · ${tr('받음')}' : ''}'),
-        trailing: busy
+            ? Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                LinearProgressIndicator(value: prog),
+                const SizedBox(height: 2),
+                Text(store.progressText(f.id) ?? '', style: const TextStyle(fontSize: 12)),
+              ])
+            : Text([
+                AiStore.sizeText(f.size),
+                f.license,
+                if (installed) tr('받음'),
+                if (waiting) tr('차례 기다림'),
+                ?store.failures[f.id],
+              ].join(' · ')),
+        trailing: busy || waiting
             ? TextButton(onPressed: () => store.cancel(f.id), child: Text(tr('취소')))
             : installed
                 ? TextButton(
@@ -255,7 +296,7 @@ class _AiSettingsState extends State<AiSettings> {
                       }
                     },
                     child: Text(tr('지우기')))
-                : OutlinedButton(onPressed: () => _install([f]), child: Text(tr('받기'))),
+                : OutlinedButton(onPressed: () => _install([f]), child: Text(partial ? tr('이어 받기') : tr('받기'))),
       ),
     );
   }

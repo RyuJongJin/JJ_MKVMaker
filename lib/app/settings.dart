@@ -471,6 +471,9 @@ class AppSettings {
   /// 사용자가 추가한 그림 서버 · 서비스 (API 키는 안전 저장소에)
   List<AiService> aiServices = [];
 
+  /// 라이선스 조건에 동의한 받는 파일 (149-④: 한 번 동의하면 다시 묻지 않음)
+  List<String> aiAgreed = [];
+
   /// 실시간 동기화 확인 간격 (초). Windows 는 바뀌면 바로, 그 밖은 이 간격으로 살핀다.
   int liveSyncIntervalSec = 30;
 
@@ -640,6 +643,7 @@ class AppSettings {
         'aiStrength': aiStrength,
         'aiNegative': aiNegative,
         'aiSaveDir': aiSaveDir,
+        'aiAgreed': aiAgreed,
         'aiServices': [
           for (final x in aiServices) {...x.toJson(), if (plainSecrets) 'apiKey': x.apiKey},
         ],
@@ -818,6 +822,7 @@ class AppSettings {
       ..aiStrength = ((j['aiStrength'] as num?)?.toDouble() ?? 0.6).clamp(0, 1)
       ..aiNegative = j['aiNegative'] as String? ?? ''
       ..aiSaveDir = j['aiSaveDir'] as String? ?? ''
+      ..aiAgreed = [for (final x in (j['aiAgreed'] as List?) ?? const []) '$x']
       ..aiServices = [
         for (final x in (j['aiServices'] as List?) ?? const [])
           if (x is Map) AiService.fromJson(x),

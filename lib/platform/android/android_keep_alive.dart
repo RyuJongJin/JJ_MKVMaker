@@ -32,6 +32,7 @@ class AndroidKeepAlive {
 
   LiveSync? _live;
   CopyCenter? _copies;
+  AiStore? _ai;
   bool? _background;
 
   /// 진행률 알림은 자주 바뀌므로 1초에 한 번만 보낸다
@@ -64,14 +65,21 @@ class AndroidKeepAlive {
       _copies = copies?..addListener(_changed);
     }
     final copying = copies?.activeCount ?? 0;
-    final ai = AiJobs.instance.statusLine;
+    // 149: AI 모델 받기도 화면을 끄거나 다른 앱으로 가도 계속 (진행 알림)
+    final store = AiStore.instance;
+    if (store != _ai) {
+      _ai?.removeListener(_changed);
+      _ai = store?..addListener(_changed);
+    }
+    final ai = [AiJobs.instance.statusLine, store?.statusLine].nonNulls.join(' · ').trim();
     var (text, progress) =
         status(c.currentJob, c.busy, running, downloads.overallProgress,
             syncs: syncs, syncing: live?.anyRunning ?? false, copies: copying, stopped: live?.problems.length ?? 0);
-    if (ai != null) {
+    if (ai.isNotEmpty) {
       // 진행 알림에 남은 장 수와 예상 시간 (발열 · 배터리 때문에 쉬어 가지는 않는다 - 사용자 결정)
       text = text == null ? ai : '$ai · $text';
-      if (!c.busy && running == 0) progress = ((AiJobs.instance.progress ?? 0) * 100).round().clamp(0, 100);
+      final p = AiJobs.instance.progress ?? store?.progress.values.firstOrNull;
+      if (!c.busy && running == 0 && p != null) progress = (p * 100).round().clamp(0, 100);
     }
     try {
       if (text == null) {

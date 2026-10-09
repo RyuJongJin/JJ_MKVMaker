@@ -150,6 +150,101 @@ void main() {
       expect(tmp.listSync(recursive: true).whereType<File>().where((f) => f.path.contains('.part')), isEmpty);
     });
 
+    test('149: 끊기면 받은 곳부터 이어 받고 (Range), 서버가 이어 주지 않으면 처음부터 · 진행 글', () async {
+      final store = AiStore(tmp.path);
+      final body = List<int>.generate(300000, (i) => i * 7 % 251);
+      final f = file('big', '/big', body);
+      // 첫 요청은 120000 바이트만 보내고 연결을 끊는다, 그다음은 Range 로 나머지
+      final port = server.port;
+      await server.close(force: true);
+      final ranges = <String?>[];
+      server = await HttpServer.bind(InternetAddress.loopbackIPv4, port);
+      server.listen((req) async {
+        final range = req.headers.value(HttpHeaders.rangeHeader);
+        ranges.add(range);
+        if (range == null) {
+          final sock = await req.response.detachSocket(writeHeaders: false);
+          sock.add(utf8.encode('HTTP/1.1 200 OK\r\nContent-Length: ${body.length}\r\n\r\n'));
+          sock.add(body.sublist(0, 120000));
+          await sock.flush();
+          sock.destroy();
+          return;
+        }
+        final from = int.parse(RegExp(r'bytes=(\d+)-').firstMatch(range)!.group(1)!);
+        req.response
+          ..statusCode = 206
+          ..headers.set(HttpHeaders.contentRangeHeader, 'bytes $from-${body.length - 1}/${body.length}')
+          ..add(body.sublist(from));
+        await req.response.close();
+      });
+      final texts = <String>[];
+      void listen() {
+        final t = store.progressText('big');
+        if (t != null && t.isNotEmpty) texts.add(t);
+      }
+      store.addListener(listen);
+      await store.installFile(f, retryWait: const Duration(milliseconds: 10));
+      store.removeListener(listen);
+      expect(store.isFileInstalled(f), isTrue);
+      expect(File(store.pathOf(f)).readAsBytesSync(), body);
+      expect(ranges.first, isNull);
+      expect(ranges.last, 'bytes=120000-', reason: '받은 곳부터');
+      expect(texts.any((t) => t.contains('%') && t.contains(' / ')), isTrue);
+    });
+
+    test('149: 여러 번 끊기면 쉬운 말 (주소 없음) 로 알리고 조각은 남겨 [이어 받기] 로 이어 받음', () async {
+      final store = AiStore(tmp.path);
+      final body = List<int>.generate(50000, (i) => i % 256);
+      final f = file('drop', '/drop', body);
+      var calls = 0;
+      final port = server.port;
+      await server.close(force: true);
+      server = await HttpServer.bind(InternetAddress.loopbackIPv4, port);
+      var allow = false;
+      server.listen((req) async {
+        calls++;
+        final range = req.headers.value(HttpHeaders.rangeHeader);
+        final from = range == null ? 0 : int.parse(RegExp(r'bytes=(\d+)-').firstMatch(range)!.group(1)!);
+        if (!allow) {
+          final sock = await req.response.detachSocket(writeHeaders: false);
+          final n = (from + 5000).clamp(0, body.length);
+          sock.add(utf8.encode('HTTP/1.1 ${range == null ? '200 OK' : '206 Partial Content'}\r\nContent-Length: ${body.length - from}\r\n\r\n'));
+          sock.add(body.sublist(from, n));
+          await sock.flush();
+          sock.destroy();
+          return;
+        }
+        req.response
+          ..statusCode = range == null ? 200 : 206
+          ..add(body.sublist(from));
+        await req.response.close();
+      });
+      await expectLater(store.installFile(f, retries: 2, retryWait: const Duration(milliseconds: 10)),
+          throwsA(isA<ImageAiException>().having((e) => e.message, 'message', allOf(contains('이어 받기'), isNot(contains('http'))))));
+      expect(calls, 3);
+      expect(store.failures['drop'], contains('연결이 끊겼습니다'));
+      expect(store.neededSpace(f), lessThan(body.length), reason: '받은 조각을 남김');
+      allow = true;
+      await store.installFile(f, retryWait: const Duration(milliseconds: 10));
+      expect(File(store.pathOf(f)).readAsBytesSync(), body);
+      expect(store.failures, isEmpty);
+    });
+
+    test('149: 한꺼번에 받기 - 기다리는 것은 "차례 기다림"', () async {
+      final store = AiStore(tmp.path);
+      final a = file('qa', '/qa', List.filled(1000, 1)), b2 = file('qb', '/qb', List.filled(1000, 2));
+      final seen = <String>{};
+      void listen() {
+        if (store.progress.containsKey('qa') && store.queued.contains('qb')) seen.add(store.progressText('qb')!);
+      }
+      store.addListener(listen);
+      await store.installAll([a, b2]);
+      store.removeListener(listen);
+      expect(seen, contains('차례 기다림'));
+      expect(store.isFileInstalled(a) && store.isFileInstalled(b2), isTrue);
+      expect(store.queued, isEmpty);
+    });
+
     test('실행 파일 zip 은 풀어 둔다', () async {
       final store = AiStore(tmp.path);
       final arc = Archive()..addFile(ArchiveFile.bytes('sd-cli.exe', utf8.encode('fake')));

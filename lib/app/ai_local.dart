@@ -40,35 +40,95 @@ class AiStore extends ChangeNotifier {
   bool isFileInstalled(AiFile f) => _mark(f).existsSync() && FileSystemEntity.typeSync(pathOf(f)) != FileSystemEntityType.notFound;
 
   /// 받는 중인 것 (id → 0~1, 모르면 null)
+  /// 받는 중인 것 (id → 0~1, 모르면 null)
   final progress = <String, double?>{};
+
+  /// 받은 바이트 · 전체 · 이번에 받기 시작한 때와 그때 이미 있던 바이트 (속도 · 남은 시간)
+  final received = <String, int>{};
+  final totals = <String, int>{};
+  final _started = <String, (DateTime, int)>{};
+
+  /// [installAll] 로 차례를 기다리는 것 (149-②: "차례 기다림")
+  final queued = <String>{};
+
+  /// 연결이 끊겨 다시 잇는 중 (몇 번째)
+  final retrying = <String, int>{};
+
+  /// 마지막 실패 (id → 쉬운 말). 다시 받으면 지운다
+  final failures = <String, String>{};
   final _cancel = <String>{};
 
-  void cancel(String id) => _cancel.add(id);
+  void cancel(String id) {
+    _cancel.add(id);
+    queued.remove(id);
+    notifyListeners();
+  }
 
   /// 받기 (SHA-256 확인). 저장 공간이 모자라면 먼저 알린다. zip (실행 파일) 은 푼다.
   Future<void> install(String id) => installFile(aiFile(id));
 
-  /// [install] 의 본체 (시험은 카탈로그 밖의 파일로)
-  Future<void> installFile(AiFile f) async {
+  /// 여러 개를 차례로 (기다리는 것은 [queued] 로 보인다). 하나가 실패하면 멈추고 알린다
+  Future<void> installAll(List<AiFile> files) async {
+    final todo = [for (final f in files) if (!isFileInstalled(f) && !progress.containsKey(f.id)) f];
+    queued.addAll(todo.map((f) => f.id));
+    notifyListeners();
+    try {
+      for (final f in todo) {
+        if (!queued.contains(f.id)) continue; // 기다리는 동안 취소
+        queued.remove(f.id);
+        await installFile(f);
+      }
+    } finally {
+      queued.removeAll(todo.map((f) => f.id));
+      notifyListeners();
+    }
+  }
+
+  /// 받을 때 필요한 공간 (zip 은 푸는 자리까지) - 이미 받아 둔 조각만큼은 빼고
+  int neededSpace(AiFile f) {
+    final part = _partOf(f);
+    final have = part.existsSync() ? part.lengthSync() : 0;
+    return (f.kind == 'engine' ? f.size * 3 : f.size) - have;
+  }
+
+  File _partOf(AiFile f) => File('${pathOf(f)}.part${f.kind == 'engine' ? '.zip' : ''}');
+
+  /// [install] 의 본체 (시험은 카탈로그 밖의 파일로).
+  /// 149: 끊기면 받은 곳부터 이어 받고 (조각 파일을 남겨 둠), 몇 번 저절로 다시 잇는다. 실패는 쉬운 말로 (주소는 보이지 않음).
+  Future<void> installFile(AiFile f, {int retries = 5, Duration retryWait = const Duration(seconds: 3)}) async {
     final id = f.id;
     if (progress.containsKey(id)) return;
     _cancel.remove(id);
+    failures.remove(id);
     await Directory(root).create(recursive: true);
     final free = await diskSpace(root);
-    // 받는 파일 + 푸는 자리 (zip 은 두 배쯤) 와 여유 200MB
-    final need = (f.kind == 'engine' ? f.size * 3 : f.size) + (200 << 20);
+    final need = neededSpace(f) + (200 << 20); // 여유 200MB
     if (free != null && free.$1 < need) {
       throw ImageAiException(trf('저장 공간이 모자랍니다: {0} 이 필요한데 {1} 남았습니다', [_gb(need), _gb(free.$1)]));
     }
+    final part = _partOf(f);
     progress[id] = 0;
     notifyListeners();
-    final part = File('${pathOf(f)}.part${f.kind == 'engine' ? '.zip' : ''}');
     try {
       await part.parent.create(recursive: true);
-      await _download(f, part, (d) {
-        progress[id] = d;
-        notifyListeners();
-      });
+      for (var attempt = 0;; attempt++) {
+        try {
+          await _download(f, part);
+          break;
+        } on ImageAiException {
+          rethrow; // 취소 · 손상 (다시 받아도 같음)
+        } catch (e) {
+          if (_cancel.contains(id) || attempt >= retries) {
+            final msg = tr('연결이 끊겼습니다. [이어 받기] 를 누르면 받은 곳부터 이어 받습니다');
+            failures[id] = msg;
+            throw ImageAiException(msg);
+          }
+          retrying[id] = attempt + 1;
+          notifyListeners();
+          await Future<void>.delayed(retryWait * (attempt + 1));
+        }
+      }
+      retrying.remove(id);
       if (f.kind == 'engine') {
         final dir = Directory(pathOf(f));
         if (await dir.exists()) await dir.delete(recursive: true);
@@ -81,13 +141,12 @@ class AiStore extends ChangeNotifier {
       }
       await _mark(f).parent.create(recursive: true);
       await _mark(f).writeAsString(jsonEncode({'sha256': f.sha256, 'installed': DateTime.now().toIso8601String()}));
-    } catch (_) {
-      try {
-        if (await part.exists()) await part.delete();
-      } catch (_) {}
-      rethrow;
     } finally {
       progress.remove(id);
+      received.remove(id);
+      totals.remove(id);
+      _started.remove(id);
+      retrying.remove(id);
       notifyListeners();
     }
   }
@@ -100,33 +159,108 @@ class AiStore extends ChangeNotifier {
     final t = FileSystemEntity.typeSync(pathOf(f));
     if (t == FileSystemEntityType.directory) await Directory(pathOf(f)).delete(recursive: true);
     if (t == FileSystemEntityType.file) await File(pathOf(f)).delete();
+    try {
+      final part = _partOf(f);
+      if (part.existsSync()) part.deleteSync();
+    } catch (_) {}
     notifyListeners();
   }
 
   static String _gb(int b) => b >= 1 << 30 ? '${(b / (1 << 30)).toStringAsFixed(1)}GB' : '${(b / (1 << 20)).round()}MB';
   static String sizeText(int b) => _gb(b);
 
-  Future<void> _download(AiFile f, File out, void Function(double? d) onProgress) async {
+  /// 진행 한 줄: "58% · 2.3GB / 4.0GB · 남은 약 5분" (149-①)
+  String? progressText(String id) {
+    if (queued.contains(id)) return tr('차례 기다림');
+    if (!progress.containsKey(id)) return null;
+    final got = received[id] ?? 0, total = totals[id] ?? 0;
+    final retry = retrying[id];
+    final left = eta(id);
+    return [
+      if (total > 0) '${(got * 100 / total).floor()}%',
+      if (total > 0) '${_gb(got)} / ${_gb(total)}',
+      if (left != null) trf('남은 약 {0}', [AiJobs.durationText(left)]),
+      if (retry != null) trf('연결이 끊겨 다시 잇는 중 ({0}번째)', [retry]),
+    ].join(' · ');
+  }
+
+  /// 남은 시간 (이번에 받은 속도로)
+  Duration? eta(String id) {
+    final s = _started[id];
+    final got = received[id], total = totals[id];
+    if (s == null || got == null || total == null || total <= 0) return null;
+    final secs = DateTime.now().difference(s.$1).inMilliseconds / 1000;
+    final rate = (got - s.$2) / (secs <= 0 ? 1 : secs);
+    if (secs < 3 || rate <= 0) return null;
+    return Duration(seconds: ((total - got) / rate).round());
+  }
+
+  /// 받는 중인 것을 한 줄로 (작업 알림 - 화면이 꺼져도 계속 받는 동안)
+  String? get statusLine {
+    if (progress.isEmpty) return null;
+    final id = progress.keys.first;
+    final name = aiCatalog.where((f) => f.id == id).firstOrNull?.name ?? id;
+    final more = queued.length;
+    return '${trf('AI 모델 받는 중: {0}', [tr(name)])} · ${progressText(id) ?? ''}'
+        '${more > 0 ? ' · ${trf('다음 {0}개 기다림', [more])}' : ''}';
+  }
+
+  /// 조각 파일 [out] 이 있으면 그 뒤부터 (Range) 받는다. 서버가 이어 주지 않으면 처음부터.
+  /// SHA-256 은 이미 받은 조각까지 합쳐 확인한다.
+  Future<void> _download(AiFile f, File out) async {
+    var have = out.existsSync() ? out.lengthSync() : 0;
+    if (have > f.size) {
+      out.deleteSync();
+      have = 0;
+    }
     final req = await _http.getUrl(Uri.parse(f.url));
+    if (have > 0) req.headers.set(HttpHeaders.rangeHeader, 'bytes=$have-');
     final res = await req.close();
-    if (res.statusCode != 200) throw ImageAiException(trf('받을 수 없습니다 ({0}): {1}', [res.statusCode, f.url]));
-    final total = res.contentLength > 0 ? res.contentLength : f.size;
-    final sink = out.openWrite();
+    final whole = res.statusCode == 416 && have == f.size; // 이미 다 받아 둠 - 확인만
+    if (whole) {
+      await res.drain<void>();
+    } else if (res.statusCode == 200) {
+      have = 0; // 이어 주지 않음 - 처음부터
+    } else if (res.statusCode != 206) {
+      await res.drain<void>();
+      throw HttpException('status ${res.statusCode}'); // 다시 시도 대상 (주소는 사용자에게 보이지 않음)
+    }
+    final total = f.size;
     final hash = AccumulatorSink<Digest>();
     final hasher = sha256.startChunkedConversion(hash);
-    var done = 0;
+    if (have > 0) {
+      await for (final c in out.openRead(0, have)) {
+        hasher.add(c);
+      }
+    }
+    received[f.id] = have;
+    totals[f.id] = total;
+    _started[f.id] = (DateTime.now(), have);
+    notifyListeners();
+    final sink = out.openWrite(mode: have > 0 ? FileMode.append : FileMode.write);
+    var done = have;
+    var lastNotify = DateTime.now();
     try {
-      await for (final chunk in res) {
-        if (_cancel.contains(f.id)) throw ImageAiException(tr('취소했습니다'));
-        sink.add(chunk);
-        hasher.add(chunk);
-        done += chunk.length;
-        onProgress(total > 0 ? done / total : null);
+      if (!whole) {
+        await for (final chunk in res) {
+          if (_cancel.contains(f.id)) throw ImageAiException(tr('취소했습니다'));
+          sink.add(chunk);
+          hasher.add(chunk);
+          done += chunk.length;
+          received[f.id] = done;
+          progress[f.id] = total > 0 ? done / total : null;
+          if (DateTime.now().difference(lastNotify).inMilliseconds > 250) {
+            lastNotify = DateTime.now();
+            notifyListeners();
+          }
+        }
       }
     } finally {
+      await sink.flush();
       await sink.close();
       hasher.close();
     }
+    if (done < total) throw HttpException('short read $done/$total'); // 끊김 - 이어 받기
     if (hash.events.single.toString() != f.sha256) {
       await out.delete();
       throw ImageAiException(trf('받은 파일이 손상되었습니다 (SHA-256 다름): {0}', [f.name]));
@@ -407,6 +541,8 @@ class AiJobs extends ChangeNotifier {
     final left = eta == null ? '' : ' · ${trf('남은 약 {0}', [_dur(eta!)])}';
     return '$t${remaining > 1 ? ' · ${trf('남은 {0}장', [remaining])}' : ''}$left';
   }
+
+  static String durationText(Duration d) => _dur(d);
 
   static String _dur(Duration d) => d.inMinutes >= 1 ? trf('{0}분', [d.inMinutes + (d.inSeconds % 60 >= 30 ? 1 : 0)]) : trf('{0}초', [d.inSeconds]);
 }
