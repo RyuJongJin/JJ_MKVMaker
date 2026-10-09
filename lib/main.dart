@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show LicenseEntryWithLineBreaks, LicenseRegistry;
 import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path/path.dart' as p;
@@ -17,6 +18,8 @@ import 'ui/settings_problem.dart';
 import 'ui/exit_guard.dart' show confirmStopCopies;
 import 'app/copy_center.dart';
 import 'ui/migration_notice.dart';
+import 'app/ai_local.dart';
+import 'core/ai_catalog.dart' show aiLicenseTexts;
 import 'platform/windows/data_dir_override.dart';
 import 'ui/master_prompt.dart';
 import 'ui/secret_issue.dart';
@@ -72,6 +75,10 @@ Future<String> _prepare() async {
 
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
+  // 123: AI 그림 구성 요소 · 모델의 라이선스를 앱 안 라이선스 화면에 (OpenRAIL-M 용도 제한 포함)
+  LicenseRegistry.addLicense(() => Stream.fromIterable([
+        for (final (name, text) in aiLicenseTexts()) LicenseEntryWithLineBreaks([name], text),
+      ]));
   applyDataDirOverride(); // 시험판: 사용자 데이터와 다른 폴더 (JJ_MKVMAKER_DATA)
   final dataDir = await _prepare();
   if (Platform.isAndroid) return runAndroid(dataDir);
@@ -110,6 +117,7 @@ Future<void> main(List<String> args) async {
   // 버전별 설정 보관 (업데이트 · 예전 버전으로 되돌리기): 시작할 때 설정 파일이 없었는지 (새로 설치)
   final freshInstall = !File(p.join(dataDir, 'settings.json')).existsSync();
   ComponentStore.dataDirectory = dataDir;
+  AiStore.instance = AiStore(dataDir); // 123 · 121: AI 모델 · 엔진 (앱 데이터 폴더의 ai)
   VersionSnapshot.instance = VersionSnapshot(dataDir);
   await controller.init();
   await setupMasterLock(controller); // 124: 저장된 비밀번호를 쓰기 전에 (실시간 동기화보다 먼저)
@@ -467,6 +475,7 @@ Future<void> runAndroid(String dataDir) async {
   marker.write();
   if (autoBackup) controller.note(tr('Android 자동 백업에서 되살린 설정으로 시작합니다'));
   ComponentStore.dataDirectory = dataDir;
+  AiStore.instance = AiStore(dataDir); // 123 · 121: AI 모델 · 엔진 (앱 데이터 폴더의 ai)
   String? sharedSnapshots;
   try {
     final root = await const MethodChannel('jj_mkvmaker/android').invokeMethod<String>('storageRoot');

@@ -9,6 +9,7 @@ import '../app/app_controller.dart';
 import '../core/reader_sources.dart';
 import '../core/vfs.dart';
 import '../l10n/tr.dart';
+import 'ai_image_page.dart';
 import 'theme.dart';
 
 /// 그림 · 만화 · PDF 보기를 연다. [start] 처음 볼 장. 닫으면 [source] 를 정리한다.
@@ -530,6 +531,10 @@ class _ReaderPageState extends State<ReaderPage> {
       one(_Act(const Icon(Icons.rotate_left), tr('반대로 90° 회전'), () => _rotate(3), on: _turns != 0)),
       one(_Act(const RotatedBox(quarterTurns: 1, child: Icon(Icons.flip)), tr('상하 반전'),
           () => setState(() => _flipV = !_flipV), on: _flipV)),
+      // 123: 이 그림을 바탕으로 AI 그림 (그림 → 그림, 원본은 그대로)
+      if (_aiSource case final path?)
+        one(_Act(const Icon(Icons.auto_awesome_outlined), tr('AI 그림으로 (이 그림을 바탕으로)'),
+            () => AiImagePage.open(Navigator.of(context), c: c, initImage: path))),
       one(_Act(const Icon(Icons.fit_screen_outlined), tr('한 쪽 맞추기'), () => _updateSettings((x) => x.readerFit = 'page'),
           on: s.readerFit == 'page')),
       one(_Act(const Icon(Icons.width_full_outlined), tr('좌우 맞추기 (세로로 밀어 봄)'),
@@ -548,6 +553,14 @@ class _ReaderPageState extends State<ReaderPage> {
         _applySystemBars();
       }, on: s.readerSystemBars)),
     ];
+  }
+
+  /// 지금 보는 그림 파일 (이 기기의 그림 파일일 때, AI 그림 컴포넌트가 켜져 있을 때)
+  String? get _aiSource {
+    final s = src;
+    if (!c.settings.components.contains('aiimage') || s is! ImageFilesSource || _v.isEmpty) return null;
+    final path = s.paths[_cur.page];
+    return isDav(path) ? null : path;
   }
 
   Widget _barButton(_Act a, {bool compact = false}) => IconButton(

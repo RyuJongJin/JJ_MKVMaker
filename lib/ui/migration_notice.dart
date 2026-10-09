@@ -17,6 +17,8 @@ Future<void> showMigrationNotice(BuildContext context, AppController c) async {
         'explorerClick' => tr('파일 탐색기 누르기: 한 번 누르면 선택 → 한 번 누르면 바로 실행. 되돌리기: 환경 설정 > 파일 탐색기 > 누르기'),
         'cookieScope' => tr('앱 안 브라우저의 로그인 쿠키: YouTube · Google 에 더해 Instagram · X · 네이버 (치지직) 로그인도 '
             '다운로드 (yt-dlp) 에 씁니다. 고르기 · 끄기 · 지우기: 환경 설정 > 다운로드 > YouTube 쿠키'),
+        'aiImage' => tr('새 화면 "AI 그림" 을 위쪽 이동 버튼에 넣었습니다 (글 → 그림 · 그림 → 그림, 모델은 환경 설정에서 받기). '
+            '끄기: 환경 설정 > 컴포넌트'),
         'explorerOrientation' => tr(
             '파일 탐색기 두 창 배치: 화면 모양 따라 → 좌우. 되돌리기: 파일 탐색기의 [좌우 ⇆ / 위아래 ⇅] 버튼 또는 창 배치'),
         'zipComic' => tr('ZIP · CBZ 두 번 누르기: 만화 보기 → 목록. 되돌리기: 환경 설정 > 파일 탐색기 > ZIP · CBZ 를 만화로 보기'),

@@ -33,6 +33,7 @@ import 'setting_tile.dart';
 import 'component_settings.dart';
 import 'browser_page.dart' show deleteExportedCookies;
 import 'security_settings.dart';
+import 'ai_settings.dart';
 import '../app/master_lock.dart';
 import 'toast_status.dart';
 
@@ -502,6 +503,9 @@ class _SettingsPageState extends State<SettingsPage> {
                     _textTile(tr('비밀번호 (선택)'), s.openSubtitlesPassword, trf('이 {0}의 안전 저장소에 저장됩니다 (설정 파일에는 쓰지 않음)', [desk ? 'PC' : tr('기기')]),
                         (v) => c.updateSettings((x) => x.openSubtitlesPassword = v), obscure: true),
                   ]),
+                  // 123 · 121: 모델 받기 · 처리 장치 · 서버 · 서비스
+                  if (s.components.contains('aiimage'))
+                    _group('ai', Icons.auto_awesome_outlined, tr('AI 그림'), [AiSettings(c: c)]),
                   _group('play', Icons.play_circle_outline, tr('재생'), [
                     SettingTile(
                       title: Text(tr('로그인이 필요한 WebDAV 동영상을 다른 앱으로 열 때')),
@@ -1054,7 +1058,7 @@ class _SettingsPageState extends State<SettingsPage> {
   final _groupKeys = <String, GlobalKey>{};
 
   static const _groupIds = [
-    'general', 'security', 'components', 'display', 'mkv', 'subtitle', 'play', 'browser', 'files', 'rsync', 'download', 'run', //
+    'general', 'security', 'components', 'display', 'mkv', 'subtitle', 'ai', 'play', 'browser', 'files', 'rsync', 'download', 'run', //
     'cleanup', 'about',
   ];
 
@@ -1065,6 +1069,7 @@ class _SettingsPageState extends State<SettingsPage> {
         'components' => tr('컴포넌트'),
         'mkv' => tr('MKV 만들기'),
         'subtitle' => tr('자막 (AI · 인터넷)'),
+        'ai' => tr('AI 그림'),
         'play' => tr('재생'),
         'browser' => tr('웹 브라우저'),
         'files' => tr('파일 탐색기'),
@@ -1080,7 +1085,7 @@ class _SettingsPageState extends State<SettingsPage> {
         padding: const EdgeInsets.only(bottom: 8),
         child: Wrap(spacing: 8, runSpacing: 8, children: [
           for (final id in _groupIds)
-            if (id != 'run' || desk)
+            if ((id != 'run' || desk) && (id != 'ai' || c.settings.components.contains('aiimage')))
               ActionChip(
                 label: Text(_groupTitle(id), style: const TextStyle(fontSize: 13)),
                 onPressed: () {

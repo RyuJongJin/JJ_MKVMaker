@@ -26,6 +26,7 @@ import 'monitor_page.dart';
 import 'player_page.dart';
 import 'rsync_setup.dart';
 import 'theme.dart';
+import 'file_error.dart';
 import 'dav_external.dart';
 import '../platform/windows/recycle_bin.dart';
 import '../core/sync_preview.dart';
@@ -404,50 +405,14 @@ class _ExplorerPageState extends State<ExplorerPage> {
   // ───────── 읽을 수 없을 때 (12) ─────────
 
   /// 오류 → (무엇이 문제인지, 무엇을 하면 되는지)
-  (String, String) _explain(String e, {required bool dav, bool noPassword = false}) {
-    final s = e.toLowerCase();
-    if (dav && (s.contains('socketexception') || s.contains('connection refused') || s.contains('failed host lookup') ||
-        s.contains('network is unreachable') || s.contains('no route') || s.contains('timed out') ||
-        s.contains('timeoutexception') || s.contains('connection reset') || s.contains('connection closed'))) {
-      return (
-        tr('서버에 닿지 않습니다'),
-        tr('서버와 같은 네트워크에 있거나 VPN (예: Tailscale) 이 켜져 있어야 합니다. 켠 뒤 [다시 시도] 를 누르세요.'),
-      );
-    }
-    if (s.contains(' 401') || s.contains('status: 401') || s.contains('아이디 · 비밀번호')) {
-      // 54: 비밀번호가 틀린 것이 아니라 저장된 것이 없다 (예전 판 설치 · 앱 다시 설치 등)
-      if (noPassword) {
-        return (
-          tr('저장된 비밀번호가 없습니다. 한 번만 다시 넣어 주세요'),
-          tr('[서버 설정 고치기] 에서 비밀번호를 넣으면 이 기기의 안전 저장소에 남아 다음부터는 다시 넣지 않아도 됩니다.'),
-        );
-      }
-      return (tr('아이디 또는 비밀번호가 맞지 않습니다'), tr('[서버 설정 고치기] 에서 아이디 · 비밀번호를 확인하세요.'));
-    }
-    if (s.contains('handshake') || s.contains('certificate')) {
-      return (
-        tr('서버 인증서를 확인할 수 없습니다'),
-        tr('집 NAS 처럼 자체 서명 인증서면 [서버 설정 고치기] 에서 "인증서 확인 안 함" 을 켜세요.'),
-      );
-    }
-    if (s.contains(' 403') || s.contains('권한 없음')) return (tr('이 폴더를 볼 권한이 없습니다'), tr('서버에서 이 계정의 권한을 확인하세요.'));
-    if (s.contains(' 404') || s.contains('없는 경로')) return (tr('폴더가 없습니다'), tr('다른 곳에서 지웠거나 옮겼을 수 있습니다. 위 폴더로 가 보세요.'));
-    if (s.contains('permission denied') || s.contains('pathaccessexception') || s.contains('errno = 13')) {
-      return (
-        tr('이 폴더를 읽을 권한이 없습니다'),
-        Platform.isAndroid ? tr('Android 가 막은 폴더 (Android/data 등) 이거나 "모든 파일에 대한 접근" 권한이 없습니다.') : '',
-      );
-    }
-    return (tr('읽을 수 없습니다'), e);
-  }
-
   Widget? _errorNotice(_Pane pane, String dir) {
     final err = pane.errors[dir] ?? pane.errors[pane.root];
     if (err == null) return null;
     final where = pane.errors[dir] != null ? dir : pane.root;
     final dav = isDav(where);
     final server = dav ? DavRegistry.server(DavPath.parse(where).server) : null;
-    final (title, body) = _explain(err, dav: dav, noPassword: server != null && server.password.isEmpty);
+    final (title, body) = explainFileError(err, dav: dav, noPassword: server != null && server.password.isEmpty);
+    final locked = isLockedError(err);
     return _notice(
       icon: dav ? Icons.cloud_off_outlined : Icons.error_outline,
       title: '${_displayPath(where)}: $title',
@@ -455,6 +420,8 @@ class _ExplorerPageState extends State<ExplorerPage> {
       actions: [
         FilledButton.tonal(
           onPressed: () async {
+            // 133: 마스터를 취소해 막혔으면 여기서 다시 묻는다
+            if (locked && !await SecretGate.pass(force: true)) return;
             pane.errors.remove(where);
             pane.changed();
             await _load(pane, where, force: true);
@@ -462,9 +429,9 @@ class _ExplorerPageState extends State<ExplorerPage> {
               if (isSameOrInside(d, where) && d != where) await _load(pane, d, force: true);
             }
           },
-          child: Text(tr('다시 시도')),
+          child: Text(locked ? tr('마스터 비밀번호 넣기') : tr('다시 시도')),
         ),
-        if (dav) TextButton(onPressed: () => _editDav(pane, pane.root), child: Text(tr('서버 설정 고치기'))),
+        if (dav && !locked) TextButton(onPressed: () => _editDav(pane, pane.root), child: Text(tr('서버 설정 고치기'))),
       ],
     );
   }
@@ -1334,7 +1301,8 @@ class _ExplorerPageState extends State<ExplorerPage> {
             ],
             if (failed.length > 30) Text(trf('… 외 {0}개', [failed.length - 30])),
             const SizedBox(height: 6),
-            Text(tr('다른 프로그램이 쓰고 있거나 권한이 없을 수 있습니다. 나머지는 지웠습니다.'), style: const TextStyle(fontSize: 12)),
+            // 이유를 이미 위에 적었으므로 짐작하는 말은 빼고, 실제로 지운 것이 있을 때만 "나머지는 지웠습니다"
+            if (failed.length < paths.length) Text(tr('나머지는 지웠습니다.'), style: const TextStyle(fontSize: 12)),
           ]),
           actions: [FilledButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('확인')))],
         ),
@@ -1342,7 +1310,8 @@ class _ExplorerPageState extends State<ExplorerPage> {
     } else if (!permanent) {
       _snack([
         if (recycled > 0) trf('{0}개 항목을 휴지통으로 보냈습니다.', [recycled]),
-        if (nuked > 0) trf('{0}개는 휴지통보다 커서 영구 삭제했습니다 (Windows 가 물은 대로).', [nuked]),
+        // 휴지통보다 커서 Windows 가 물었고 사용자가 영구 삭제를 골랐다
+        if (nuked > 0) trf('{0}개는 휴지통에 들어가지 않아 영구 삭제했습니다 (Windows 가 묻고 고른 대로).', [nuked]),
         if (kept > 0) trf('{0}개는 지우지 않았습니다 (취소).', [kept]),
       ].join(' '));
     }

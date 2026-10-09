@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../app/app_controller.dart';
+import '../app/ai_local.dart';
 import '../app/download_manager.dart';
 import '../core/models.dart';
 import '../services/downloader.dart';
@@ -95,7 +96,7 @@ class WorkPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-    listenable: Listenable.merge([c, ?downloads]),
+    listenable: Listenable.merge([c, ?downloads, AiJobs.instance]),
     builder: (context, _) => Container(
       color: JjColors.panel,
       child: Column(
@@ -185,9 +186,14 @@ class WorkPanel extends StatelessWidget {
 
   List<Widget> _jobs() => [
     _title(tr('작업')),
-    if (!c.busy)
+    // 123: AI 그림 (남은 장 · 예상 시간)
+    if (AiJobs.instance.statusLine case final ai?) ...[
+      Text('▶ $ai', style: const TextStyle(fontSize: 12, color: JjColors.accent)),
+      LinearProgressIndicator(value: AiJobs.instance.progress),
+    ],
+    if (!c.busy && !AiJobs.instance.busy)
       _Dim(tr('쉬는 중'))
-    else ...[
+    else if (c.busy) ...[
       Text(
         '▶ ${c.currentJob ?? tr('작업 중')}',
         style: const TextStyle(fontSize: 12, color: JjColors.accent),

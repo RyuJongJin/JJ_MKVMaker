@@ -32,13 +32,16 @@ class AppComponent {
   static const docs = AppComponent('docs', '문서 미리보기', 'DOC · DOCX · HWP · XLS · XLSX 를 PDF 로 바꿔 보기 (변환기를 받음)',
       Icons.description_outlined, page: false, needsDownload: true, builtIn: false);
 
-  static const all = [mkv, browser, explorer, rsync, downloads, viewer, docs];
+  /// 123: 글 → 그림 · 그림 → 그림 (기기 안 SD1.5 + LCM, 또는 사용자가 추가한 서버 · 서비스). 모델은 환경 설정에서 받는다
+  static const aiImage = AppComponent('aiimage', 'AI 그림', '글 → 그림 · 그림 → 그림 (기기 안에서, 모델은 환경 설정에서 받기)', Icons.auto_awesome_outlined);
+
+  static const all = [mkv, browser, explorer, rsync, downloads, aiImage, viewer, docs];
 
   /// 문서 미리보기 대상 (PDF 로 바꿔 봄)
   static const docExtensions = ['doc', 'docx', 'hwp', 'hwpx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp', 'rtf'];
 
   /// 화면 있는 것의 기본 순서 (좌우로 밀기 · 위쪽 버튼)
-  static const defaultOrder = ['mkv', 'browser', 'explorer', 'rsync', 'downloads'];
+  static const defaultOrder = ['mkv', 'browser', 'explorer', 'rsync', 'downloads', 'aiimage'];
 
   static AppComponent? byId(String id) => all.where((c) => c.id == id).firstOrNull;
 

@@ -19,7 +19,7 @@ void main() {
     expect(s.components, containsAll(['mkv', 'browser', 'explorer', 'rsync', 'downloads', 'viewer']));
     expect(s.components, isNot(contains('docs'))); // 변환기를 받아야 하는 것은 처음엔 꺼짐
     expect([for (final p in AppComponent.pages(s.components, s.navOrder)) p.id],
-        ['mkv', 'browser', 'explorer', 'rsync', 'downloads']);
+        ['mkv', 'browser', 'explorer', 'rsync', 'downloads', 'aiimage']);
     s
       ..navOrder = ['explorer', 'mkv']
       ..components = ['mkv', 'explorer', 'downloads'];
@@ -73,10 +73,10 @@ void main() {
     await tester.tap(find.byTooltip('아래로').first);
     await tester.pump();
     expect(c.settings.navOrder.take(2), ['mkv', 'browser']);
-    // 마지막 (다운로드) 를 위로 → 4번째
+    // 마지막 (AI 그림) 을 위로 → 5번째
     await tester.tap(find.byTooltip('위로').last);
     await tester.pump();
-    expect(c.settings.navOrder, ['mkv', 'browser', 'explorer', 'downloads', 'rsync']);
+    expect(c.settings.navOrder, ['mkv', 'browser', 'explorer', 'rsync', 'aiimage', 'downloads']);
   });
 
   testWidgets('화면 가운데를 좌우로 밀면 순서대로 다음 · 이전 화면 (끝 다음은 처음)', (tester) async {

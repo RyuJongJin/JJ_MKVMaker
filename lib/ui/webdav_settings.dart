@@ -7,6 +7,7 @@ import '../core/secret_gate.dart';
 import '../core/webdav.dart';
 import '../l10n/tr.dart';
 import 'confirm.dart';
+import 'file_error.dart';
 import 'theme.dart';
 import 'setting_tile.dart';
 
@@ -52,28 +53,33 @@ class WebDavSettings extends StatelessWidget {
                 tooltip: tr('지우기'),
                 icon: const Icon(Icons.delete_outline, size: 18, color: JjColors.textDim),
                 // 46: 확인 뒤 (저장된 비밀번호도 함께 지워진다)
-                onPressed: () async {
-                  // 124: 이 서버를 쓰는 실시간 동기화 쌍 · 기억된 작업을 먼저 알린다
-                  final users = davServerUsers(c.settings, s.id);
-                  final ok = await confirmAction(
-                    context,
-                    title: trf('WebDAV 서버 "{0}" 을(를) 지울까요?', [s.label]),
-                    body: tr('서버 설정과 이 기기에 저장된 비밀번호를 지웁니다. 서버의 파일은 그대로입니다. '
-                            '이 서버를 쓰는 동기화 · 복사는 다시 넣을 때까지 연결되지 않습니다.') +
-                        (users.isEmpty
-                            ? ''
-                            : '\n\n${trf('이 서버를 쓰는 것 {0}개 (지워도 목록에는 남고, 실행하면 서버가 없다고 알립니다):', [users.length])}\n'
-                                '${users.take(8).map((u) => '• $u').join('\n')}${users.length > 8 ? '\n…' : ''}'),
-                    ok: tr('지우기'),
-                  );
-                  if (ok) await c.updateSettings((x) => x.webdavServers = [for (final y in x.webdavServers) if (y.id != s.id) y]);
-                },
+                onPressed: () => deleteDavServer(context, c, s),
               ),
             ]),
           ),
         ),
     ]);
   }
+}
+
+/// 46 · 124: 서버 지우기 (쓰는 곳을 알린 뒤 확인). 지웠으면 true. 설정의 목록 · 고치기 창 (143) 이 함께 쓴다
+Future<bool> deleteDavServer(BuildContext context, AppController c, DavServer s) async {
+  // 124: 이 서버를 쓰는 실시간 동기화 쌍 · 기억된 작업을 먼저 알린다
+  final users = davServerUsers(c.settings, s.id);
+  final ok = await confirmAction(
+    context,
+    title: trf('WebDAV 서버 "{0}" 을(를) 지울까요?', [s.label]),
+    body: tr('서버 설정과 이 기기에 저장된 비밀번호를 지웁니다. 서버의 파일은 그대로입니다. '
+            '이 서버를 쓰는 동기화 · 복사는 다시 넣을 때까지 연결되지 않습니다.') +
+        (users.isEmpty
+            ? ''
+            : '\n\n${trf('이 서버를 쓰는 것 {0}개 (지워도 목록에는 남고, 실행하면 서버가 없다고 알립니다):', [users.length])}\n'
+                '${users.take(8).map((u) => '• $u').join('\n')}${users.length > 8 ? '\n…' : ''}'),
+    ok: tr('지우기'),
+  );
+  if (!ok) return false;
+  await c.updateSettings((x) => x.webdavServers = [for (final y in x.webdavServers) if (y.id != s.id) y]);
+  return true;
 }
 
 /// 56: 암호화하지 않는 http:// 주소인지
@@ -120,6 +126,8 @@ Future<DavServer?> editDavServer(BuildContext context, AppController c, {DavServ
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, set) {
         Future<void> test() async {
+          // 142: 자판을 내려 결과가 가리지 않게
+          FocusScope.of(ctx).unfocus();
           set(() {
             testing = true;
             result = null;
@@ -134,10 +142,9 @@ Future<DavServer?> editDavServer(BuildContext context, AppController c, {DavServ
           } catch (e) {
             passed = false;
             toHttps = e is DavException && e.wantsHttps;
-            final s = '$e'.toLowerCase();
-            result = pass.text.isEmpty && (s.contains('401') || s.contains('아이디 · 비밀번호'))
-                ? tr('저장된 비밀번호가 없습니다. 한 번만 다시 넣어 주세요')
-                : trf('연결 실패: {0}', [e]);
+            // 142: 원문 예외 대신 알아볼 수 있는 말 (탐색기와 같은 말)
+            final (title, body) = explainFileError('$e', dav: true, noPassword: pass.text.isEmpty);
+            result = body.isEmpty ? title : '$title\n$body';
           } finally {
             client.close();
           }
@@ -218,6 +225,15 @@ Future<DavServer?> editDavServer(BuildContext context, AppController c, {DavServ
             ]),
           ),
           actions: [
+            // 143: 고치기 창에서도 지울 수 있게
+            if (old != null)
+              TextButton(
+                onPressed: () async {
+                  if (await deleteDavServer(ctx, c, old) && ctx.mounted) Navigator.pop(ctx);
+                },
+                style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
+                child: Text(tr('지우기')),
+              ),
             TextButton(onPressed: !ok || testing ? null : test, child: Text(tr('연결 확인'))),
             TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('취소'))),
             FilledButton(onPressed: ok ? () => Navigator.pop(ctx, current()) : null, child: Text(tr('저장'))),

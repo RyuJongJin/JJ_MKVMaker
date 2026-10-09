@@ -3,10 +3,12 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
+import '../core/secret_gate.dart';
 import '../core/vfs.dart';
 import '../core/webdav.dart';
 import '../l10n/tr.dart';
 import 'android_file_browser.dart';
+import 'file_error.dart';
 
 /// 폴더 고르기. Android 는 앱 안 화면 (내장 저장소 · SD 카드 · USB 를 실제 경로로 고를 수 있음), PC 는 Windows 폴더 선택 창
 Future<String?> pickFolder(BuildContext context, String title, [String? initial]) => Platform.isAndroid
@@ -77,6 +79,28 @@ class _DavFolderDialogState extends State<_DavFolderDialog> {
     }
   }
 
+  /// 134: 원문 예외 대신 알아볼 수 있는 말 + 할 일. 133: 마스터 때문에 막혔으면 [마스터 비밀번호 넣기]
+  Widget _errorView(String error) {
+    final (title, body) = explainFileError(error, dav: true);
+    final locked = isLockedError(error);
+    return Center(
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Icon(locked ? Icons.lock_outline : Icons.cloud_off_outlined, color: Colors.redAccent),
+        const SizedBox(height: 8),
+        Text(title, textAlign: TextAlign.center, style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w600)),
+        if (body.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 4), child: Text(body, textAlign: TextAlign.center)),
+        const SizedBox(height: 10),
+        FilledButton.tonal(
+          onPressed: () async {
+            if (locked && !await SecretGate.pass(force: true)) return;
+            await _open(_dir);
+          },
+          child: Text(locked ? tr('마스터 비밀번호 넣기') : tr('다시 시도')),
+        ),
+      ]),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final atRoot = DavPath.parse(_dir).rel.replaceAll('/', '').isEmpty;
@@ -90,7 +114,7 @@ class _DavFolderDialogState extends State<_DavFolderDialog> {
           const Divider(),
           Expanded(
             child: _error != null
-                ? Center(child: Text(_error!, style: const TextStyle(color: Colors.redAccent)))
+                ? _errorView(_error!)
                 : _folders == null
                     ? const Center(child: CircularProgressIndicator())
                     : ListView(children: [

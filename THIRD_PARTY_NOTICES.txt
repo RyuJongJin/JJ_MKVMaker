@@ -48,7 +48,8 @@ JJ_MKVMaker - 포함된 오픈 소스 구성 요소 및 라이선스 고지
   원문: tools\YT-DLP_LICENSE.txt
 - Deno (tools\deno.exe)                MIT                   https://github.com/denoland/deno
   원문: tools\DENO_LICENSE.txt
-- rsync (rsyncsync.exe)              GPL-3.0-or-later      https://rsync.samba.org
+- rsync (rsync
+sync.exe)              GPL-3.0-or-later      https://rsync.samba.org
   MSYS2 공식 패키지 rsync 3.5.1 과 실행에 필요한 DLL (msys2-runtime: GPL-3.0 + 예외, OpenSSL: Apache-2.0,
   popt · lz4 · xxhash · zstd: BSD/MIT 계열, libiconv · libintl · libidn2 · libunistring: LGPL)
   소스: https://packages.msys2.org/base/rsync (각 패키지의 소스 패키지)
@@ -71,8 +72,10 @@ JJ_MKVMaker - 포함된 오픈 소스 구성 요소 및 라이선스 고지
   소스는 위 주소에서 받을 수 있습니다.
 - rsync (librsync.so 라는 이름의 실행 파일) GPL-3.0-or-later  https://rsync.samba.org
   rsync 3.4.1 공식 소스 (https://download.samba.org/pub/rsync/src/rsync-3.4.1.tar.gz) 를 고치지 않고
-  Android NDK 로 빌드 (들어 있는 zlib · popt 사용, 선택 기능 끔). 빌드 방법: app	ooluild_rsync_android.sh
+  Android NDK 로 빌드 (들어 있는 zlib · popt 사용, 선택 기능 끔). 빌드 방법: app/tool/build_rsync_android.sh
 - libmpv (media_kit_libs_android_video) LGPL-2.1+             https://github.com/media-kit/libmpv-android-video-build
+- stable-diffusion.cpp · ggml (libsdcli.so 라는 이름의 실행 파일)  MIT  https://github.com/leejet/stable-diffusion.cpp
+  커밋 228c707 을 고치지 않고 Android NDK 로 빌드 (AI 그림 · 해상도 올리기). 빌드 방법: app/tool/build_sdcpp_android.sh
 
 [처음 사용할 때 내려받는 AI 모델]
 
@@ -83,7 +86,22 @@ JJ_MKVMaker - 포함된 오픈 소스 구성 요소 및 라이선스 고지
   ※ NLLB 번역 모델은 상업적 용도로 쓸 수 없습니다. 판매·유료 서비스에 쓰려면
     상업 이용이 가능한 번역 모델로 바꿔야 합니다.
 
+[AI 그림 · 해상도 올리기 - 환경 설정에서 받는 파일 (공식 배포처 · SHA-256 고정)]
+
+- stable-diffusion.cpp Windows 실행 파일 (Vulkan · CUDA 12 판)  MIT
+                                        https://github.com/leejet/stable-diffusion.cpp/releases (master-948-228c707)
+- NVIDIA CUDA 12 런타임 DLL (CUDA 판과 함께, NVIDIA 그래픽카드가 있을 때만)  NVIDIA CUDA Toolkit EULA (재배포 허용 파일)
+- Stable Diffusion v1.5 (v1-5-pruned-emaonly.safetensors)  CreativeML OpenRAIL-M
+                                        https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5
+  ※ 상업적 사용을 포함해 쓸 수 있지만 라이선스 부속서 A 의 용도 제한을 따라야 합니다: 법을 어기는 일, 미성년자를 해치거나
+    이용하는 일, 남을 해치려는 거짓 정보, 개인 정보로 사람을 해치는 일, 차별 · 괴롭힘, 의료 · 법률 판단을 대신하는 일 등.
+    만든 그림에 대한 책임은 쓰는 사람에게 있습니다. 받기 전에 앱에서 이 조건을 보여 주고 동의를 받습니다.
+- LCM-LoRA (lcm-lora-sdv1-5)              OpenRAIL++  https://huggingface.co/latent-consistency/lcm-lora-sdv1-5
+- TAESD (빠른 디코더)                     MIT          https://huggingface.co/madebyollin/taesd
+
 [인터넷 서비스]
 
 - OpenSubtitles.com REST API: 사용자가 발급받은 API 키로 이용하며 OpenSubtitles 이용 약관을 따릅니다.
 - YouTube 등에서 받은 영상, 토렌트로 받은 파일의 저작권 책임은 이용자에게 있습니다.
+- AI 그림의 서버 · 서비스: 앱에는 들어 있지 않으며, 사용자가 직접 추가한 서버 (ComfyUI · Automatic1111 등) 나 서비스
+  (OpenAI 이미지 API 형식) 의 약관을 따릅니다. 그때는 그림 · 프롬프트가 기기 밖으로 나갑니다.

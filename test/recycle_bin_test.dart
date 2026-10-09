@@ -53,6 +53,32 @@ void main() {
     }
   }, skip: !Platform.isWindows);
 
+  test('긴 경로 (260자 넘음) 는 휴지통으로 보내지 않고 이유를 알린다 - 묻지 않고 영구 삭제되던 것 (폴더 안에 있어도)', () {
+    if (!Platform.isWindows) return;
+    // 긴 경로를 만들고 지우려면 앞에 \\?\ 를 붙인다
+    String lp(String s) => r'\\?\' + s;
+    final tmp = Directory.systemTemp.createTempSync('jj_rb_long_');
+    addTearDown(() => Directory(lp(tmp.path)).deleteSync(recursive: true));
+    var deep = p.join(tmp.path, 'outer');
+    while (deep.length < 250) {
+      deep = p.join(deep, 'd' * 30);
+    }
+    final file = p.join(deep, 'a_file_name_that_makes_it_longer.txt');
+    Directory(lp(deep)).createSync(recursive: true);
+    File(lp(file)).writeAsStringSync('x');
+    expect(file.length, greaterThan(259));
+    expect(longPathInside(file), file);
+    expect(() => moveToRecycleBin(file), throwsA(isA<FileSystemException>().having((e) => e.message, 'message', contains('경로가 너무 깁니다'))));
+    expect(File(lp(file)).existsSync(), isTrue, reason: '지우지 않음');
+    // 폴더 자체는 짧아도 안에 긴 경로가 있으면
+    final outer = p.join(tmp.path, 'outer');
+    expect(longPathInside(outer), isNotNull);
+    expect(() => moveToRecycleBin(outer), throwsA(isA<FileSystemException>()));
+    expect(Directory(outer).existsSync(), isTrue);
+    final short = File(p.join(tmp.path, 'short.txt'))..writeAsStringSync('x');
+    expect(longPathInside(short.path), isNull, reason: '짧은 파일 경로');
+  });
+
   test(r'휴지통 정보 파일 ($I) 에서 원래 경로 읽기 - Windows 10 이상 (판 2) · 예전 (판 1)', () {
     List<int> le(int v, int n) => [for (var i = 0; i < n; i++) v >> (8 * i) & 0xff];
     List<int> utf16(String s) => [for (final u in s.codeUnits) ...le(u, 2)];

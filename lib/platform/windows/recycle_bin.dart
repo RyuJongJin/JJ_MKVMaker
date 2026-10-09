@@ -112,6 +112,25 @@ bool? recycledInfoExists(String original, {required DateTime since}) {
   return readable ? false : null;
 }
 
+/// 휴지통이 받을 수 있는 경로 길이 (MAX_PATH - 끝의 NUL)
+const recycleMaxPath = 259;
+
+/// [path] (폴더면 그 안까지) 에 휴지통이 받지 못하는 긴 경로가 있으면 그 경로, 없으면 null
+String? longPathInside(String path) {
+  final full = File(path).absolute.path;
+  if (full.length > recycleMaxPath) return full;
+  if (FileSystemEntity.typeSync(full, followLinks: false) != FileSystemEntityType.directory) return null;
+  try {
+    for (final e in Directory(full).listSync(recursive: true, followLinks: false)) {
+      if (e.path.length > recycleMaxPath) return e.path;
+    }
+  } catch (_) {
+    // 긴 경로 때문에 목록을 다 읽지 못함 - 그것도 긴 경로가 있다는 뜻
+    return full;
+  }
+  return null;
+}
+
 /// SHFileOperation 의 오류 번호를 사람이 읽을 말로 (98)
 String recycleErrorText(int code) => switch (code) {
       0x02 || 0x03 => tr('찾을 수 없습니다 (이미 지워졌거나 옮겨졌습니다)'),
@@ -130,6 +149,10 @@ String recycleErrorText(int code) => switch (code) {
 RecycleResult moveToRecycleBin(String path) {
   if (!Platform.isWindows) throw FileSystemException(tr('휴지통이 없습니다'), path);
   if (FileSystemEntity.typeSync(path, followLinks: false) == FileSystemEntityType.notFound) return RecycleResult.recycled;
+  // 휴지통은 260자 넘는 경로를 받지 않고, 그때 Windows 는 묻지 않고 영구 삭제해 버린다 (시험에서 확인).
+  // 그래서 보내기 전에 (폴더면 안의 것까지) 긴 경로가 있으면 지우지 않고 이유를 알린다 - 영구 삭제는 사용자가 따로 고른다.
+  final long = longPathInside(path);
+  if (long != null) throw FileSystemException(recycleErrorText(0x7C), long);
   final shell32 = DynamicLibrary.open('shell32.dll');
   final op = shell32.lookupFunction<Int32 Function(Pointer<_ShFileOp>), int Function(Pointer<_ShFileOp>)>('SHFileOperationW');
   final before = _binCount(path);

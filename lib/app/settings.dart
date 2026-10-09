@@ -11,6 +11,7 @@ import '../core/download_detect.dart';
 import '../core/encode_options.dart';
 import '../core/playlist.dart';
 import '../core/webdav.dart';
+import '../services/image_ai.dart' show AiService;
 import '../services/app_shell.dart' show appIconOf;
 import '../services/secret_store.dart';
 
@@ -442,6 +443,34 @@ class AppSettings {
   /// WebDAV 서버 (파일 탐색기 · Rsync 화면 위쪽 "SD 카드" 옆 탭). 비밀번호는 이 설정 파일에만.
   List<DavServer> webdavServers = [];
 
+  // ───────── 123 · 121: AI 그림 · 해상도 올리기 ─────────
+
+  /// 그리는 엔진: 'local' 이 기기 안 (기본) · 아니면 [aiServices] 의 id (사용자가 추가한 서버 · 서비스)
+  String aiEngine = 'local';
+
+  /// 기기 안 처리 장치: 'auto' (잰 결과로 빠른 쪽) 또는 장치 열쇠 (예: 'engine-cuda:cuda0', 'engine-vulkan:cpu')
+  String aiDevice = 'auto';
+
+  /// 'auto' 가 잰 가장 빠른 장치와 그때의 장치 목록 (목록이 바뀌면 다시 잰다)
+  String aiAutoDevice = '';
+  String aiAutoDeviceFor = '';
+
+  /// 빠른 디코더 (TAESD) - 그림이 거의 같고 디코드가 10배쯤 빠르다 (받아 두었을 때)
+  bool aiTaesd = true;
+  int aiWidth = 512;
+  int aiHeight = 512;
+  int aiSteps = 4;
+  double aiCfg = 1;
+  int aiCount = 1;
+  double aiStrength = 0.6;
+  String aiNegative = '';
+
+  /// 저장 폴더 (비어 있으면 사진 폴더의 JJ_MKVMaker_AI)
+  String aiSaveDir = '';
+
+  /// 사용자가 추가한 그림 서버 · 서비스 (API 키는 안전 저장소에)
+  List<AiService> aiServices = [];
+
   /// 실시간 동기화 확인 간격 (초). Windows 는 바뀌면 바로, 그 밖은 이 간격으로 살핀다.
   int liveSyncIntervalSec = 30;
 
@@ -572,6 +601,7 @@ class AppSettings {
         'copyMethodFolder': copyMethodFolder,
         'rsyncPaths': rsyncPaths,
         'components': components,
+        'aiImageV1': true,
         'navOrder': navOrder,
         'swipeNav': swipeNav,
         'imageExts': imageExts,
@@ -597,6 +627,22 @@ class AppSettings {
         'zipComic': zipComic,
         // 예전 기본값 (만화 보기 켜짐) 은 지시와 반대였으므로 한 번 꺼진 상태 (목록) 로
         'zipComicV2': true,
+        'aiEngine': aiEngine,
+        'aiDevice': aiDevice,
+        'aiAutoDevice': aiAutoDevice,
+        'aiAutoDeviceFor': aiAutoDeviceFor,
+        'aiTaesd': aiTaesd,
+        'aiWidth': aiWidth,
+        'aiHeight': aiHeight,
+        'aiSteps': aiSteps,
+        'aiCfg': aiCfg,
+        'aiCount': aiCount,
+        'aiStrength': aiStrength,
+        'aiNegative': aiNegative,
+        'aiSaveDir': aiSaveDir,
+        'aiServices': [
+          for (final x in aiServices) {...x.toJson(), if (plainSecrets) 'apiKey': x.apiKey},
+        ],
         'webdavServers': [
           for (final x in webdavServers) {...x.toJson(), if (plainSecrets) 'password': x.password},
         ],
@@ -725,7 +771,11 @@ class AppSettings {
       ..copyMethodFolder = _method(j['copyMethodFolder'])
       ..rsyncPaths = [for (final x in (j['rsyncPaths'] as List?) ?? const []) '$x']
       ..components = j['components'] is List
-          ? [for (final x in j['components'] as List) if (AppComponent.byId('$x') != null) '$x']
+          ? [
+              for (final x in j['components'] as List) if (AppComponent.byId('$x') != null) '$x',
+              // 123: 새 화면 "AI 그림" 은 예전 설정에도 한 번 켜서 넣는다 (끄기: 환경 설정 > 컴포넌트)
+              if (j['aiImageV1'] != true && !(j['components'] as List).contains('aiimage')) 'aiimage',
+            ]
           : AppComponent.defaultInstalled
       ..navOrder = j['navOrder'] is List
           ? [for (final x in j['navOrder'] as List) if (AppComponent.defaultOrder.contains('$x')) '$x']
@@ -755,6 +805,23 @@ class AppSettings {
       ..allFilesHintShown = j['allFilesHint2'] == true
       ..subtitleScale = ((j['subtitleScale'] as num?)?.toDouble() ?? 1.0).clamp(0.5, 2.5)
       ..zipComic = j['zipComic'] == true && j['zipComicV2'] == true
+      ..aiEngine = j['aiEngine'] as String? ?? 'local'
+      ..aiDevice = j['aiDevice'] as String? ?? 'auto'
+      ..aiAutoDevice = j['aiAutoDevice'] as String? ?? ''
+      ..aiAutoDeviceFor = j['aiAutoDeviceFor'] as String? ?? ''
+      ..aiTaesd = j['aiTaesd'] != false
+      ..aiWidth = ((j['aiWidth'] as num?)?.toInt() ?? 512).clamp(64, 2048)
+      ..aiHeight = ((j['aiHeight'] as num?)?.toInt() ?? 512).clamp(64, 2048)
+      ..aiSteps = ((j['aiSteps'] as num?)?.toInt() ?? 4).clamp(1, 150)
+      ..aiCfg = ((j['aiCfg'] as num?)?.toDouble() ?? 1).clamp(0, 30)
+      ..aiCount = ((j['aiCount'] as num?)?.toInt() ?? 1).clamp(1, 100)
+      ..aiStrength = ((j['aiStrength'] as num?)?.toDouble() ?? 0.6).clamp(0, 1)
+      ..aiNegative = j['aiNegative'] as String? ?? ''
+      ..aiSaveDir = j['aiSaveDir'] as String? ?? ''
+      ..aiServices = [
+        for (final x in (j['aiServices'] as List?) ?? const [])
+          if (x is Map) AiService.fromJson(x),
+      ]
       ..webdavServers = [
         for (final x in (j['webdavServers'] as List?) ?? const [])
           if (x is Map) DavServer.fromJson(x),
@@ -827,6 +894,12 @@ class AppSettings {
         for (final x in servers) x is Map ? (Map.of(x)..remove('password')) : x,
       ];
     }
+    final ai = r['aiServices'];
+    if (ai is List) {
+      r['aiServices'] = [
+        for (final x in ai) x is Map ? (Map.of(x)..remove('apiKey')) : x,
+      ];
+    }
     return r;
   }
 
@@ -836,6 +909,7 @@ class AppSettings {
         if (j['explorerV2'] != true && j['explorerLayout'] == 'dual' && s.explorerLayout == 'auto') 'explorerLayout',
         if (j['explorerV2'] != true && j['explorerClick'] == 'select' && s.explorerClick == 'open') 'explorerClick',
         if (j['explorerOrientV3'] != true && j['explorerOrientation'] == 'auto') 'explorerOrientation',
+        if (j['aiImageV1'] != true && j['components'] is List && !(j['components'] as List).contains('aiimage')) 'aiImage',
         // 53 · 28: 앱 안 브라우저 쿠키를 쓰던 사람에게 넘기는 사이트가 넓어졌음을 한 번 알린다
         if (j['cookieScopeV2'] != true && j.isNotEmpty && (j['ytCookiesBrowser'] ?? internalBrowserCookies) == internalBrowserCookies)
           'cookieScope',
@@ -916,6 +990,7 @@ class SettingsStore {
     'openSubtitlesPassword': 'os.password',
   };
   static String _davKey(String id) => 'dav.pw.$id';
+  static String _aiKey(String id) => 'ai.key.$id';
   static const _davServers = 'dav.servers';
 
   static String _os(AppSettings s, String k) => switch (k) {
@@ -930,6 +1005,8 @@ class SettingsStore {
           if (_os(s, e.key).isNotEmpty) e.value: _os(s, e.key),
         for (final x in s.webdavServers)
           if (x.password.isNotEmpty) _davKey(x.id): x.password,
+        for (final x in s.aiServices)
+          if (x.apiKey.isNotEmpty) _aiKey(x.id): x.apiKey,
         // 서버 목록 (비밀번호 없이): 예전 판이 설정 파일에서 서버 목록을 지워도 되살릴 수 있게 (40)
         if (s.webdavServers.isNotEmpty) _davServers: jsonEncode([for (final x in s.webdavServers) x.toJson()]),
       };
@@ -938,6 +1015,12 @@ class SettingsStore {
   static void _putPlain(Map<String, Object?> j, String key, String value) {
     for (final e in _osKeys.entries) {
       if (e.value == key) j[e.key] = value;
+    }
+    if (key.startsWith('ai.key.')) {
+      final id = key.substring('ai.key.'.length);
+      for (final x in (j['aiServices'] as List?) ?? const []) {
+        if (x is Map && '${x['id']}' == id) x['apiKey'] = value;
+      }
     }
     if (key.startsWith('dav.pw.')) {
       final id = key.substring('dav.pw.'.length);
@@ -961,6 +1044,9 @@ class SettingsStore {
     s.webdavServers = [
       for (final x in s.webdavServers)
         x.password.isNotEmpty ? x : x.copyWith(password: stored[_davKey(x.id)] ?? ''),
+    ];
+    s.aiServices = [
+      for (final x in s.aiServices) x.apiKey.isNotEmpty ? x : x.copyWith(apiKey: stored[_aiKey(x.id)] ?? ''),
     ];
   }
 
@@ -992,6 +1078,9 @@ class SettingsStore {
     }
     for (final x in s.webdavServers) {
       if (x.password.isNotEmpty) _filePlain[_davKey(x.id)] = x.password;
+    }
+    for (final x in s.aiServices) {
+      if (x.apiKey.isNotEmpty) _filePlain[_aiKey(x.id)] = x.apiKey;
     }
     _fill(s, stored);
     secretIssue.value = !_secretsOk
@@ -1025,7 +1114,7 @@ class SettingsStore {
 
   /// 깨진 설정 파일의 보관본에서 비밀 값을 지운다 (JSON 으로 읽을 수 없으니 글자로)
   static String redactSecrets(String text) => text.replaceAllMapped(
-      RegExp(r'"(openSubtitlesKey|openSubtitlesUser|openSubtitlesPassword|password)"\s*:\s*"(?:[^"\\]|\\.)*"'),
+      RegExp(r'"(openSubtitlesKey|openSubtitlesUser|openSubtitlesPassword|password|apiKey)"\s*:\s*"(?:[^"\\]|\\.)*"'),
       (m) => '"${m[1]}": ""');
 
   /// 읽기 오류를 알릴 글 (파일 내용은 넣지 않음 - JSON 오류 메시지에는 원문 일부가 들어간다)
@@ -1163,7 +1252,7 @@ class SettingsStore {
     if (!_secretsOk) return {...values.keys.where((k) => _known[k] != values[k])};
     final unsaved = <String>{};
     for (final k in {..._known.keys, ...values.keys}) {
-      if (!k.startsWith('os.') && !k.startsWith('dav.')) continue;
+      if (!k.startsWith('os.') && !k.startsWith('dav.') && !k.startsWith('ai.')) continue;
       final v = values[k];
       if (v == _known[k]) continue;
       try {

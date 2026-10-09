@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 
 import '../../app/app_controller.dart';
+import '../../app/ai_local.dart';
 import '../../app/download_manager.dart';
 import '../../app/copy_center.dart';
 import '../../app/live_sync.dart';
@@ -25,6 +26,7 @@ class AndroidKeepAlive {
   AndroidKeepAlive(this.c, this.downloads) {
     c.addListener(_changed);
     downloads.addListener(_changed);
+    AiJobs.instance.addListener(_changed); // 123: AI 그림도 화면을 닫아도 계속
     _changed();
   }
 
@@ -62,9 +64,15 @@ class AndroidKeepAlive {
       _copies = copies?..addListener(_changed);
     }
     final copying = copies?.activeCount ?? 0;
-    final (text, progress) =
+    final ai = AiJobs.instance.statusLine;
+    var (text, progress) =
         status(c.currentJob, c.busy, running, downloads.overallProgress,
             syncs: syncs, syncing: live?.anyRunning ?? false, copies: copying, stopped: live?.problems.length ?? 0);
+    if (ai != null) {
+      // 진행 알림에 남은 장 수와 예상 시간 (발열 · 배터리 때문에 쉬어 가지는 않는다 - 사용자 결정)
+      text = text == null ? ai : '$ai · $text';
+      if (!c.busy && running == 0) progress = ((AiJobs.instance.progress ?? 0) * 100).round().clamp(0, 100);
+    }
     try {
       if (text == null) {
         if (_on) await _ch.invokeMethod<void>('stopKeepAlive');

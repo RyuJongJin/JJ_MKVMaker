@@ -9,6 +9,7 @@ import '../services/app_shell.dart' show appIconButtonAsset;
 import '../services/system_usage.dart';
 import 'browser_page.dart';
 import 'downloads_page.dart';
+import 'ai_image_page.dart';
 import 'explorer_page.dart';
 import 'settings_page.dart';
 import 'theme.dart';
@@ -94,15 +95,19 @@ class AppNavButtons extends StatelessWidget {
 
   /// Rsync 화면 자신
   final bool onRsyncPage;
+
+  /// AI 그림 화면 자신 (123)
+  final bool onAiPage;
   const AppNavButtons(
       {super.key,
       this.onDownloadsPage = false,
       this.onBrowserPage = false,
       this.onExplorerPage = false,
-      this.onRsyncPage = false});
+      this.onRsyncPage = false,
+      this.onAiPage = false});
 
-  /// 버튼 줄의 가장 넓은 폭 (JJ · 화면 5개 · 뒤로)
-  static const double width = 7 * 40;
+  /// 버튼 줄의 가장 넓은 폭 (JJ · 화면 6개 · 뒤로)
+  static const double width = 8 * 40;
 
   /// MKV 화면 (맨 처음 화면) 까지 돌아가기
   static void toMkv(BuildContext context) => Navigator.of(context).popUntil((r) => r.isFirst);
@@ -129,6 +134,8 @@ class AppNavButtons extends StatelessWidget {
         await ExplorerPage.openRsync(nav, c: c);
       case 'downloads':
         if (downloads != null) await DownloadsPage.open(nav, downloads);
+      case 'aiimage':
+        await AiImagePage.open(nav, c: c);
     }
   }
 
@@ -187,7 +194,9 @@ class AppNavButtons extends StatelessWidget {
                 ? 'explorer'
                 : onRsyncPage
                     ? 'rsync'
-                    : atRoot
+                    : onAiPage
+                        ? 'aiimage'
+                        : atRoot
                         ? 'mkv'
                         : '';
     final pages = scope == null ? const <AppComponent>[] : pagesOf(scope);
@@ -204,6 +213,7 @@ class AppNavButtons extends StatelessWidget {
           'explorer' => here ? tr('파일 탐색기 (지금 여기)') : tr('파일 탐색기'),
           'rsync' => here ? tr('Rsync (지금 여기)') : 'Rsync',
           'downloads' => here ? tr('다운로드 목록 (지금 여기)') : tr('다운로드 목록'),
+          'aiimage' => here ? tr('AI 그림 (지금 여기)') : tr('AI 그림'),
           _ => id,
         };
     // 좁은 화면 (폰): 아이콘 아래에 짧은 이름 - 글자 없는 작은 아이콘만 늘어서 무엇인지 몰랐던 것
@@ -249,6 +259,7 @@ class AppNavButtons extends StatelessWidget {
           'explorer' => tr('탐색기'),
           'rsync' => 'Rsync',
           'downloads' => tr('다운로드'),
+          'aiimage' => tr('AI 그림'),
           _ => id,
         };
     return Row(mainAxisSize: MainAxisSize.min, children: [
