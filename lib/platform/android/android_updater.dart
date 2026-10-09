@@ -21,6 +21,9 @@ class AndroidUpdater implements Updater {
 
   final String apiBase;
   final StorageService storage;
+
+  /// 작업 기록 (app.log) 에 남길 곳 - 앱이 시작할 때 넣는다 (170: 화면에 안 보인 첫 시도의 오류 원문)
+  void Function(String msg)? log;
   final HttpClient _http = HttpClient()
     ..userAgent = 'JJ_MKVMaker-updater'
     ..connectionTimeout = const Duration(seconds: 20);
@@ -109,9 +112,20 @@ class AndroidUpdater implements Updater {
         await _ch.invokeMethod<void>('installApk', {'path': downloaded});
         return;
       } on PlatformException catch (e) {
-        if (e.code != 'PERMISSION') throw UpdateException(e.message ?? '$e');
+        if (e.code != 'PERMISSION') {
+          // 170: 폴드에서 첫 시도만 다른 오류로 실패하고 두 번째에 된 일 (접은 화면 · 화면 전환 중으로 보임) - 1초 뒤 한 번 더
+          if (attempt == 0) {
+            log?.call(trf('업데이트 설치 화면 열기 첫 시도 실패 (1초 뒤 다시): {0}', [e.message ?? '$e']));
+            await Future<void>.delayed(const Duration(seconds: 1));
+            continue;
+          }
+          throw UpdateException(e.message ?? '$e');
+        }
         // 170: 허용돼 있는데도 "설치 허용 필요" 창이 뜬 일 (폴드) - 한 번 더 물어 허용돼 있으면 창 없이 다시 연다
-        if (attempt == 0 && await canInstallPackages()) continue;
+        if (attempt == 0 && await canInstallPackages()) {
+          log?.call(trf('업데이트: 설치 허용 필요로 왔지만 허용돼 있어 다시 엽니다: {0}', [e.message ?? '$e']));
+          continue;
+        }
         throw InstallPermissionNeeded(e.message ?? '$e');
       }
     }

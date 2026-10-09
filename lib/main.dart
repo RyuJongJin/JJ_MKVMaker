@@ -62,6 +62,7 @@ import 'ui/theme.dart';
 import 'ui/work_panel.dart';
 import 'l10n/tr.dart';
 import 'app/i18n_controller.dart';
+import 'platform/android/android_updater.dart';
 
 /// 제목 표시줄 글: "JJ_MKVMaker v1.2.3"
 String appTitle = 'JJ_MKVMaker';
@@ -528,6 +529,9 @@ Future<void> runAndroid(String dataDir) async {
   downloads.log = controller.note;
   // 진행 중인 일이 있으면 화면에서 내려가도 계속 (알림에 진행 상황)
   AndroidKeepAlive(controller, downloads);
+  // 170: 업데이트 설치의 첫 시도 실패 원문을 작업 기록에
+  final updater = services.updater;
+  if (updater is AndroidUpdater) updater.log = controller.note;
   // 백그라운드로 실행: 화면 (Activity) 을 닫아도 엔진은 살아 있다가 다시 열면 새 화면에 붙는다 → 화면 방향을 다시 적용
   // (웹뷰는 텍스처로 그려 새 화면에 붙어도 그대로 보인다: browser_page _webSettings)
   // 116: 권한 ("모든 파일에 대한 접근") 이 없어 분석에 실패한 동영상은 허용하고 돌아오면 저절로 다시 분석
