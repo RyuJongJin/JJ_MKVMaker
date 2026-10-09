@@ -70,7 +70,10 @@ class ZipImagesSource extends ReaderSource {
   final List<ArchiveFile> entries;
   @override
   final String title;
-  ZipImagesSource._(this.archive, this._input, this.entries, this.title);
+
+  /// ZIP 파일 (121: 해상도를 올린 그림은 ZIP 을 바꾸지 않고 이 옆 폴더에 저장)
+  final String path;
+  ZipImagesSource._(this.archive, this._input, this.entries, this.title, this.path);
 
   /// [imageExts] 그림으로 볼 확장자
   static Future<ZipImagesSource> open(String path, {required String tempDir, required List<String> imageExts}) async {
@@ -81,7 +84,7 @@ class ZipImagesSource extends ReaderSource {
       for (final f in archive.files)
         if (f.isFile && imageExts.contains(extOf(f.name)) && !f.name.startsWith('__MACOSX/')) f,
     ]..sort((a, b) => naturalCompare(a.name, b.name));
-    return ZipImagesSource._(archive, input, images, vBasename(path));
+    return ZipImagesSource._(archive, input, images, vBasename(path), path);
   }
 
   @override

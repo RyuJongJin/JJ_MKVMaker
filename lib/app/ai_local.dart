@@ -37,6 +37,15 @@ class AiStore extends ChangeNotifier {
 
   bool isInstalled(String id) => isFileInstalled(aiFile(id));
 
+  /// 받을 때 SHA-256 이 공식 값과 같았는지 (표시 파일에 남김) - 화면에 "확인됨"
+  bool isVerified(AiFile f) {
+    try {
+      return (jsonDecode(_mark(f).readAsStringSync()) as Map)['sha256'] == f.sha256;
+    } catch (_) {
+      return false;
+    }
+  }
+
   bool isFileInstalled(AiFile f) => _mark(f).existsSync() && FileSystemEntity.typeSync(pathOf(f)) != FileSystemEntityType.notFound;
 
   /// 받는 중인 것 (id → 0~1, 모르면 null)
@@ -219,8 +228,18 @@ class AiStore extends ChangeNotifier {
     final whole = res.statusCode == 416 && have == f.size; // 이미 다 받아 둠 - 확인만
     if (whole) {
       await res.drain<void>();
+    } else if (res.statusCode == 416) {
+      // 조각이 서버 파일과 맞지 않음 (크기가 다름) - 조각을 버리고 처음부터 (다시 시도만 반복하다 막히지 않게)
+      await res.drain<void>();
+      if (out.existsSync()) out.deleteSync();
+      throw HttpException('range not satisfiable - restart');
     } else if (res.statusCode == 200) {
       have = 0; // 이어 주지 않음 - 처음부터
+    } else if (res.statusCode == 206 && contentRangeStart(res.headers.value(HttpHeaders.contentRangeHeader)) != have) {
+      // CDN 이 다른 범위를 줌 - 섞이지 않게 조각을 버리고 처음부터
+      await res.drain<void>();
+      if (out.existsSync()) out.deleteSync();
+      throw HttpException('unexpected range - restart');
     } else if (res.statusCode != 206) {
       await res.drain<void>();
       throw HttpException('status ${res.statusCode}'); // 다시 시도 대상 (주소는 사용자에게 보이지 않음)
@@ -263,6 +282,7 @@ class AiStore extends ChangeNotifier {
     if (done < total) throw HttpException('short read $done/$total'); // 끊김 - 이어 받기
     if (hash.events.single.toString() != f.sha256) {
       await out.delete();
+      failures[f.id] = tr('파일이 깨졌습니다 · [다시 받기] 를 눌러 주세요');
       throw ImageAiException(trf('받은 파일이 손상되었습니다 (SHA-256 다름): {0}', [f.name]));
     }
   }
@@ -332,6 +352,12 @@ class AiStore extends ChangeNotifier {
   }
 }
 
+/// Content-Range ("bytes 120000-299999/300000") 의 시작 (모르면 null)
+int? contentRangeStart(String? header) {
+  final m = RegExp(r'bytes\s+(\d+)-').firstMatch(header ?? '');
+  return m == null ? null : int.parse(m.group(1)!);
+}
+
 /// 처리 장치 하나 (실행 파일 + sd-cli --backend 값)
 class SdDevice {
   final String exe;
@@ -381,16 +407,24 @@ class LocalSdEngine implements ImageAiEngine {
     );
     final out = p.join(outDir, '${baseName}_%d.png');
     final args = sdCliArgs(req, models, out: out, backend: device.backend, threads: threads);
-    final lines = await runSdCli(device.exe, args, onProgress: (prog) {
-      final step = switch (prog.phase) {
-        'load' => tr('모델 읽는 중'),
-        'sample' => trf('그리는 중 {0}/{1}', [prog.step, prog.steps]),
-        'decode' => tr('그림으로 바꾸는 중'),
-        _ => tr('저장하는 중'),
-      };
-      onProgress?.call(prog.overall, step);
-    }, onStart: (pr) => _proc = pr);
-    if (_cancelled) throw ImageAiException(tr('취소했습니다'));
+    final List<String> lines;
+    try {
+      lines = await runSdCli(device.exe, args, onProgress: (prog) {
+        final step = switch (prog.phase) {
+          // 152: 읽는 동안은 남은 시간을 모른다
+          'load' => tr('모델 읽는 중 …'),
+          'sample' => trf('그리는 중 {0}/{1}', [prog.step, prog.steps]),
+          'decode' => tr('그림으로 바꾸는 중'),
+          _ => tr('저장하는 중'),
+        };
+        onProgress?.call(prog.overall, step);
+      }, onStart: (pr) => _proc = pr);
+    } catch (_) {
+      // 150: 취소로 엔진을 끝낸 것은 실패가 아니다
+      if (_cancelled) throw ImageAiException(tr('취소했습니다'), cancelled: true);
+      rethrow;
+    }
+    if (_cancelled) throw ImageAiException(tr('취소했습니다'), cancelled: true);
     final made = Directory(outDir)
         .listSync()
         .whereType<File>()
@@ -430,7 +464,9 @@ Future<List<String>> runSdCli(String exe, List<String> args,
   // 그림을 다 저장한 뒤 끝내면서 0 이 아닌 코드로 끝나는 일이 있다 (이 판의 sd-cli) - 저장했으면 성공으로 본다
   if (code != 0 && !saved) {
     final err = tail.where((l) => l.contains('[E]') || l.toLowerCase().contains('error')).toList();
-    throw ImageAiException(trf('AI 엔진이 실패했습니다 ({0}): {1}', [code, (err.isEmpty ? tail : err).join('\n')]));
+    // 150: 쉬운 말 한 줄, 엔진 원문은 [자세히] 에
+    throw ImageAiException(trf('AI 엔진이 멈췄습니다 (코드 {0}). 메모리가 모자라거나 파일이 깨졌을 수 있습니다', [code]),
+        detail: (err.isEmpty ? tail : err).join('\n'));
   }
   return tail;
 }
@@ -472,6 +508,7 @@ class AiJobs extends ChangeNotifier {
   int remaining = 0;
   Duration? eta;
   ImageAiEngine? _engine;
+  void Function()? _cancelTask;
 
   bool get busy => title != null;
 
@@ -492,7 +529,11 @@ class AiJobs extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 151: 지금 쓰는 받은 파일 (그동안은 [지우기] 를 끈다)
+  Set<String> inUse = const {};
+
   void finish() {
+    inUse = const {};
     title = null;
     progress = null;
     remaining = 0;
@@ -501,7 +542,49 @@ class AiJobs extends ChangeNotifier {
     notifyListeners();
   }
 
-  void cancel() => _engine?.cancel();
+  void cancel() {
+    _engine?.cancel();
+    _cancelTask?.call();
+  }
+
+  /// 121: 여러 장 작업 (폴더 · ZIP 전체 해상도 올리기 등) 을 한 번에 하나로. [body] 는 i 번째 장을 하고 진행 (0~1) 을 알린다.
+  /// 남은 장 · 예상 시간을 알림 · 작업 현황에 보이고, [onCancel] 로 지금 장을 멈춘다. 끝낸 장 수를 돌려준다.
+  Future<int> runTask(String title, int count, Future<void> Function(int i, void Function(double? p) progress) body,
+      {required void Function() onCancel, Set<String> uses = const {}}) async {
+    if (busy) throw ImageAiException(tr('이미 작업 중입니다'));
+    inUse = uses;
+    var stop = false;
+    this.title = title;
+    remaining = count;
+    progress = 0;
+    eta = null;
+    _cancelTask = () {
+      stop = true;
+      onCancel();
+    };
+    notifyListeners();
+    final started = DateTime.now();
+    var done = 0;
+    try {
+      for (var i = 0; i < count && !stop; i++) {
+        await body(i, (pp) {
+          final overall = (i + (pp ?? 0)) / count;
+          final spent = DateTime.now().difference(started);
+          update(
+            progress: overall,
+            remaining: count - i,
+            eta: overall > 0.02 ? spent * ((1 - overall) / overall) : null,
+            title: '$title ${i + 1}/$count',
+          );
+        });
+        done++;
+      }
+    } finally {
+      _cancelTask = null;
+      finish();
+    }
+    return done;
+  }
 
   /// 그리기 한 번 (한 번에 하나). 진행 · 남은 장 · 예상 시간을 알리고, 그림마다 옆에 json (프롬프트 · 시드 · 모델) 을 남긴다.
   Future<List<GeneratedImage>> run(ImageAiEngine engine, ImageGenRequest r, {required String outDir}) async {
@@ -509,10 +592,12 @@ class AiJobs extends ChangeNotifier {
     final started = DateTime.now();
     final stamp = started.toIso8601String().replaceAll(RegExp(r'[-:T]'), '').split('.').first;
     start(trf('AI 그림 ({0})', [engine.label]), engine, r.count);
+    if (engine is LocalSdEngine) inUse = {...sd15LcmFiles, 'taesd', 'engine-vulkan', 'engine-cuda', 'engine-cudart'};
     try {
       final made = await engine.generate(r, outDir: outDir, baseName: 'ai_$stamp', onProgress: (prog, step) {
         Duration? left;
-        if (prog != null && prog > 0.05) {
+        // 152: 모델을 읽는 동안 (0.1 까지) 은 남은 시간을 모른다
+        if (prog != null && prog > 0.12) {
           final spent = DateTime.now().difference(started);
           left = spent * ((1 - prog) / prog);
         }

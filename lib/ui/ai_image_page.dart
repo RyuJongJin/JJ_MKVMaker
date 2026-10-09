@@ -13,6 +13,7 @@ import '../l10n/tr.dart';
 import '../services/image_ai.dart';
 import 'ai_settings.dart';
 import 'app_actions.dart';
+import 'browser_page.dart' show browserRouteObserver;
 import 'reader_page.dart';
 import 'theme.dart';
 
@@ -54,7 +55,7 @@ String aiSaveDir(String setting) {
   return p.join(home, 'Pictures', 'JJ_MKVMaker_AI');
 }
 
-class _AiImagePageState extends State<AiImagePage> {
+class _AiImagePageState extends State<AiImagePage> with RouteAware {
   AppController get c => widget.c;
   final _prompt = TextEditingController();
   late final _negative = TextEditingController(text: c.settings.aiNegative);
@@ -62,12 +63,29 @@ class _AiImagePageState extends State<AiImagePage> {
   late String? _init = widget.initImage;
   final _results = <GeneratedImage>[];
   String? _error;
+
+  /// 150: 엔진 원문 ([자세히] 를 눌러야 보임) · 취소 (회색 한 줄, 오류 아님)
+  String _detail = '';
+  bool _showDetail = false;
+  bool _cancelled = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route != null) browserRouteObserver.subscribe(this, route);
+  }
+
+  /// 152: 다른 화면으로 가면 글 칸의 포커스를 풀어 둔다 (돌아올 때 자판이 저절로 올라와 결과를 가리지 않게)
+  @override
+  void didPushNext() => FocusManager.instance.primaryFocus?.unfocus();
   String _step = '';
 
   AiStore get store => AiStore.instance ??= AiStore(Directory.systemTemp.path);
 
   @override
   void dispose() {
+    browserRouteObserver.unsubscribe(this);
     _prompt.dispose();
     _negative.dispose();
     _seed.dispose();
@@ -106,6 +124,9 @@ class _AiImagePageState extends State<AiImagePage> {
     );
     setState(() {
       _error = null;
+      _detail = '';
+      _showDetail = false;
+      _cancelled = false;
       _step = '';
     });
     try {
@@ -120,6 +141,14 @@ class _AiImagePageState extends State<AiImagePage> {
       final made = await AiJobs.instance.run(engine, req, outDir: aiSaveDir(s.aiSaveDir));
       if (!mounted) return;
       setState(() => _results.insertAll(0, made));
+    } on ImageAiException catch (e) {
+      if (mounted) {
+        setState(() {
+          _cancelled = e.cancelled;
+          _error = e.message;
+          _detail = e.detail;
+        });
+      }
     } catch (e) {
       if (mounted) setState(() => _error = '$e');
     }
@@ -229,7 +258,15 @@ class _AiImagePageState extends State<AiImagePage> {
                   if (_error != null)
                     Padding(
                       padding: const EdgeInsets.only(top: 8),
-                      child: Text(_error!, style: const TextStyle(color: Colors.redAccent)),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(_error!, style: TextStyle(color: _cancelled ? JjColors.textDim : Colors.redAccent)),
+                        if (_detail.isNotEmpty)
+                          TextButton(
+                            onPressed: () => setState(() => _showDetail = !_showDetail),
+                            child: Text(_showDetail ? tr('자세히 닫기') : tr('자세히')),
+                          ),
+                        if (_showDetail) SelectableText(_detail, style: const TextStyle(fontSize: 11, color: JjColors.textDim)),
+                      ]),
                     ),
                   const SizedBox(height: 12),
                   if (_results.isNotEmpty) Text(trf('만든 그림 · 저장: {0}', [aiSaveDir(s.aiSaveDir)]), style: const TextStyle(fontSize: 12)),
@@ -296,10 +333,30 @@ class _AiImagePageState extends State<AiImagePage> {
         ],
       ]);
 
-  Widget _thumb(GeneratedImage g) => Column(mainAxisSize: MainAxisSize.min, children: [
+  Widget _thumb(GeneratedImage g) {
+    // 153: 갤러리 등에서 지웠으면 빈칸 대신 알리고 목록에서 뺄 수 있게
+    if (!File(g.path).existsSync()) {
+      return SizedBox(
+        width: 160,
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Container(
+            width: 160,
+            height: 160,
+            color: JjColors.panel,
+            alignment: Alignment.center,
+            padding: const EdgeInsets.all(8),
+            child: Text(tr('파일이 없습니다 (지워졌거나 옮겨짐)'),
+                textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, color: JjColors.textDim)),
+          ),
+          TextButton(onPressed: () => setState(() => _results.remove(g)), child: Text(tr('목록에서 빼기'))),
+        ]),
+      );
+    }
+    final shown = [for (final r in _results) if (File(r.path).existsSync()) r];
+    return Column(mainAxisSize: MainAxisSize.min, children: [
         InkWell(
-          onTap: () => openReader(context, c, ImageFilesSource([for (final r in _results) r.path], tempDir: Directory.systemTemp.path, title: tr('AI 그림')),
-              start: _results.indexOf(g)),
+          onTap: () => openReader(context, c, ImageFilesSource([for (final r in shown) r.path], tempDir: Directory.systemTemp.path, title: tr('AI 그림')),
+              start: shown.indexOf(g)),
           child: Image.file(File(g.path), width: 160, height: 160, fit: BoxFit.cover),
         ),
         Row(mainAxisSize: MainAxisSize.min, children: [
@@ -318,6 +375,7 @@ class _AiImagePageState extends State<AiImagePage> {
           ),
         ]),
       ]);
+  }
 
   Widget _drop<T>(String label, T value, List<T> items, void Function(T) on) => Row(mainAxisSize: MainAxisSize.min, children: [
         Text(label, style: const TextStyle(fontSize: 13)),

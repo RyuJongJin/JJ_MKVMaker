@@ -125,7 +125,7 @@ class _AiSettingsState extends State<AiSettings> {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: Listenable.merge([c, store]),
+      listenable: Listenable.merge([c, store, AiJobs.instance]),
       builder: (context, _) {
         final s = c.settings;
         final missing = aiMissingFiles(store);
@@ -208,6 +208,85 @@ class _AiSettingsState extends State<AiSettings> {
             ]),
           ),
           const Divider(),
+          // 121: 해상도 올리기 (보기 화면 위쪽 막대의 [AI 해상도 올리기])
+          SettingTile(
+            leading: const Icon(Icons.hd_outlined),
+            title: Text(tr('해상도 올리기 모델')),
+            subtitle: Text(tr('자동: 그래픽카드 (GPU) 가 있으면 사진용, CPU 뿐이면 가볍고 빠른 만화용. 원본은 덮어쓰지 않고 새 파일로 저장합니다')),
+            trailing: DropdownButton<String>(
+              value: s.aiUpModel,
+              items: [
+                DropdownMenuItem(value: 'auto', child: Text(tr('자동'))),
+                DropdownMenuItem(value: 'photo', child: Text(tr('사진'))),
+                DropdownMenuItem(value: 'anime', child: Text(tr('만화 · 그림'))),
+              ],
+              onChanged: (v) => c.updateSettings((x) => x.aiUpModel = v ?? 'auto'),
+            ),
+          ),
+          SettingTile(
+            leading: const Icon(Icons.zoom_out_map),
+            title: Text(tr('배율')),
+            trailing: DropdownButton<int>(
+              value: s.aiUpScale,
+              items: [for (final n in const [2, 3, 4]) DropdownMenuItem(value: n, child: Text(trf('{0}배', [n])))],
+              onChanged: (v) => c.updateSettings((x) => x.aiUpScale = v ?? 2),
+            ),
+          ),
+          SettingTile(
+            leading: const Icon(Icons.image_outlined),
+            title: Text(tr('저장 형식')),
+            subtitle: s.aiUpFormat == 'jpg' ? Text(trf('JPG 품질 {0}', [s.aiUpJpgQuality])) : Text(tr('WebP 등은 PNG 로 저장합니다')),
+            trailing: DropdownButton<String>(
+              value: s.aiUpFormat,
+              items: [
+                DropdownMenuItem(value: 'same', child: Text(tr('원본과 같은 형식'))),
+                const DropdownMenuItem(value: 'png', child: Text('PNG')),
+                const DropdownMenuItem(value: 'jpg', child: Text('JPG')),
+              ],
+              onChanged: (v) => c.updateSettings((x) => x.aiUpFormat = v ?? 'same'),
+            ),
+          ),
+          if (s.aiUpFormat == 'jpg')
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Slider(
+                value: s.aiUpJpgQuality.toDouble(),
+                min: 50,
+                max: 100,
+                divisions: 50,
+                label: '${s.aiUpJpgQuality}',
+                onChanged: (v) => c.updateSettings((x) => x.aiUpJpgQuality = v.round()),
+              ),
+            ),
+          SettingTile(
+            leading: const Icon(Icons.drive_file_move_outline),
+            title: Text(tr('저장 위치')),
+            subtitle: Text(s.aiUpDir.isEmpty ? tr('원본 옆에 "이름_x2" (ZIP 은 ZIP 옆 "ZIP이름_AI" 폴더)') : s.aiUpDir),
+            trailing: Wrap(spacing: 6, children: [
+              OutlinedButton(
+                onPressed: () async {
+                  final d = await pickFolder(context, tr('해상도를 올린 그림 저장 폴더'), s.aiUpDir.isEmpty ? null : s.aiUpDir);
+                  if (d != null) await c.updateSettings((x) => x.aiUpDir = d);
+                },
+                child: Text(tr('폴더 고르기')),
+              ),
+              if (s.aiUpDir.isNotEmpty)
+                TextButton(onPressed: () => c.updateSettings((x) => x.aiUpDir = ''), child: Text(tr('원본 옆으로'))),
+            ]),
+          ),
+          SettingTile(
+            leading: const Icon(Icons.visibility_outlined),
+            title: Text(tr('저장한 뒤')),
+            trailing: DropdownButton<String>(
+              value: s.aiUpAfter,
+              items: [
+                DropdownMenuItem(value: 'upscaled', child: Text(tr('올린 것으로 계속 보기'))),
+                DropdownMenuItem(value: 'original', child: Text(tr('원본으로'))),
+              ],
+              onChanged: (v) => c.updateSettings((x) => x.aiUpAfter = v ?? 'upscaled'),
+            ),
+          ),
+          const Divider(),
           SettingTile(
             leading: const Icon(Icons.public),
             title: Text(tr('서버 · 서비스 (기기 밖)')),
@@ -280,6 +359,8 @@ class _AiSettingsState extends State<AiSettings> {
                 AiStore.sizeText(f.size),
                 f.license,
                 if (installed) tr('받음'),
+                // 받을 때 SHA-256 을 공식 값과 맞춰 보았다
+                if (installed && store.isVerified(f)) tr('확인됨'),
                 if (waiting) tr('차례 기다림'),
                 ?store.failures[f.id],
               ].join(' · ')),
@@ -287,7 +368,10 @@ class _AiSettingsState extends State<AiSettings> {
             ? TextButton(onPressed: () => store.cancel(f.id), child: Text(tr('취소')))
             : installed
                 ? TextButton(
-                    onPressed: () async {
+                    // 151: 그리는 · 올리는 중에 쓰는 파일은 지울 수 없게
+                    onPressed: AiJobs.instance.busy && AiJobs.instance.inUse.contains(f.id)
+                        ? null
+                        : () async {
                       final ok = await confirmAction(context,
                           title: trf('{0} 을(를) 지울까요?', [tr(f.name)]), body: tr('다시 쓰려면 다시 받아야 합니다.'), ok: tr('지우기'));
                       if (ok) {
@@ -296,7 +380,13 @@ class _AiSettingsState extends State<AiSettings> {
                       }
                     },
                     child: Text(tr('지우기')))
-                : OutlinedButton(onPressed: () => _install([f]), child: Text(partial ? tr('이어 받기') : tr('받기'))),
+                : OutlinedButton(
+                    onPressed: () => _install([f]),
+                    child: Text(store.failures[f.id]?.contains(tr('파일이 깨졌습니다')) == true
+                        ? tr('다시 받기')
+                        : partial
+                            ? tr('이어 받기')
+                            : tr('받기'))),
       ),
     );
   }

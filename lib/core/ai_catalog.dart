@@ -7,7 +7,7 @@ class AiFile {
   final String sha256;
   final int size;
 
-  /// 'model' 그림 모델 · 'lora' · 'taesd' 빠른 디코더 · 'engine' 실행 파일 (zip) · 'upscale' 해상도 올리기 모델
+  /// 'model' 그림 모델 · 'lora' · 'taesd' 빠른 디코더 · 'engine' 실행 파일 (zip) · 'upscale' 해상도 올리기 모델 (Real-ESRGAN)
   final String kind;
 
   /// 라이선스 이름 · 주소 · 받기 전에 보여 줄 조건 (있으면)
@@ -81,6 +81,27 @@ const aiCatalog = <AiFile>[
     license: 'MIT',
     licenseUrl: 'https://huggingface.co/madebyollin/taesd',
   ),
+  // 121: 해상도 올리기 (Real-ESRGAN, BSD-3 - 상업 사용 가능). stable-diffusion.cpp 가 읽는 RRDBNet 형식만
+  AiFile(
+    id: 'esrgan-anime6b',
+    name: 'Real-ESRGAN x4plus anime 6B (만화 · 그림, 가볍고 빠름)',
+    url: 'https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.2.4/RealESRGAN_x4plus_anime_6B.pth',
+    sha256: 'f872d837d3c90ed2e05227bed711af5671a6fd1c9f7d7e91c911a61f155e99da',
+    size: 17938799,
+    kind: 'upscale',
+    license: 'BSD-3-Clause',
+    licenseUrl: 'https://github.com/xinntao/Real-ESRGAN/blob/master/LICENSE',
+  ),
+  AiFile(
+    id: 'esrgan-x4plus',
+    name: 'Real-ESRGAN x4plus (사진)',
+    url: 'https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth',
+    sha256: '4fa0d38905f75ac06eb49a7951b426670021be3018265fd191d2125df9d682f1',
+    size: 67040989,
+    kind: 'upscale',
+    license: 'BSD-3-Clause',
+    licenseUrl: 'https://github.com/xinntao/Real-ESRGAN/blob/master/LICENSE',
+  ),
   AiFile(
     id: 'engine-vulkan',
     name: 'stable-diffusion.cpp (Windows · CPU · Vulkan)',
@@ -129,3 +150,10 @@ List<(String, String)> aiLicenseTexts() => [
       for (final f in aiCatalog)
         if (f.kind != 'engine') (f.name, '${f.license} - ${f.licenseUrl}${f.terms == null ? '' : '\n\n${f.terms}'}'),
     ];
+
+/// 121: 해상도 올리기 모델 (설정 'auto' · 'photo' · 'anime'). 자동은 폰이면 가볍고 빠른 만화용, PC 면 사진용 (x4plus)
+String upscaleModelFor(String setting, {required bool phone}) => switch (setting) {
+      'photo' => 'esrgan-x4plus',
+      'anime' => 'esrgan-anime6b',
+      _ => phone ? 'esrgan-anime6b' : 'esrgan-x4plus',
+    };

@@ -138,7 +138,7 @@ class SdProgress {
       };
 }
 
-final _bar = RegExp(r'\|[=#> ]*\|\s*(\d+)/(\d+)\s*-\s*([\d.]+)\s*(s/it|it/s|MB/s)');
+final _bar = RegExp(r'\|[=#> ]*\|\s*(\d+)/(\d+)\s*-\s*([\d.]+)\s*(s/it|it/s|[KMG]?B/s)');
 
 /// sd-cli 출력 (줄바꿈 · \r 로 나뉜 조각) 에서 진행을 읽는다. 진행이 아니면 null
 SdProgress? parseSdProgress(String text) {
@@ -149,7 +149,7 @@ SdProgress? parseSdProgress(String text) {
   if (m == null) return null;
   final a = int.parse(m.group(1)!), b = int.parse(m.group(2)!);
   final unit = m.group(4)!;
-  if (unit == 'MB/s') return SdProgress('load', a, b);
+  if (unit.endsWith('B/s')) return SdProgress('load', a, b); // 모델 읽기 (KB/s · MB/s · GB/s)
   final v = double.tryParse(m.group(3)!);
   final spi = v == null || v == 0 ? null : (unit == 's/it' ? v : 1 / v);
   return SdProgress('sample', a, b, secondsPerStep: spi);

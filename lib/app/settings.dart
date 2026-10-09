@@ -474,6 +474,23 @@ class AppSettings {
   /// 라이선스 조건에 동의한 받는 파일 (149-④: 한 번 동의하면 다시 묻지 않음)
   List<String> aiAgreed = [];
 
+  // 121: 해상도 올리기
+  /// 모델 'auto' (GPU 면 사진용, CPU 뿐이면 가볍고 빠른 만화용) · 'photo' · 'anime'
+  String aiUpModel = 'auto';
+
+  /// 배율 2 · 3 · 4
+  int aiUpScale = 2;
+
+  /// 저장 형식 'same' (원본과 같게, 못 쓰는 형식은 PNG) · 'png' · 'jpg' · JPG 품질
+  String aiUpFormat = 'same';
+  int aiUpJpgQuality = 92;
+
+  /// 저장 위치 (비어 있으면 원본 옆 "이름_x2")
+  String aiUpDir = '';
+
+  /// 저장한 뒤 'upscaled' 올린 것으로 계속 보기 · 'original' 원본으로
+  String aiUpAfter = 'upscaled';
+
   /// 실시간 동기화 확인 간격 (초). Windows 는 바뀌면 바로, 그 밖은 이 간격으로 살핀다.
   int liveSyncIntervalSec = 30;
 
@@ -644,6 +661,12 @@ class AppSettings {
         'aiNegative': aiNegative,
         'aiSaveDir': aiSaveDir,
         'aiAgreed': aiAgreed,
+        'aiUpModel': aiUpModel,
+        'aiUpScale': aiUpScale,
+        'aiUpFormat': aiUpFormat,
+        'aiUpJpgQuality': aiUpJpgQuality,
+        'aiUpDir': aiUpDir,
+        'aiUpAfter': aiUpAfter,
         'aiServices': [
           for (final x in aiServices) {...x.toJson(), if (plainSecrets) 'apiKey': x.apiKey},
         ],
@@ -823,6 +846,12 @@ class AppSettings {
       ..aiNegative = j['aiNegative'] as String? ?? ''
       ..aiSaveDir = j['aiSaveDir'] as String? ?? ''
       ..aiAgreed = [for (final x in (j['aiAgreed'] as List?) ?? const []) '$x']
+      ..aiUpModel = const ['photo', 'anime'].contains(j['aiUpModel']) ? j['aiUpModel'] as String : 'auto'
+      ..aiUpScale = const [3, 4].contains(j['aiUpScale']) ? j['aiUpScale'] as int : 2
+      ..aiUpFormat = const ['png', 'jpg'].contains(j['aiUpFormat']) ? j['aiUpFormat'] as String : 'same'
+      ..aiUpJpgQuality = ((j['aiUpJpgQuality'] as num?)?.toInt() ?? 92).clamp(50, 100)
+      ..aiUpDir = j['aiUpDir'] as String? ?? ''
+      ..aiUpAfter = j['aiUpAfter'] == 'original' ? 'original' : 'upscaled'
       ..aiServices = [
         for (final x in (j['aiServices'] as List?) ?? const [])
           if (x is Map) AiService.fromJson(x),

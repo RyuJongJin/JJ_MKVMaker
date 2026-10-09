@@ -10,6 +10,7 @@ import '../core/reader_sources.dart';
 import '../core/vfs.dart';
 import '../l10n/tr.dart';
 import 'ai_image_page.dart';
+import 'ai_upscale_ui.dart';
 import 'theme.dart';
 
 /// 그림 · 만화 · PDF 보기를 연다. [start] 처음 볼 장. 닫으면 [source] 를 정리한다.
@@ -531,10 +532,6 @@ class _ReaderPageState extends State<ReaderPage> {
       one(_Act(const Icon(Icons.rotate_left), tr('반대로 90° 회전'), () => _rotate(3), on: _turns != 0)),
       one(_Act(const RotatedBox(quarterTurns: 1, child: Icon(Icons.flip)), tr('상하 반전'),
           () => setState(() => _flipV = !_flipV), on: _flipV)),
-      // 123: 이 그림을 바탕으로 AI 그림 (그림 → 그림, 원본은 그대로)
-      if (_aiSource case final path?)
-        one(_Act(const Icon(Icons.auto_awesome_outlined), tr('AI 그림으로 (이 그림을 바탕으로)'),
-            () => AiImagePage.open(Navigator.of(context), c: c, initImage: path))),
       one(_Act(const Icon(Icons.fit_screen_outlined), tr('한 쪽 맞추기'), () => _updateSettings((x) => x.readerFit = 'page'),
           on: s.readerFit == 'page')),
       one(_Act(const Icon(Icons.width_full_outlined), tr('좌우 맞추기 (세로로 밀어 봄)'),
@@ -552,7 +549,35 @@ class _ReaderPageState extends State<ReaderPage> {
         await _updateSettings((x) => x.readerSystemBars = !x.readerSystemBars);
         _applySystemBars();
       }, on: s.readerSystemBars)),
+      // AI 는 막대가 좁으면 먼저 ⋮ 로 (늘 쓰는 버튼이 막대에 남게)
+      // 121: AI 해상도 올리기 (이 장 · 모든 장) - 새 파일로 저장, 원본 · ZIP 은 그대로
+      if (_aiOn && src is! PdfSource) ...[
+        one(_Act(const Icon(Icons.hd_outlined), tr('AI 해상도 올리기 (이 장)'), _upscalePage)),
+        one(_Act(const Icon(Icons.burst_mode_outlined), tr('AI 해상도 올리기 (모든 장)'), () => upscaleAll(context, c, src))),
+      ],
+      // 123: 이 그림을 바탕으로 AI 그림 (그림 → 그림, 원본은 그대로)
+      if (_aiSource case final path?)
+        one(_Act(const Icon(Icons.auto_awesome_outlined), tr('AI 그림으로 (이 그림을 바탕으로)'),
+            () => AiImagePage.open(Navigator.of(context), c: c, initImage: path))),
     ];
+  }
+
+  bool get _aiOn => c.settings.components.contains('aiimage');
+
+  Future<void> _upscalePage() async {
+    final page = _cur.page;
+    final file = await readerPageFile(c, src, page);
+    if (file == null || !mounted) return;
+    final saved = await upscaleOne(context, c, input: file.$1, nameFrom: file.$2, outDir: file.$3);
+    if (saved == null || !mounted) return;
+    // 저장한 뒤 올린 것으로 계속 보기 (설정) - 이 기기의 그림 파일 목록일 때
+    final s = src;
+    if (c.settings.aiUpAfter == 'upscaled' && s is ImageFilesSource && !isDav(s.paths[page])) {
+      setState(() {
+        s.paths[page] = saved;
+        _reset(page: page);
+      });
+    }
   }
 
   /// 지금 보는 그림 파일 (이 기기의 그림 파일일 때, AI 그림 컴포넌트가 켜져 있을 때)

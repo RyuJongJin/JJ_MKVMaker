@@ -19,7 +19,13 @@ class GeneratedImage {
 
 class ImageAiException implements Exception {
   final String message;
-  const ImageAiException(this.message);
+
+  /// 엔진 원문 (화면에는 [자세히] 를 눌러야 보인다 - 150)
+  final String detail;
+
+  /// 사용자가 취소함 (오류가 아님)
+  final bool cancelled;
+  const ImageAiException(this.message, {this.detail = '', this.cancelled = false});
   @override
   String toString() => message;
 }

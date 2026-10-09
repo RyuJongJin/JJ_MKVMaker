@@ -65,6 +65,8 @@ void main() {
       expect(parseSdProgress('[I] decode_first_stage completed, taking 2.56s')!.phase, 'decode');
       expect(parseSdProgress('[I] generate_image completed in 49.03s')!.overall, 1);
       expect(parseSdProgress('[I] loading model from x'), isNull);
+      // 150: GB/s 로 읽는 줄도 진행 (원문이 오류 글에 섞이지 않게)
+      expect(parseSdProgress('|#####  | 431/686 - 1.86GB/s')!.phase, 'load');
     });
 
     test('장치 목록 읽기', () {
@@ -143,6 +145,7 @@ void main() {
       final good = file('m1', '/m1.safetensors', List.filled(5000, 7));
       await store.installFile(good);
       expect(store.isFileInstalled(good), isTrue);
+      expect(store.isVerified(good), isTrue, reason: '받을 때 SHA-256 을 맞춰 봄 - "확인됨"');
       expect(File(store.pathOf(good)).lengthSync(), 5000);
       final bad = file('m2', '/m2.safetensors', [1, 2, 3], sha: '0' * 64);
       await expectLater(store.installFile(bad), throwsA(isA<ImageAiException>()));
@@ -228,6 +231,45 @@ void main() {
       await store.installFile(f, retryWait: const Duration(milliseconds: 10));
       expect(File(store.pathOf(f)).readAsBytesSync(), body);
       expect(store.failures, isEmpty);
+    });
+
+    test('149 · 관리자: 206 인데 범위 시작이 다르거나, 맞지 않는 416 이면 조각을 버리고 처음부터', () async {
+      expect(contentRangeStart('bytes 120000-299999/300000'), 120000);
+      expect(contentRangeStart(null), isNull);
+      final store = AiStore(tmp.path);
+      final body = List<int>.generate(40000, (i) => i * 3 % 256);
+      final port = server.port;
+      await server.close(force: true);
+      server = await HttpServer.bind(InternetAddress.loopbackIPv4, port);
+      final log = <String>[];
+      var mode = 'wrong206';
+      server.listen((req) async {
+        final range = req.headers.value(HttpHeaders.rangeHeader);
+        log.add('$mode ${range ?? '-'}');
+        if (range != null && mode == 'wrong206') {
+          // 엉뚱한 범위 (처음부터) 를 206 으로
+          req.response
+            ..statusCode = 206
+            ..headers.set(HttpHeaders.contentRangeHeader, 'bytes 0-${body.length - 1}/${body.length}')
+            ..add(body);
+        } else if (range != null && mode == '416') {
+          req.response.statusCode = 416;
+        } else {
+          req.response.add(body);
+        }
+        await req.response.close();
+      });
+      for (final m in ['wrong206', '416']) {
+        mode = m;
+        final f = file('r$m', '/r$m', body);
+        // 받다 만 조각 (엉뚱한 내용) 을 미리 둔다
+        File('${store.pathOf(f)}.part')
+          ..createSync(recursive: true)
+          ..writeAsBytesSync(List.filled(1000, 9));
+        await store.installFile(f, retryWait: const Duration(milliseconds: 10));
+        expect(File(store.pathOf(f)).readAsBytesSync(), body, reason: m);
+      }
+      expect(log, containsAllInOrder(['wrong206 bytes=1000-', 'wrong206 -', '416 bytes=1000-', '416 -']));
     });
 
     test('149: 한꺼번에 받기 - 기다리는 것은 "차례 기다림"', () async {
@@ -379,6 +421,24 @@ void main() {
       expect(steps, isEmpty);
     });
 
+    test('150 · 151: 취소하면 "취소했습니다" (실패 아님) · 그리는 동안 쓰는 파일 표시', () async {
+      if (!Platform.isWindows) return markTestSkipped('Windows 전용');
+      final dir = Directory.systemTemp.createTempSync('jj_ai_cancel_');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final fake = File(p.join(dir.path, 'slow.cmd'))
+        ..writeAsStringSync('@echo off\r\necho   ^|=====^>     ^| 431/686 - 1.86GB/s\r\nping -n 8 127.0.0.1 >nul\r\n');
+      final engine = LocalSdEngine(device: SdDevice(fake.path, 'cpu', 'CPU'), models: const SdModelPaths(model: 'm'));
+      final run = AiJobs.instance.run(engine, const ImageGenRequest(prompt: 'x'), outDir: dir.path);
+      await Future<void>.delayed(const Duration(milliseconds: 600));
+      expect(AiJobs.instance.inUse, contains('sd15'));
+      AiJobs.instance.cancel();
+      await expectLater(run, throwsA(isA<ImageAiException>()
+          .having((e) => e.cancelled, 'cancelled', isTrue)
+          .having((e) => e.message, 'message', '취소했습니다')));
+      expect(AiJobs.instance.inUse, isEmpty);
+      expect(AiJobs.instance.busy, isFalse);
+    });
+
     test('엔진이 실패하면 마지막 출력으로 알린다', () async {
       if (!Platform.isWindows) return markTestSkipped('Windows 전용');
       final dir = Directory.systemTemp.createTempSync('jj_ai_fail_');
@@ -386,7 +446,9 @@ void main() {
       final fake = File(p.join(dir.path, 'bad.cmd'))..writeAsStringSync('@echo off\r\necho [E] out of memory\r\nexit /b 3\r\n');
       final engine = LocalSdEngine(device: SdDevice(fake.path, 'cpu', 'CPU'), models: const SdModelPaths(model: 'm'));
       await expectLater(engine.generate(const ImageGenRequest(prompt: 'x'), outDir: dir.path, baseName: 'a'),
-          throwsA(isA<ImageAiException>().having((e) => e.message, 'message', contains('out of memory'))));
+          throwsA(isA<ImageAiException>()
+              .having((e) => e.message, 'message', isNot(contains('out of memory')))
+              .having((e) => e.detail, 'detail', contains('out of memory'))));
     });
   });
 
