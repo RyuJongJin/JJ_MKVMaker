@@ -342,32 +342,67 @@ class BookmarkFolderDrop extends StatelessWidget {
       );
 }
 
-/// 끌 수 있는 즐겨찾기 (끄는 동안 이름표가 따라온다)
-class BookmarkDraggable extends StatelessWidget {
+/// 끌 수 있는 즐겨찾기 (끄는 동안 이름표가 따라온다).
+/// 터치 화면 (Android): 잠깐 누른 채 끌면 옮기기, 누른 채 움직이지 않고 떼면 [onMenu] (길게 누르기 메뉴) - 둘 다 되게
+class BookmarkDraggable extends StatefulWidget {
   final BookmarkNode n;
   final Widget child;
-  const BookmarkDraggable({super.key, required this.n, required this.child});
+  final void Function(Offset at)? onMenu;
+  const BookmarkDraggable({super.key, required this.n, required this.child, this.onMenu});
 
   @override
-  Widget build(BuildContext context) => Draggable<BookmarkDrag>(
-        data: BookmarkDrag(n.id),
-        dragAnchorStrategy: pointerDragAnchorStrategy,
-        feedback: Material(
-          color: JjColors.panelHigh,
-          elevation: 4,
-          borderRadius: BorderRadius.circular(6),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(n.isFolder ? Icons.folder : Icons.public, size: 16, color: n.isFolder ? Colors.amber : null),
-              const SizedBox(width: 6),
-              Text(n.title, style: const TextStyle(fontSize: 12, color: JjColors.text)),
-            ]),
-          ),
+  State<BookmarkDraggable> createState() => _BookmarkDraggableState();
+}
+
+class _BookmarkDraggableState extends State<BookmarkDraggable> {
+  /// 눌렀던 곳 (끌는 동안 목록이 다시 그려져도 남도록 상태에)
+  Offset? _down;
+
+  BookmarkNode get n => widget.n;
+  Widget get child => widget.child;
+
+  Widget _feedback() => Material(
+        color: JjColors.panelHigh,
+        elevation: 4,
+        borderRadius: BorderRadius.circular(6),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(n.isFolder ? Icons.folder : Icons.public, size: 16, color: n.isFolder ? Colors.amber : null),
+            const SizedBox(width: 6),
+            Text(n.title, style: const TextStyle(fontSize: 12, color: JjColors.text)),
+          ]),
         ),
-        childWhenDragging: Opacity(opacity: 0.4, child: child),
-        child: child,
       );
+
+  @override
+  Widget build(BuildContext context) {
+    if (Theme.of(context).platform == TargetPlatform.android) {
+      return Listener(
+        onPointerDown: (e) => _down = e.position,
+        child: LongPressDraggable<BookmarkDrag>(
+          data: BookmarkDrag(n.id),
+          delay: const Duration(milliseconds: 300),
+          dragAnchorStrategy: pointerDragAnchorStrategy,
+          feedback: _feedback(),
+          childWhenDragging: Opacity(opacity: 0.4, child: child),
+          // 움직이지 않고 뗐으면 끌기가 아니라 메뉴
+          onDragEnd: (d) {
+            final at = _down;
+            if (!d.wasAccepted && at != null && (d.offset - at).distance < 16) widget.onMenu?.call(at);
+          },
+          child: child,
+        ),
+      );
+    }
+    return Draggable<BookmarkDrag>(
+      data: BookmarkDrag(n.id),
+      dragAnchorStrategy: pointerDragAnchorStrategy,
+      feedback: _feedback(),
+      childWhenDragging: Opacity(opacity: 0.4, child: child),
+      child: child,
+    );
+  }
 }
 
 // ───────── 즐겨찾기 관리자 (Chrome 의 chrome://bookmarks 참고) ─────────
@@ -541,22 +576,26 @@ class _BookmarkManagerPageState extends State<BookmarkManagerPage> {
       final subs = f.children!.where((c) => c.isFolder).toList();
       final open = !_collapsed.contains(f.id);
       final selected = f.id == _folder;
+      void folderMenu(Offset at) => showBookmarkMenu(context,
+          bm: bm,
+          globalPosition: at,
+          n: f,
+          folderId: f.id,
+          onOpen: _open,
+          currentUrl: widget.currentUrl,
+          currentTitle: widget.currentTitle);
       final row = BookmarkFolderDrop(
         bm: bm,
         folderId: f.id,
-        child: InkWell(
+        // 터치 화면: 길게 누르면 오른쪽 클릭과 같은 메뉴
+        child: GestureDetector(
+          onLongPressStart: depth == 0 ? (d) => folderMenu(d.globalPosition) : null,
+          child: InkWell(
           onTap: () => setState(() {
             _folder = f.id;
             _search.clear();
           }),
-          onSecondaryTapDown: (d) => showBookmarkMenu(context,
-              bm: bm,
-              globalPosition: d.globalPosition,
-              n: f,
-              folderId: f.id,
-              onOpen: _open,
-              currentUrl: widget.currentUrl,
-              currentTitle: widget.currentTitle),
+          onSecondaryTapDown: (d) => folderMenu(d.globalPosition),
           child: Container(
             color: selected ? JjColors.accent.withValues(alpha: 0.16) : null,
             padding: EdgeInsets.only(left: 6 + depth * 16.0, right: 8, top: 6, bottom: 6),
@@ -577,8 +616,9 @@ class _BookmarkManagerPageState extends State<BookmarkManagerPage> {
             ]),
           ),
         ),
+        ),
       );
-      rows.add(depth == 0 ? row : BookmarkDraggable(n: f, child: row));
+      rows.add(depth == 0 ? row : BookmarkDraggable(n: f, onMenu: folderMenu, child: row));
       if (open) {
         for (final s in subs) {
           walk(s, depth + 1);
@@ -670,6 +710,7 @@ class _BookmarkManagerPageState extends State<BookmarkManagerPage> {
         // 아이콘을 끌면 다른 폴더로 옮기기
         BookmarkDraggable(
           n: n,
+          onMenu: (at) => _menu(n, folder, at),
           child: Icon(n.isFolder ? Icons.folder : Icons.public, size: 20, color: n.isFolder ? Colors.amber : JjColors.textDim),
         ),
       ]),
@@ -720,6 +761,7 @@ class _BookmarkManagerPageState extends State<BookmarkManagerPage> {
             dense: true,
             leading: BookmarkDraggable(
               n: n,
+              onMenu: (at) => _menu(n, bm.tree.parentOf(n.id) ?? bm.tree.bar, at),
               child: Icon(n.isFolder ? Icons.folder : Icons.public, size: 20, color: n.isFolder ? Colors.amber : JjColors.textDim),
             ),
             title: Text(n.title, maxLines: 1, overflow: TextOverflow.ellipsis),

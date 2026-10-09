@@ -87,6 +87,21 @@ void main() {
     expect(AppSettings.fromJson(c.settings.toJson()).uiLanguage, 'ko');
   });
 
+  test('58 · 102: 시스템 언어 따르기 - 설정에는 system, 화면은 기기 언어 (들어 있지 않으면 English), 처음 설치의 기본', () async {
+    expect(I18nController.systemCode('ko_KR'), 'ko');
+    expect(I18nController.systemCode('ja_JP'), 'ja');
+    expect(I18nController.systemCode('zh_Hans_CN'), 'zh-Hans');
+    expect(I18nController.systemCode('zh_CN'), 'zh-Hans');
+    expect(I18nController.systemCode('en_US'), 'en');
+    expect(I18nController.systemCode('fr_FR'), 'en');
+    expect(AppSettings().uiLanguage, I18nController.system); // 처음 설치
+    expect(AppSettings.fromJson({'uiLanguage': 'ko'}).uiLanguage, 'ko'); // 고른 언어는 그대로
+    await i18n.apply(I18nController.system);
+    expect(c.settings.uiLanguage, I18nController.system);
+    expect(uiLanguage, I18nController.systemCode());
+    await i18n.apply('ko');
+  });
+
   test('사전 번역: 여러 줄은 줄마다, 자리 표시가 사라지면 영어 그대로', () async {
     final out = await translateDictionary(
       {'a': 'Line one\nLine two', 'b': 'Make {0} MKVs', 'c': '', 'd': '{0} videos'},

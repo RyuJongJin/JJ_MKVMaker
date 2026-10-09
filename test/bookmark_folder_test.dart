@@ -122,7 +122,8 @@ void main() {
         of: find.ancestor(of: find.text('YouTube'), matching: find.byType(ListTile)), matching: find.byIcon(Icons.public)));
     final to = tester.getCenter(find.ancestor(of: find.text('보관함').last, matching: find.byType(ListTile)));
     final g = await tester.startGesture(from);
-    await tester.pump(const Duration(milliseconds: 100));
+    // 터치 화면 (시험은 Android): 잠깐 누른 뒤 끌기 (그냥 떼면 메뉴)
+    await tester.pump(const Duration(milliseconds: 400));
     await g.moveTo(to);
     await tester.pump(const Duration(milliseconds: 100));
     await g.up();

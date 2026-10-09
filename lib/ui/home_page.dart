@@ -14,6 +14,7 @@ import '../core/output_paths.dart';
 import 'ai_dialog.dart';
 import 'app_actions.dart';
 import 'downloads_page.dart';
+import 'exit_guard.dart';
 import 'package:path/path.dart' as p;
 
 import '../app/settings.dart' show MoveTarget;
@@ -21,6 +22,8 @@ import 'folder_picker.dart';
 import 'player_page.dart';
 import 'subtitle_editor_page.dart';
 import 'subtitle_search_dialog.dart';
+import 'confirm.dart';
+import 'encode_notice.dart';
 import 'theme.dart';
 import 'translate_dialog.dart';
 import 'video_adjust_dialog.dart';
@@ -45,7 +48,10 @@ class HomePage extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: c,
-      builder: (context, _) => Scaffold(
+      builder: (context, _) => ExitGuard(
+        c: c,
+        downloads: downloads,
+        child: Scaffold(
         // 끌어다 놓기는 앱 전체에서 받는다 (ui/app_drop.dart 의 AppDropArea - 어느 화면에서 놓아도 이 목록에 추가)
         body: SwipeNav(
           current: 'mkv',
@@ -110,6 +116,7 @@ class HomePage extends StatelessWidget {
         ),
         ),
       ),
+      ),
     );
   }
 }
@@ -125,6 +132,38 @@ class _TopBar extends StatelessWidget {
 
   /// 고른 동영상이 없을 때: 목록 전체를 만들지 묻는다
   /// 보고 있는 동영상의 결과 폴더 (jj_mkv) 를 탐색기 · 파일 앱으로. 아직 없으면 알린다.
+  /// 45: 대기 중인 작업이 있으면 지금 작업만 / 모두 고르게 한다 (없으면 지금 작업을 바로 멈춤 - 예전처럼)
+  Future<void> _cancelJobs(BuildContext context) async {
+    final waiting = c.pendingJobs.length;
+    if (waiting == 0) {
+      c.cancel();
+      return;
+    }
+    final pick = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        scrollable: true,
+        title: Text(tr('작업 취소')),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(trf('지금: {0}', [c.currentJob ?? ''])),
+          const SizedBox(height: 4),
+          Text(trf('대기 중: {0}', [c.pendingJobs.join(' · ')]), style: const TextStyle(fontSize: 12, color: JjColors.textDim)),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('닫기'))),
+          TextButton(onPressed: () => Navigator.pop(ctx, 'current'), child: Text(trf('지금 작업만 (대기 {0}개는 계속)', [waiting]))),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: JjColors.danger),
+            onPressed: () => Navigator.pop(ctx, 'all'),
+            child: Text(trf('모두 취소 (대기 {0}개 포함)', [waiting])),
+          ),
+        ],
+      ),
+    );
+    if (pick == 'current') c.cancelCurrent();
+    if (pick == 'all') c.cancel();
+  }
+
   Future<void> _openOutput(BuildContext context) async {
     final v = c.selected;
     if (v == null) return;
@@ -266,7 +305,7 @@ class _TopBar extends StatelessWidget {
                 const SizedBox(width: 8),
                 JobIndicator(c: c, compact: true, iconOnly: false),
                 const SizedBox(width: 8),
-                action(Icons.stop, tr('취소'), c.cancel, text: true, tip: tr('작업 취소'), color: JjColors.danger),
+                action(Icons.stop, tr('취소'), () => _cancelJobs(context), text: true, tip: tr('작업 취소'), color: JjColors.danger),
               ],
             ]),
           ),
@@ -311,7 +350,7 @@ class _TopBar extends StatelessWidget {
             if (c.busy) ...[
               JobIndicator(c: c, compact: !jobText, iconOnly: !jobText),
               const SizedBox(width: 8),
-              action(Icons.stop, tr('취소'), c.cancel, text: jobText, tip: tr('작업 취소'), color: JjColors.danger),
+              action(Icons.stop, tr('취소'), () => _cancelJobs(context), text: jobText, tip: tr('작업 취소'), color: JjColors.danger),
               const SizedBox(width: 8),
             ],
             // 체크한 동영상을 목록에 보이는 순서대로 이어서 재생 (체크가 없으면 보고 있는 한 개)
@@ -420,7 +459,8 @@ class _EncodeBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = c.encode;
-    final locked = c.busy;
+    // 32: MKV 를 만드는 동안만 (AI 자막 · 번역 중에는 다음 MKV 설정을 바꿀 수 있다)
+    final locked = c.buildingMkv;
     final up = c.upscaleCount;
 
     Widget label(String t) => Padding(
@@ -452,7 +492,10 @@ class _EncodeBar extends StatelessWidget {
     final compact = isCompact(context);
     final row = Row(children: [
         label(tr('화면 크기')),
-        drop(s.resolution, ResolutionChoice.values, (r) => r.label, c.setResolution),
+        drop(s.resolution, ResolutionChoice.values, (r) => r.label, (r) {
+          c.setResolution(r);
+          showEncodeNotice(context, c);
+        }),
         const SizedBox(width: 20),
         label(tr('코덱')),
         drop(s.codec, VideoCodecChoice.values, (v) => v.label, c.setCodec,
@@ -474,10 +517,10 @@ class _EncodeBar extends StatelessWidget {
         ),
         const SizedBox(width: 12),
         Expanded(
-          // 화면 · 색 보정을 켜도 "⚠ 원본보다 커서" 경고는 함께 보인다 (31)
+          // 31: "⚠ 원본보다 커서" 경고는 화면 너비와 상관없이 늘 보이게 맨 앞에 (넓은 화면에서 한 줄이 넘치면 설명 · 보정 요약 쪽이 잘린다)
           child: Text(
-            '${s.adjusts ? s.adjustSummary : !s.reencode ? tr('영상·음성을 그대로 복사합니다 (빠름, 화질 손실 없음)') : tr('영상을 다시 인코딩합니다 (시간이 오래 걸림, 음성은 그대로)')}'
-            '${s.reencode && up > 0 ? trf(' · ⚠ {0}개는 원본보다 커서 화질 향상 없이 용량만 늘어납니다', [up]) : ''}',
+            '${s.reencode && up > 0 ? '${trf('⚠ {0}개는 원본보다 커서 화질 향상 없이 용량만 늘어납니다', [up])} · ' : ''}'
+            '${s.adjusts ? s.adjustSummary : !s.reencode ? tr('영상·음성을 그대로 복사합니다 (빠름, 화질 손실 없음)') : tr('영상을 다시 인코딩합니다 (시간이 오래 걸림, 음성은 그대로)')}',
             overflow: compact ? null : TextOverflow.ellipsis,
             style: TextStyle(
                 fontSize: 12, color: up > 0 && s.reencode ? JjColors.danger : JjColors.textDim),
@@ -582,7 +625,18 @@ class _VideoList extends StatelessWidget {
                 iconSize: 18,
                 visualDensity: VisualDensity.compact,
                 icon: const Icon(Icons.clear_all, color: JjColors.textDim),
-                onPressed: c.busy || c.videos.isEmpty ? null : c.clearVideos,
+                // 46: 확인 뒤 (목록에서만 빼고 파일은 그대로)
+                onPressed: c.busy || c.videos.isEmpty
+                    ? null
+                    : () async {
+                        final ok = await confirmAction(
+                          context,
+                          title: tr('목록을 모두 비울까요?'),
+                          body: trf('동영상 {0}개를 MKV 목록에서 뺍니다. 파일은 지우지 않습니다.', [c.videos.length]),
+                          ok: tr('모두 지우기'),
+                        );
+                        if (ok) c.clearVideos();
+                      },
               ),
             ]),
           ),
@@ -669,8 +723,9 @@ class _VideoTile extends StatelessWidget {
       if (!context.mounted) return;
       if (n == 2) {
         playFiles(context, c, [v.path]);
-      } else if (n >= 3) {
-        moveToTarget(context, c, [v]);
+      } else if (n >= 3 && c.settings.tripleTapAction == 'move') {
+        // 47: 잘못 세 번 눌러도 파일이 옮겨지지 않게 묻는다
+        moveToTarget(context, c, [v], confirm: true);
       }
     });
   }
@@ -1172,7 +1227,9 @@ class _LogStrip extends StatelessWidget {
 
 /// 동영상을 이동 버튼의 폴더로 옮긴다 (세부 정보의 이동 버튼 · 세 번 누르기). [target] 이 없으면 첫 번째 버튼,
 /// 이동 버튼이 하나도 없으면 폴더를 골라 하나 만든다 (표시 이름은 폴더 이름).
-Future<void> moveToTarget(BuildContext context, AppController c, List<VideoItem> videos, {MoveTarget? target}) async {
+/// [confirm]: 옮기기 전에 묻는다 (세 번 누르기 - 47)
+Future<void> moveToTarget(BuildContext context, AppController c, List<VideoItem> videos,
+    {MoveTarget? target, bool confirm = false}) async {
   if (videos.isEmpty) return;
   final messenger = ScaffoldMessenger.maybeOf(context);
   var t = target ?? c.settings.moveTargets.firstOrNull;
@@ -1182,6 +1239,16 @@ Future<void> moveToTarget(BuildContext context, AppController c, List<VideoItem>
     t = MoveTarget(p.basename(d).isEmpty ? tr('이동') : p.basename(d), d);
     final add = t;
     await c.updateSettings((x) => x.moveTargets = [...x.moveTargets, add]);
+  } else if (confirm && context.mounted) {
+    final ok = await confirmAction(
+      context,
+      title: tr('파일 옮기기'),
+      body: '${trf('"{0}" 을(를) "{1}" 폴더로 옮길까요?', [videos.length == 1 ? videos.single.fileName : trf('{0}개', [videos.length]), t.name])}'
+          '\n${t.dir}\n\n${tr('(동영상을 세 번 누르면 옮깁니다)')}',
+      ok: tr('옮기기'),
+      danger: false,
+    );
+    if (!ok) return;
   }
   final (moved, errors) = await c.moveVideos(videos, t.dir);
   messenger?.showSnackBar(SnackBar(

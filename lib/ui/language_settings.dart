@@ -28,8 +28,15 @@ class LanguageSettings extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(72, 0, 16, 8),
               child: Wrap(spacing: 12, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
                 DropdownButton<String>(
-                  value: i18n.available.contains(uiLanguage) ? uiLanguage : 'ko',
+                  value: i18n.chosen == I18nController.system || i18n.available.contains(i18n.chosen)
+                      ? i18n.chosen
+                      : 'ko',
                   items: [
+                    // 58 · 102: 기기 언어를 따르기 (처음 설치의 기본, 들어 있지 않은 언어면 English)
+                    DropdownMenuItem(
+                      value: I18nController.system,
+                      child: Text(trf('시스템 언어 따르기 ({0})', [I18nController.nativeName(I18nController.systemCode())])),
+                    ),
                     for (final code in i18n.available)
                       DropdownMenuItem(value: code, child: Text(I18nController.nativeName(code))),
                   ],

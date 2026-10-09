@@ -111,4 +111,63 @@ void main() {
     expect(c.settings.readerFit, 'width');
     expect(c.settings.readerBrightness, closeTo(0.1, 1e-9));
   });
+
+  testWidgets('30: 두 손가락 확대 → 밀어도 장이 넘어가지 않음 · 더 크게 다시 그림 · 시스템 막대 보이기 설정', (tester) async {
+    tester.view.physicalSize = const Size(900, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final files = [
+      for (final (i, n) in ['a.png', 'b.png'].indexed) (File(p.join(tmp.path, n))..writeAsBytesSync(_png(i * 80, 0, 0))).path,
+    ];
+    final c = AppController(PlatformServices(mediaTool: ProcessMediaTool('x', 'y'), storage: DesktopStorageService()));
+    final src = _CountingSource(ImageFilesSource(files, tempDir: tmp.path, title: 'imgs'));
+    await tester.pumpWidget(MaterialApp(home: ReaderPage(c: c, source: src)));
+    await tester.pumpAndSettle();
+    expect(src.widths[0], [900]);
+    // 두 손가락을 벌려 확대
+    final a = await tester.startGesture(const Offset(400, 600));
+    final b = await tester.startGesture(const Offset(500, 600));
+    await tester.pump();
+    for (var k = 1; k <= 10; k++) {
+      await a.moveTo(Offset(400 - k * 20.0, 600));
+      await b.moveTo(Offset(500 + k * 20.0, 600));
+      await tester.pump();
+    }
+    await a.up();
+    await b.up();
+    await tester.pumpAndSettle();
+    expect(src.widths[0]!.last, greaterThan(900)); // 확대한 만큼 크게 다시 읽음
+    // 확대 중에는 밀어도 다음 장으로 가지 않는다
+    await tester.dragFrom(const Offset(700, 600), const Offset(-500, 0));
+    await tester.pumpAndSettle();
+    expect(find.text('1 / 2'), findsOneWidget);
+    // 101: 기본은 시스템 막대 보임, 버튼으로 화면 가득 (설정에 남음)
+    expect(c.settings.readerSystemBars, isTrue);
+    expect(AppSettings.fromJson({}).readerSystemBars, isTrue);
+    await tester.tap(find.byTooltip('화면 가득 (시스템 막대 숨기기)'));
+    await tester.pumpAndSettle();
+    expect(c.settings.readerSystemBars, isFalse);
+    expect(AppSettings.fromJson(c.settings.toJson()).readerSystemBars, isFalse);
+  });
+}
+
+/// 읽은 너비를 기록 (확대하면 더 크게 다시 읽는지)
+class _CountingSource implements ReaderSource {
+  final ReaderSource inner;
+  final widths = <int, List<int>>{};
+  _CountingSource(this.inner);
+  @override
+  String get title => inner.title;
+  @override
+  int get length => inner.length;
+  @override
+  String pageName(int i) => inner.pageName(i);
+  @override
+  Future<ReaderImage> load(int i, {required int maxWidth}) {
+    (widths[i] ??= []).add(maxWidth);
+    return inner.load(i, maxWidth: maxWidth);
+  }
+
+  @override
+  Future<void> dispose() => inner.dispose();
 }

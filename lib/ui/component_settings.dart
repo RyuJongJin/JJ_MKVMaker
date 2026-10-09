@@ -47,6 +47,32 @@ class ViewerSettings extends StatelessWidget {
         title: Text(tr('ZIP · CBZ 를 만화로 보기')),
         subtitle: Text(tr('켜면 두 번 눌렀을 때 안의 그림을 바로 넘겨 봅니다. 끄면 목록 (골라서 풀기) 을 엽니다.')),
       ),
+      // 119: 한 장에 두 쪽이 붙은 그림 (보기 화면 위쪽 막대에서도 바꿀 수 있음)
+      SettingTile(
+        leading: const Icon(Icons.vertical_split_outlined),
+        title: Text(tr('두 쪽 나눠 보기')),
+        subtitle: Text(tr('한 장에 두 쪽이 붙은 그림을 반씩 넘겨 봅니다 (읽는 방향의 쪽부터)')),
+        trailing: DropdownButton<String>(
+          value: s.readerSplit,
+          items: [
+            DropdownMenuItem(value: 'auto', child: Text(tr('자동 (가로로 긴 그림만)'))),
+            DropdownMenuItem(value: 'on', child: Text(tr('켜기'))),
+            DropdownMenuItem(value: 'off', child: Text(tr('끄기'))),
+          ],
+          onChanged: (v) => c.updateSettings((x) => x.readerSplit = v!),
+        ),
+      ),
+      // 117: 계속 보기 간격
+      SettingTile(
+        leading: const Icon(Icons.slideshow_outlined),
+        title: Text(tr('계속 보기 간격')),
+        subtitle: Text(tr('보기 화면의 [계속 보기] 가 다음 장으로 넘기는 간격')),
+        trailing: DropdownButton<int>(
+          value: s.readerAutoSeconds,
+          items: [for (var n = 1; n <= 60; n++) DropdownMenuItem(value: n, child: Text(trf('{0}초', [n])))],
+          onChanged: (v) => c.updateSettings((x) => x.readerAutoSeconds = v!),
+        ),
+      ),
     ]);
   }
 }
@@ -166,6 +192,13 @@ class ComponentSettings extends StatelessWidget {
         onChanged: (v) => c.updateSettings((x) => x.swipeNav = v),
         title: Text(tr('좌우로 밀어 화면 이동')),
         subtitle: Text(tr('화면 가운데를 왼쪽으로 밀면 다음 화면, 오른쪽으로 밀면 이전 화면 (마지막 다음은 처음으로).')),
+      ),
+      // 102 · 66: 끝에서 처음으로 돌기 (기본 켜짐)
+      SwitchListTile(
+        value: s.swipeWrap,
+        onChanged: s.swipeNav ? (v) => c.updateSettings((x) => x.swipeWrap = v) : null,
+        title: Text(tr('끝에서 처음으로 돌기')),
+        subtitle: Text(tr('마지막 화면에서 더 밀면 첫 화면으로 (끄면 끝에서 멈춤)')),
       ),
       for (final x in AppComponent.all)
         SettingTile(

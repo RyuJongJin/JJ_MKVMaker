@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12+: same as backup_rules.xml (secure storage stays only on this device) -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="jj_secrets.xml" />
+        <!-- 115: install marker (if missing on first launch, settings came back from Auto Backup) -->
+        <exclude domain="file" path="install_marker" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="jj_secrets.xml" />
+        <!-- 115: install marker (if missing on first launch, settings came back from Auto Backup) -->
+        <exclude domain="file" path="install_marker" />
+    </device-transfer>
+</data-extraction-rules>

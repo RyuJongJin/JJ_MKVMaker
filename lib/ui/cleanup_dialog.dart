@@ -43,7 +43,7 @@ class _CleanupDialogState extends State<_CleanupDialog> {
         _groups = g;
         // 처음에는 작업 임시 파일 · 받다 만 다운로드만 고른 상태로 (사용자 결정 10/8).
         // 받다 만 AI 모델 · 지난 작업 기록 · 업데이트 남은 파일은 직접 체크해야 지운다
-        const pre = {'work', 'download'};
+        final pre = widget.cleaner.c.settings.cleanupPrechecked.toSet(); // 102: 환경 설정 (기본: 작업 임시 파일 · 받다 만 다운로드)
         _picked.addAll([for (final x in g) if (x.skipped == null && x.items.isNotEmpty && pre.contains(x.id)) x.id]);
       });
     });

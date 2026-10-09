@@ -50,7 +50,8 @@ class Aria2Backend implements DownloadBackend {
     _daemon = await Process.start(aria2c, [
       '--enable-rpc', '--rpc-listen-all=false', '--rpc-listen-port=$_port',
       '--rpc-secret=$_secret',
-      '--seed-time=0', '--continue=true', '--max-concurrent-downloads=5',
+      // 동시에 받는 수는 앱이 정한다 (환경 설정 > 다운로드 > 동시에 받는 수) - aria2 는 따로 줄 세우지 않게 넉넉히
+      '--seed-time=0', '--continue=true', '--max-concurrent-downloads=100',
       '--bt-save-metadata=false', '--follow-torrent=mem',
       '--console-log-level=warn', '--summary-interval=0',
       '--file-allocation=none', '--auto-file-renaming=false',
@@ -146,6 +147,8 @@ class Aria2Backend implements DownloadBackend {
           ..totalBytes = total > 0 ? total : null
           ..speed = speed > 0 ? '${formatBytes(speed)}/s' : ''
           ..eta = speed > 0 && total > done ? _eta((total - done) ~/ speed) : '';
+        // 35: aria2 가 순서를 기다리게 한 것은 "받는 중" 이 아니라 "대기 중" 으로
+        t.extra['waiting'] = s['status'] == 'waiting';
         switch (s['status']) {
           case 'complete':
             t

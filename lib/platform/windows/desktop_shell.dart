@@ -1,8 +1,10 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:hotkey_manager/hotkey_manager.dart';
+import 'package:nativeapi/nativeapi.dart' as native;
 import 'package:tray_manager/tray_manager.dart' as tray;
 import 'package:screen_retriever/screen_retriever.dart';
 import 'package:window_manager/window_manager.dart';
@@ -10,6 +12,7 @@ import 'package:window_manager/window_manager.dart';
 import '../../services/app_shell.dart';
 import 'exit_trace.dart';
 import 'shell_integration.dart';
+import 'start_menu.dart';
 import 'tool_installer.dart';
 import '../../l10n/tr.dart';
 
@@ -88,8 +91,11 @@ class DesktopShell with WindowListener implements AppShell {
     item(tr('종료'), () => _requestClose(fromTray: true));
     t.setContextMenu(menu);
     t.setContextMenuTrigger(tray.ContextMenuTrigger.rightClicked);
-    t.addListener((e) {
-      if (e is tray.TrayIconClickedEvent || e is tray.TrayIconDoubleClickedEvent) show();
+    t.addListener((e) async {
+      if (e is tray.TrayIconClickedEvent || e is tray.TrayIconDoubleClickedEvent) {
+        await show();
+        _onTrayShown?.call();
+      }
     });
     t.setVisible(true);
     _tray = t;
@@ -183,6 +189,78 @@ class DesktopShell with WindowListener implements AppShell {
 
   @override
   Future<void> setTooltip(String text) async => _tray?.setTooltip(text);
+
+  void Function()? _onTrayShown;
+  @override
+  set onTrayShown(void Function()? f) => _onTrayShown = f;
+
+  @override
+  Future<bool> isInFront() async =>
+      await windowManager.isVisible() && !await windowManager.isMinimized() && await windowManager.isFocused();
+
+  bool? _notifyReady;
+  void Function()? _notifyClick;
+
+  /// 99: 시작 메뉴 바로 가기 (앱 ID) 가 있어 JJ_MKVMaker 이름으로 알림을 띄울 수 있는지 (누르면 jjmkvmaker://lsync)
+  bool toastAppReady = false;
+
+  /// Windows 토스트 (nativeapi NotificationManager). 누르면 창을 보이고 [onClick]
+  @override
+  Future<bool> notify(String title, String body, {void Function()? onClick}) async {
+    // 99: 이 앱 이름으로 (누르면 앱이 열리고 실시간 동기화 화면으로)
+    if (toastAppReady && await StartMenu.toast(title, body)) return true;
+    try {
+      final n = native.NotificationManager.instance;
+      if (_notifyReady == null) {
+        _notifyReady = n.isSupported() && n.initialize();
+        if (_notifyReady!) {
+          n.addListener((e) async {
+            if (e is native.NotificationActivatedEvent) {
+              await show();
+              _notifyClick?.call();
+            }
+          });
+        }
+      }
+      if (_notifyReady!) {
+        _notifyClick = onClick;
+        if (n.show(title, body, 'jj_mkvmaker', '')) return true;
+      }
+    } catch (_) {}
+    // nativeapi 가 이 Windows 에서 알림을 지원하지 않으면: Windows 토스트 API 를 PowerShell 로 (누르면 앱이 열리지는 않음 -
+    // 그래서 글에 "트레이 아이콘을 누르세요" 를 붙이고, 트레이를 누르면 [onTrayShown] 이 그 화면으로 보낸다)
+    return toastViaPowerShell(title, '$body\n${tr('트레이의 JJ_MKVMaker 아이콘을 누르면 열립니다.')}');
+  }
+
+  /// Windows.UI.Notifications 토스트 (PowerShell 의 앱 ID 로). 띄웠으면 true
+  static Future<bool> toastViaPowerShell(String title, String body) async {
+    String esc(String s) =>
+        s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
+    final lines = body.split('\n');
+    final xml = '<toast><visual><binding template="ToastGeneric"><text>${esc(title)}</text>'
+        '<text>${esc(lines.first)}</text><text>${esc(lines.skip(1).join(' · '))}</text></binding></visual></toast>';
+    final script = '''
+[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > \$null
+[Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] > \$null
+\$x = New-Object Windows.Data.Xml.Dom.XmlDocument
+\$x.LoadXml('${xml.replaceAll("'", "''")}')
+\$t = New-Object Windows.UI.Notifications.ToastNotification \$x
+[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\WindowsPowerShell\\v1.0\\powershell.exe').Show(\$t)
+''';
+    // 글을 그대로 넘기면 따옴표 · 한글이 깨질 수 있어 UTF-16 base64 로
+    final units = script.codeUnits;
+    final bytes = <int>[for (final u in units) ...[u & 0xff, u >> 8]];
+    try {
+      final r = await Process.run(
+        'powershell.exe',
+        ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-EncodedCommand', base64Encode(bytes)],
+      ).timeout(const Duration(seconds: 20));
+      // stderr 에는 진행 정보 (#< CLIXML) 가 섞여 나올 수 있어 오류 글만 본다
+      return r.exitCode == 0 && !'${r.stderr}'.contains('Exception') && !'${r.stderr}'.contains('<S S="Error">');
+    } catch (_) {
+      return false;
+    }
+  }
 
   /// 트레이 아이콘이 있는지 (없으면 창을 숨긴 뒤 끝낼 방법이 없으므로 백그라운드로 보내지 않는다)
   bool get hasTray => _tray != null;

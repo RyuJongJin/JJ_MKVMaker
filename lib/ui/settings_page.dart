@@ -16,6 +16,8 @@ import 'setup_dialog.dart';
 import 'update_dialog.dart';
 import '../app/settings.dart';
 import '../platform/windows/cef_runtime.dart';
+import '../platform/windows/desktop_shell.dart' show DesktopShell;
+import '../platform/windows/start_menu.dart';
 import '../platform/android/android_shell.dart' show applyScreenOrientation;
 import 'folder_picker.dart';
 import 'language_settings.dart';
@@ -29,6 +31,7 @@ import 'theme.dart';
 import '../l10n/tr.dart';
 import 'setting_tile.dart';
 import 'component_settings.dart';
+import 'toast_status.dart';
 
 /// 동시 작업 수 고르기: 1 · 5 · 10 · 무한(0) · 직접 입력
 class CountSelector extends StatelessWidget {
@@ -284,6 +287,19 @@ class _SettingsPageState extends State<SettingsPage> {
                   _group('general', Icons.tune, tr('일반'), [
                     // 화면 언어 (읽을 수 없는 언어를 골라도 바로 찾아 되돌릴 수 있게 맨 위)
                     const LanguageSettings(),
+                    // 102: 물어 정한 것 · 1차 판단은 모두 여기서 바꿀 수 있다 (기본값 = 그 답)
+                    SwitchListTile(
+                      value: s.migrationNotice,
+                      onChanged: (v) => c.updateSettings((x) => x.migrationNotice = v),
+                      title: Text(tr('업데이트로 바뀐 기본값 알림')),
+                      subtitle: Text(tr('새 버전이 예전 기본값을 바꿨으면 켤 때 한 번 무엇이 바뀌었는지 알려 줍니다')),
+                    ),
+                    SwitchListTile(
+                      value: s.rememberPasswords,
+                      onChanged: (v) => c.updateSettings((x) => x.rememberPasswords = v),
+                      title: Text(tr('비밀번호 기억 (안전 저장소)')),
+                      subtitle: Text(tr('WebDAV · OpenSubtitles 비밀번호를 이 기기의 안전 저장소에 둡니다. 끄면 저장하지 않고 (있던 것도 지움) 앱을 켤 때마다 다시 넣습니다')),
+                    ),
                     _appIconTile(c, desk),
                     if (c.services.updater != null) ...[
                       SettingTile(
@@ -370,6 +386,18 @@ class _SettingsPageState extends State<SettingsPage> {
                   ]),
                   _group('mkv', Icons.movie_creation_outlined, tr('MKV 만들기'), [
                     SettingTile(
+                      title: Text(tr('동영상을 세 번 누르면')),
+                      subtitle: Text(tr('한 번: 보기 · 두 번: 재생 · 세 번: 이동 폴더로 옮기기 (옮기기 전에 묻습니다)')),
+                      trailing: DropdownButton<String>(
+                        value: s.tripleTapAction,
+                        items: [
+                          DropdownMenuItem(value: 'move', child: Text(tr('이동 폴더로 (확인 뒤, 기본)'))),
+                          DropdownMenuItem(value: 'none', child: Text(tr('아무것도 안 함'))),
+                        ],
+                        onChanged: (v) => c.updateSettings((x) => x.tripleTapAction = v!),
+                      ),
+                    ),
+                    SettingTile(
                       title: Text(tr('동시 MKV 변환 수')),
                       subtitle: Text(tr('여러 동영상을 MKV 로 만들 때 동시에 처리할 개수 (재인코딩은 CPU 를 많이 씁니다)')),
                       trailing: CountSelector(
@@ -431,10 +459,23 @@ class _SettingsPageState extends State<SettingsPage> {
                         (v) => c.updateSettings((x) => x.openSubtitlesKey = v.trim())),
                     _textTile(tr('아이디 (선택)'), s.openSubtitlesUser, tr('로그인하면 하루 받기 횟수가 늘어납니다'),
                         (v) => c.updateSettings((x) => x.openSubtitlesUser = v.trim())),
-                    _textTile(tr('비밀번호 (선택)'), s.openSubtitlesPassword, trf('이 {0}의 설정 파일에 저장됩니다', [desk ? 'PC' : tr('기기')]),
+                    _textTile(tr('비밀번호 (선택)'), s.openSubtitlesPassword, trf('이 {0}의 안전 저장소에 저장됩니다 (설정 파일에는 쓰지 않음)', [desk ? 'PC' : tr('기기')]),
                         (v) => c.updateSettings((x) => x.openSubtitlesPassword = v), obscure: true),
                   ]),
                   _group('play', Icons.play_circle_outline, tr('재생'), [
+                    SettingTile(
+                      title: Text(tr('로그인이 필요한 WebDAV 동영상을 다른 앱으로 열 때')),
+                      subtitle: Text(tr('다른 앱에는 아이디 · 비밀번호를 넘기지 않습니다. 받아서 열기는 어느 앱에서나 열리고, 주소로 열기는 아이디를 묻는 앱 (VLC 등) 만 열립니다')),
+                      trailing: DropdownButton<String>(
+                        value: s.davExternalOpen,
+                        items: [
+                          DropdownMenuItem(value: 'ask', child: Text(tr('매번 묻기 (기본)'))),
+                          DropdownMenuItem(value: 'fetch', child: Text(tr('늘 받아서 열기'))),
+                          DropdownMenuItem(value: 'url', child: Text(tr('늘 주소로 열기'))),
+                        ],
+                        onChanged: (v) => c.updateSettings((x) => x.davExternalOpen = v!),
+                      ),
+                    ),
                     SettingTile(
                       title: Text(tr('동영상 하나를 재생할 때')),
                       subtitle: Text(tr('시리즈: file_001 · file_002, S01E01 · S01E02 처럼 번호만 다른 파일')),
@@ -575,6 +616,14 @@ class _SettingsPageState extends State<SettingsPage> {
                     ],
                   ]),
                   _group('files', Icons.folder_copy_outlined, tr('파일 탐색기'), [
+                    if (desk)
+                      SwitchListTile(
+                        value: s.recycleOnDelete,
+                        onChanged: (v) => c.updateSettings((x) => x.recycleOnDelete = v),
+                        title: Text(tr('지우면 휴지통으로')),
+                        subtitle: Text(tr('켜면 휴지통으로 보내 되살릴 수 있습니다 (Shift+Delete 는 영구 삭제). 끄면 늘 영구 삭제로 묻습니다. '
+                            '네트워크 드라이브 · USB 메모리는 휴지통이 없어 늘 영구 삭제입니다')),
+                      ),
                     SettingTile(
                       title: Text(tr('누르기')),
                       subtitle: Text(tr('길게 누르기 · 오른쪽 클릭은 늘 기능 메뉴 (복사 · 이동 · 삭제 · 이름 변경 …). '
@@ -625,6 +674,21 @@ class _SettingsPageState extends State<SettingsPage> {
                   // Rsync 화면: rsync 옵션 · 가져오기 · 실시간 동기화 (lsync) · 백그라운드로 실행
                   _group('rsync', Icons.sync_alt, 'Rsync', [
                     CopySyncSettings(c: c, rsync: true),
+                    SwitchListTile(
+                      value: s.allowInnerToOuter,
+                      onChanged: (v) => c.updateSettings((x) => x.allowInnerToOuter = v),
+                      title: Text(tr('원본이 대상 안에 있어도 맞추기 (안쪽 → 바깥)')),
+                      subtitle: Text(tr('확인 창에서 알린 뒤 허용합니다. 지우기 (--delete) 가 있으면 늘 막습니다. 끄면 늘 막습니다')),
+                    ),
+                    if (desk)
+                      SwitchListTile(
+                        value: s.syncStopToast,
+                        onChanged: (v) => c.updateSettings((x) => x.syncStopToast = v),
+                        title: Text(tr('동기화가 멈추면 Windows 알림')),
+                        subtitle: Text(tr('창을 트레이에 둔 채 실시간 동기화가 원본을 못 읽어 멈추면 알림을 띄웁니다 (트레이 툴팁 경고는 늘)')),
+                      ),
+                    // Windows 에서 알림이 꺼져 있으면 알리고 설정을 열어 준다 (바꾸지는 않음)
+                    if (desk && s.syncStopToast) const ToastStatusHint(),
                   ]),
                   _group('download', Icons.download_outlined, tr('다운로드'), [
                     if (desk)
@@ -658,6 +722,14 @@ class _SettingsPageState extends State<SettingsPage> {
                         items: [for (final v in YtQuality.values) DropdownMenuItem(value: v, child: Text(v.label))],
                         onChanged: s.ytContainer.audioOnly ? null : (v) => c.updateSettings((x) => x.ytQuality = v!),
                       ),
+                    ),
+                    // 36: 같은 크기면 H.264 먼저 (Android 기본 켜짐)
+                    SwitchListTile(
+                      value: s.ytPreferH264,
+                      onChanged: s.ytContainer.audioOnly ? null : (v) => c.updateSettings((x) => x.ytPreferH264 = v),
+                      title: Text(tr('같은 화질이면 H.264 먼저 받기')),
+                      subtitle: Text(tr('휴대폰 · 태블릿은 AV1 · VP9 을 하드웨어로 풀지 못해 끊기거나 배터리를 많이 쓰는 일이 있습니다. '
+                          'YouTube 의 H.264 는 1080p 까지라 더 큰 화질을 고르면 크기가 먼저입니다.')),
                     ),
                     SwitchListTile(
                       value: s.ytExpandPlaylists,
@@ -727,6 +799,24 @@ class _SettingsPageState extends State<SettingsPage> {
                   ]),
                   if (desk)
                   _group('run', Icons.power_settings_new, tr('실행 · 종료'), [
+                    if (desk)
+                      SwitchListTile(
+                        value: s.startMenuShortcut,
+                        onChanged: (v) async {
+                          await c.updateSettings((x) => x.startMenuShortcut = v);
+                          if (v) {
+                            final ok = await StartMenu.ensure();
+                            final sh = c.services.shell;
+                            if (sh is DesktopShell) sh.toastAppReady = ok;
+                          } else {
+                            await StartMenu.remove();
+                            final sh = c.services.shell;
+                            if (sh is DesktopShell) sh.toastAppReady = false;
+                          }
+                        },
+                        title: Text(tr('시작 메뉴에 등록')),
+                        subtitle: Text(tr('알림이 JJ_MKVMaker 이름으로 보이고, 누르면 앱이 열립니다 (관리자 권한 없이 지금 사용자에게만)')),
+                      ),
                     SettingTile(
                       title: Text(tr('종료 (창 닫기 ✕ · 종료 버튼) 를 누르면')),
                       subtitle: Text(trf('백그라운드: 창만 숨기고 다운로드 · 변환은 계속합니다. {0} 또는 트레이 아이콘으로 다시 엽니다.\n' '완전히 끝내려면 트레이 아이콘 오른쪽 클릭 > 종료 (어느 설정이든 항상 종료)', [s.showHotkey])),
@@ -769,6 +859,26 @@ class _SettingsPageState extends State<SettingsPage> {
                     ),
                   ]),
                   _group('cleanup', Icons.cleaning_services_outlined, tr('저장 공간 정리'), [
+                    SettingTile(
+                      title: Text(tr('정리 창에서 미리 체크할 것')),
+                      subtitle: Wrap(spacing: 6, runSpacing: 4, children: [
+                        for (final (id, label) in [
+                          ('work', tr('작업 임시 파일')),
+                          ('download', tr('받다 만 다운로드')),
+                          ('models', tr('받다 만 AI 모델')),
+                          ('update', tr('업데이트 · 설치하고 남은 파일')),
+                          ('logs', tr('지난 작업 기록')),
+                        ])
+                          FilterChip(
+                            label: Text(label),
+                            selected: s.cleanupPrechecked.contains(id),
+                            onSelected: (on) => c.updateSettings((x) => x.cleanupPrechecked = [
+                                  for (final y in x.cleanupPrechecked) if (y != id) y,
+                                  if (on) id,
+                                ]),
+                          ),
+                      ]),
+                    ),
                     SettingTile(
                       title: Text(tr('임시 파일 · 남은 조각 정리')),
                       subtitle: Text(tr('작업하다 남은 임시 파일 · 받다 만 다운로드 (.part 등) · 받다 만 AI 모델 · '

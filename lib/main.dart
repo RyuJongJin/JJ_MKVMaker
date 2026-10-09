@@ -11,8 +11,14 @@ import 'package:window_manager/window_manager.dart';
 import 'app/app_controller.dart';
 import 'app/live_sync.dart';
 import 'app/version_snapshot.dart';
+import 'app/install_marker.dart';
 import 'app/component_store.dart';
 import 'ui/settings_problem.dart';
+import 'ui/exit_guard.dart' show confirmStopCopies;
+import 'app/copy_center.dart';
+import 'ui/migration_notice.dart';
+import 'ui/secret_issue.dart';
+import 'ui/sync_alert.dart';
 import 'app/bookmarks_controller.dart';
 import 'app/download_manager.dart';
 import 'app/settings.dart';
@@ -22,6 +28,7 @@ import 'platform/android/android_download_tools.dart';
 import 'platform/android/android_keep_alive.dart';
 import 'platform/android/android_shell.dart' show applyScreenOrientation;
 import 'platform/android/android_storage.dart';
+import 'ui/all_files_guide.dart';
 import 'platform/windows/app_paths.dart';
 import 'platform/windows/cef_runtime.dart';
 import 'platform/windows/com_guard.dart';
@@ -29,6 +36,7 @@ import 'platform/windows/desktop_shell.dart';
 import 'platform/windows/exit_trace.dart';
 import 'platform/windows/session_marker.dart';
 import 'platform/windows/single_instance.dart';
+import 'platform/windows/start_menu.dart';
 import 'platform/windows/window_memory.dart';
 import 'services/platform_services.dart';
 import 'ui/ai_dialog.dart';
@@ -38,7 +46,7 @@ import 'ui/browser_page.dart';
 import 'ui/downloads_page.dart';
 import 'ui/exit_dialog.dart';
 import 'ui/home_page.dart';
-import 'ui/monitor_page.dart' show askLiveSyncStart;
+import 'ui/monitor_page.dart' show askLiveSyncStart, MonitorPage;
 import 'ui/player_page.dart';
 import 'ui/setup_dialog.dart';
 import 'ui/update_dialog.dart';
@@ -136,6 +144,8 @@ Future<void> main(List<String> args) async {
           running: [
             if (controller.currentJob != null) controller.currentJob!,
             if (n > 0) trf('다운로드 {0}개', [n]),
+            if ((CopyCenter.peekOf(controller)?.activeCount ?? 0) > 0)
+              trf('복사 · 이동 {0}개', [CopyCenter.peekOf(controller)!.activeCount]),
           ].join(' · ').ifEmptyText(tr('진행 중인 작업 없음')),
           hotkey: controller.settings.showHotkey);
       if (pick == null) return false;
@@ -149,6 +159,11 @@ Future<void> main(List<String> args) async {
     if (mode == 'force') {
       final ctx = navigatorKey.currentContext;
       if (ctx != null && ctx.mounted && !await confirmExit(ctx, downloads)) return false;
+    }
+    // 43: 복사 · 이동 중이면 (설정이 "묻지 않고 종료" 여도) 한 번 묻는다
+    {
+      final ctx = navigatorKey.currentContext;
+      if (ctx != null && ctx.mounted && !await confirmStopCopies(ctx, controller)) return false;
     }
     ExitTrace.start();
     final job = controller.currentJob;
@@ -203,6 +218,16 @@ Future<void> main(List<String> args) async {
     },
   );
   await services.shell.setAppIcon(controller.settings.appIcon);
+  // 99: 시작 메뉴 바로 가기 (앱 ID) · jjmkvmaker:// 연결 - 알림이 JJ_MKVMaker 로 보이고 눌러서 열린다 (설정에서 끔)
+  StartMenu.setProcessAppId();
+  final shell0 = services.shell;
+  if (controller.settings.startMenuShortcut) {
+    unawaited(StartMenu.ensure().then((ok) {
+      if (shell0 is DesktopShell) shell0.toastAppReady = ok;
+    }));
+  } else {
+    unawaited(StartMenu.remove());
+  }
   // 제목 표시줄에 버전 · 지난번 창 위치에서 열기 · 동영상 목록 불러오기 (창끼리 공유)
   await windowManager.setTitle(appTitle);
   final shell = services.shell;
@@ -213,10 +238,18 @@ Future<void> main(List<String> args) async {
   // 클립보드로 추가된 다운로드 알림 · 트레이 글
   downloads.onAdded.listen((t) => messengerKey.currentState
       ?.showSnackBar(SnackBar(content: Text(trf('다운로드 추가: {0}', [t.source])))));
-  downloads.addListener(() {
-    final n = downloads.downloadingCount;
-    services.shell.setTooltip(n > 0 ? trf('JJ_MKVMaker - 다운로드 {0}개', [n]) : 'JJ_MKVMaker');
-  });
+  // 92: 트레이에 둔 채 실시간 동기화가 멈추면 Windows 알림 · 트레이 툴팁, 누르면 모니터링 > lsync 카드로
+  final syncAlert = SyncAlert(live, services.shell,
+      toastEnabled: () => controller.settings.syncStopToast,
+      openLsync: () {
+        final nav = navigatorKey.currentState;
+        if (nav != null) unawaited(nav.push(MaterialPageRoute<void>(builder: (_) => MonitorPage(c: controller, initialTab: 1))));
+      },
+      baseTooltip: () {
+        final n = downloads.downloadingCount;
+        return n > 0 ? trf('JJ_MKVMaker - 다운로드 {0}개', [n]) : 'JJ_MKVMaker';
+      });
+  downloads.addListener(() => services.shell.setTooltip(syncAlert.tooltip()));
   // 다 받은 동영상 → 편집 목록 (설정에서 끌 수 있음)
   downloads.onFinished.listen((t) async {
     if (!controller.settings.addFinishedDownloads) return;
@@ -247,6 +280,15 @@ Future<void> main(List<String> args) async {
   // 탐색기 메뉴 · 두 번째 실행에서 온 요청 처리
   instance.listen((req) async {
     await services.shell.show();
+    // 99: 동기화가 멈췄다는 알림을 누름 → 실시간 동기화 화면
+    if (req.action == LaunchAction.lsync) {
+      for (var i = 0; i < 100 && navigatorKey.currentState == null; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      }
+      final nav = navigatorKey.currentState;
+      if (nav != null) unawaited(nav.push(MaterialPageRoute<void>(builder: (_) => MonitorPage(c: controller, initialTab: 1))));
+      return;
+    }
     if (req.files.isEmpty) return;
     // 프로그램을 파일과 함께 처음 켠 경우: 첫 화면이 뜰 때까지 (최대 10초) 기다린다
     for (var i = 0; i < 100 && navigatorKey.currentContext == null; i++) {
@@ -260,7 +302,7 @@ Future<void> main(List<String> args) async {
         unawaited(controller.addVideos(req.files.where(isVideoFile).toList(), allowOutputFolder: true));
         await playFiles(ctx, controller, req.files);
       case LaunchAction.subtitle:
-        await controller.addVideos(req.files.where(isVideoFile).toList());
+        await controller.addVideos(req.files.where(isVideoFile).toList(), allowOutputFolder: true);
         final targets = controller.videos
             .where((v) => req.files.any((f) => p.equals(f, v.path)))
             .toList();
@@ -268,6 +310,8 @@ Future<void> main(List<String> args) async {
           controller.select(targets.first);
           await showAiDialog(ctx, controller, targets.first, targets: targets);
         }
+      case LaunchAction.lsync:
+        break; // 위에서 처리
       case LaunchAction.add:
         // 탐색기 더블클릭 · 연결 프로그램: 설정에 따라 재생 또는 편집 목록에 추가
         final videos = req.files.where(isVideoFile).toList();
@@ -306,6 +350,9 @@ Future<void> main(List<String> args) async {
     if (controller.settings.liveSyncOnStart == 'ask' && ctx.mounted) await askLiveSyncStart(ctx, live);
     // 설정 파일을 읽지 못했으면 (백업으로 되살렸거나 처음 설정으로 켰으면) 알린다
     if (ctx.mounted) await showSettingsProblem(ctx, controller);
+    watchSecretIssue(messengerKey, controller);
+    // 업데이트로 예전 기본값을 새 기본값으로 옮겼으면 한 번 알린다
+    if (ctx.mounted) await showMigrationNotice(ctx, controller);
     // 다른 버전을 쓰다가 이 버전으로 돌아왔으면 보관해 둔 이 버전의 설정을 되살릴지
     final current = await _currentVersion(services);
     if (ctx.mounted) {
@@ -400,6 +447,16 @@ Future<void> runAndroid(String dataDir) async {
   controller.note(trf('── 시작 {0} (Android) ──', [appTitle]));
   // 버전별 설정 보관: 앱을 지웠다 다시 설치해도 남도록 공용 Download/JJ_MKVMaker 에도 (예전 버전으로 되돌릴 때)
   final freshInstall = !File(p.join(dataDir, 'settings.json')).existsSync();
+  // 115: 다시 설치한 뒤 처음 켰는데 설정이 있으면 Android 자동 백업이 되살린 것 (표시 파일은 백업에서 뺐다)
+  final marker = InstallMarker(dataDir);
+  var autoBackup = false;
+  try {
+    final info = await PackageInfo.fromPlatform();
+    autoBackup = restoredByAutoBackup(
+        settingsExisted: !freshInstall, markerExists: marker.exists, installTime: info.installTime, updateTime: info.updateTime);
+  } catch (_) {}
+  marker.write();
+  if (autoBackup) controller.note(tr('Android 자동 백업에서 되살린 설정으로 시작합니다'));
   ComponentStore.dataDirectory = dataDir;
   String? sharedSnapshots;
   try {
@@ -451,7 +508,17 @@ Future<void> runAndroid(String dataDir) async {
   AndroidKeepAlive(controller, downloads);
   // 백그라운드로 실행: 화면 (Activity) 을 닫아도 엔진은 살아 있다가 다시 열면 새 화면에 붙는다 → 화면 방향을 다시 적용
   // (웹뷰는 텍스처로 그려 새 화면에 붙어도 그대로 보인다: browser_page _webSettings)
-  AppLifecycleListener(onResume: () => applyScreenOrientation(controller.settings.screenOrientation));
+  // 116: 권한 ("모든 파일에 대한 접근") 이 없어 분석에 실패한 동영상은 허용하고 돌아오면 저절로 다시 분석
+  controller.fileAccess = AndroidAccess.hasAllFiles;
+  var hadAccess = await AndroidAccess.hasAllFiles();
+  if (hadAccess) await allFilesGuideDue(controller, hasAccess: true);
+  AppLifecycleListener(onResume: () async {
+    await applyScreenOrientation(controller.settings.screenOrientation);
+    final now = await AndroidAccess.hasAllFiles();
+    if (now && !hadAccess) await controller.reanalyzeFailed();
+    if (now) await allFilesGuideDue(controller, hasAccess: true);
+    hadAccess = now;
+  });
   // 동영상 목록 기억 (앱을 껐다 켜도 그대로, 없어진 파일은 뺀다) - Windows 와 같은 파일
   unawaited(controller.shareVideoList(p.join(dataDir, 'videos.json')));
 
@@ -483,6 +550,13 @@ Future<void> runAndroid(String dataDir) async {
         return;
       }
     } catch (_) {}
+    // 동영상을 읽고 옆에 MKV 를 만들려면 저장소 전체 접근이 필요하다.
+    // 39: 켤 때마다 띄우지 않고 한 번만. 그 뒤로는 파일 탐색기 위의 안내 · 동영상 항목의 안내가 알려 준다
+    // 116: 다른 안내 · 분석 오류보다 먼저 (허용하고 돌아오면 실패한 분석을 다시 한다 - onResume)
+    final ctxA = navigatorKey.currentContext;
+    if (ctxA != null && ctxA.mounted && await allFilesGuideDue(controller, hasAccess: hadAccess) && ctxA.mounted) {
+      await showAllFilesGuide(ctxA, AndroidAccess.request);
+    }
     final home = AppNavButtons.homeId(controller.settings);
     final nav0 = navigatorKey.currentState;
     if (home != 'mkv' && nav0 != null) {
@@ -495,8 +569,10 @@ Future<void> runAndroid(String dataDir) async {
     final current = await _currentVersion(services);
     final ctxV = navigatorKey.currentContext;
     if (ctxV != null && ctxV.mounted) await showSettingsProblem(ctxV, controller);
+    watchSecretIssue(messengerKey, controller);
+    if (ctxV != null && ctxV.mounted) await showMigrationNotice(ctxV, controller);
     if (ctxV != null && ctxV.mounted) {
-      await checkVersionRestore(ctxV, controller, current: current, freshInstall: freshInstall,
+      await checkVersionRestore(ctxV, controller, current: current, freshInstall: freshInstall, autoBackup: autoBackup,
           restart: () async {
         messengerKey.currentState?.showSnackBar(SnackBar(content: Text(tr('설정을 되살렸습니다. 앱을 끝냅니다 - 다시 켜 주세요.'))));
         await Future<void>.delayed(const Duration(seconds: 2));
@@ -506,15 +582,6 @@ Future<void> runAndroid(String dataDir) async {
     // 새 버전 확인 (하루 한 번, 환경 설정에서 끌 수 있음)
     final ctx = navigatorKey.currentContext;
     if (ctx != null && ctx.mounted) unawaited(checkForUpdate(ctx, controller));
-    // 동영상을 읽고 옆에 MKV 를 만들려면 저장소 전체 접근이 필요하다
-    if (!await AndroidAccess.hasAllFiles()) {
-      messengerKey.currentState?.showSnackBar(SnackBar(
-        duration: const Duration(seconds: 20),
-        content: Text(tr('동영상을 고르고 MKV 를 만들려면 "모든 파일에 대한 접근" 권한이 필요합니다.')),
-        persist: false, // Flutter 3.47+: [action] 이 있으면 기본은 안 사라짐 → duration 대로 닫기
-        action: SnackBarAction(label: tr('허용'), onPressed: AndroidAccess.request),
-      ));
-    }
   });
 
   runApp(JjMkvMakerApp(

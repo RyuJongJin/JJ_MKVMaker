@@ -257,9 +257,17 @@ void main() {
     expect(find.text('자막 보기'), findsOneWidget);
     expect(find.text('화면 크기'), findsOneWidget);
     expect(find.text('음성 선택'), findsOneWidget); // 음성 트랙 2개
+    expect(find.text('자막 크기'), findsOneWidget);
     await tester.tap(find.text('자막 보기'));
     await tester.pumpAndSettle();
     expect(pl.state.value.subtitleId, isNull);
+
+    // 터치 화면: 길게 누르면 같은 메뉴
+    await tester.longPress(find.byType(ColoredBox).first);
+    await tester.pumpAndSettle();
+    expect(find.text('전체 화면'), findsOneWidget);
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
 
     await tester.pumpWidget(const SizedBox());
     expect(pl.calls.last, 'dispose');

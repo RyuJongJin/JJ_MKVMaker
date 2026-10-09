@@ -151,7 +151,9 @@ void main() {
       final r = AppSettings.fromJson(s.toJson());
       expect([r.runInBackground, r.liveSyncOnStart], [true, 'ask']);
       expect(AppSettings.fromJson({'liveSyncOnStart': 'x'}).liveSyncOnStart, 'auto');
-      expect(AppSettings.fromJson({}).runInBackground, isFalse);
+      // 사용자 결정 (10/8): Android 백그라운드로 실행은 기본 켜짐. 사용자가 끈 값 (새 형식) 은 그대로
+      expect(AppSettings.fromJson({}).runInBackground, isTrue);
+      expect(AppSettings.fromJson({'runInBackground': false, 'backgroundV2': true}).runInBackground, isFalse);
       final w = AppSettings()..backgroundRun = false;
       if (Platform.isWindows) {
         expect(w.closeAction, 'quit');

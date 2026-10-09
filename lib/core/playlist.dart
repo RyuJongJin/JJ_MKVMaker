@@ -21,6 +21,9 @@ enum PlaylistMode {
 bool isVideoFile(String path) =>
     videoExtensions.contains(p.extension(path).replaceFirst('.', '').toLowerCase());
 
+bool isAudioFile(String path) =>
+    audioExtensions.contains(p.extension(path).replaceFirst('.', '').toLowerCase());
+
 /// 시리즈 비교용 이름: 숫자를 모두 # 으로 바꾼다.
 /// file_001 ≡ file_0002,  Show.S01E02 ≡ Show.S02E10,  드라마 3화 ≡ 드라마 12화
 String seriesKey(String path) => p
@@ -110,8 +113,15 @@ class LaunchRequest {
           action = LaunchAction.play;
         case '--subtitle':
           action = LaunchAction.subtitle;
+        case '--lsync':
+          action = LaunchAction.lsync;
         default:
-          if (!a.startsWith('--')) files.add(a);
+          // 99: 알림을 누르면 jjmkvmaker://lsync 로 열린다 (실시간 동기화 화면으로)
+          if (a.toLowerCase().startsWith('jjmkvmaker://')) {
+            if (a.toLowerCase().startsWith('jjmkvmaker://lsync')) action = LaunchAction.lsync;
+          } else if (!a.startsWith('--')) {
+            files.add(a);
+          }
       }
     }
     return LaunchRequest(action, files);
@@ -120,8 +130,10 @@ class LaunchRequest {
   List<String> toArgs() => [
         if (action == LaunchAction.play) '--play',
         if (action == LaunchAction.subtitle) '--subtitle',
+        if (action == LaunchAction.lsync) '--lsync',
         ...files,
       ];
 }
 
-enum LaunchAction { add, play, subtitle }
+/// [lsync]: 실시간 동기화 화면 (모니터링) 을 연다 (동기화가 멈췄다는 알림을 누름 - 99)
+enum LaunchAction { add, play, subtitle, lsync }

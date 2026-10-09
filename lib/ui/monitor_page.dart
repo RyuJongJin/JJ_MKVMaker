@@ -14,9 +14,11 @@ import '../core/sync_tools.dart';
 import '../core/vfs.dart';
 import '../l10n/tr.dart';
 import 'app_actions.dart';
-import 'copy_sync_settings.dart' show addLiveSyncPairDialog, LiveSyncRunOptions;
+import 'copy_sync_settings.dart' show addLiveSyncPairDialog, editLiveSyncPairDialog, removeLiveSyncPair, LiveSyncRunOptions;
+import 'path_label.dart';
 import 'rsync_setup.dart';
 import 'schedule_editor.dart';
+import 'sync_preview_view.dart' show confirmDeletingRun;
 import 'theme.dart';
 
 /// 모니터링 (파일 탐색기 > 모니터링): 복사 · rsync 와 lsync (실시간 동기화) 를 따로 보여 준다.
@@ -68,6 +70,80 @@ class MonitorPage extends StatelessWidget {
           ]),
         ),
       );
+}
+
+/// 실시간 동기화 "지우기" 확인 창 (42): 대상에만 있어 지워질 항목을 보여 주고 [지우기 포함으로 맞추기] · [지우지 않기] · [나중에]
+Future<void> confirmLiveDeletes(BuildContext context, LiveSync live, LiveSyncPair x) async {
+  final list = live.toDelete[LiveSync.keyOf(x)] ?? const <String>[];
+  if (list.isEmpty) return;
+  final pick = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Text(trf('대상에서 {0}개를 지울까요?', [list.length])),
+      content: SizedBox(
+        width: 560,
+        height: 360,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(trf('"{0}" 에는 없고 대상 "{1}" 에만 있는 항목입니다. 지우기 포함으로 맞추면 대상에서 지워집니다 (되돌릴 수 없음).',
+              [vDisplay(x.source), vDisplay(x.target)])),
+          const SizedBox(height: 8),
+          Expanded(
+            child: ListView(children: [
+              for (final n in list.take(500)) Text(n, style: const TextStyle(fontSize: 12, fontFamily: 'Consolas')),
+              if (list.length > 500) Text(trf('… 외 {0}개', [list.length - 500])),
+            ]),
+          ),
+        ]),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('나중에'))),
+        TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('지우지 않기 (지우기 끄기)'))),
+        FilledButton(
+          style: FilledButton.styleFrom(backgroundColor: JjColors.danger),
+          onPressed: () => Navigator.pop(ctx, true),
+          child: Text(trf('{0}개 지우고 맞추기', [list.length])),
+        ),
+      ],
+    ),
+  );
+  if (pick == null) return;
+  await live.decideDelete(x, delete: pick);
+}
+
+/// 70: 원본이 비어 멈춘 쌍 - 지워질 목록을 보여 주고 [그래도 맞추기] 로 확인받는다 (42 와 같은 창)
+Future<void> confirmEmptySourceSync(BuildContext context, LiveSync live, LiveSyncPair x) async {
+  final list = live.emptyDeletes[LiveSync.keyOf(x)] ?? const <String>[];
+  if (list.isEmpty) return;
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Text(trf('원본이 비어 있습니다. 대상에서 {0}개를 지울까요?', [list.length])),
+      content: SizedBox(
+        width: 560,
+        height: 360,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(trf('"{0}" 이 비어 있어, 맞추면 대상 "{1}" 의 아래 항목이 모두 지워집니다 (되돌릴 수 없음). '
+              '원본을 일부러 비운 경우에만 누르세요.', [vDisplay(x.source), vDisplay(x.target)])),
+          const SizedBox(height: 8),
+          Expanded(
+            child: ListView(children: [
+              for (final n in list.take(500)) Text(n, style: const TextStyle(fontSize: 12, fontFamily: 'Consolas')),
+              if (list.length > 500) Text(trf('… 외 {0}개', [list.length - 500])),
+            ]),
+          ),
+        ]),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('취소'))),
+        FilledButton(
+          style: FilledButton.styleFrom(backgroundColor: JjColors.danger),
+          onPressed: () => Navigator.pop(ctx, true),
+          child: Text(trf('그래도 맞추기 ({0}개 지움)', [list.length])),
+        ),
+      ],
+    ),
+  );
+  if (ok == true) await live.syncEmptyAnyway(x);
 }
 
 String _hm(String iso) {
@@ -254,6 +330,9 @@ class _CopyCardState extends State<_CopyCard> {
   }
 
   Future<void> _run(CopyTask t) async {
+    // 104: 지우기가 들어 있으면 Rsync 화면과 같은 미리 보기를 거친다 (그사이 대상에 생긴 파일을 묻지 않고 지우지 않게)
+    if (!await confirmDeletingRun(context, t) || !mounted) return;
+    widget.c.note(trf('rsync 시작 ({0}): {1} → {2}', [tr('모니터링의 [실행]'), t.sources.join(', '), t.dest]));
     String? exe;
     if (t.method == 'rsync') {
       exe = await rsyncExecutable(widget.c.settings);
@@ -272,15 +351,46 @@ class _CopyCardState extends State<_CopyCard> {
     if (problem != null && mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(problem)));
   }
 
+  /// 칸에 보이는 (고친) 옵션으로 만든 작업
+  CopyTask _edited() => widget.task.copyWith(
+        method: _method,
+        options: _options.text.trim(),
+        bandwidthKBps: int.tryParse(_bw.text) ?? 0,
+        once: _once,
+        prune: _prune,
+      );
+
+  /// 114: [실행] 을 눌렀는데 저장하지 않은 고침이 있으면 묻는다 (칸에 보이는 것과 다른 옵션으로 몰래 돌지 않게).
+  /// 저장하고 실행하면 그 옵션으로 (지우기가 있으면 미리 보기 창)
+  Future<void> _runPressed(CopyTask t) async {
+    if (!_dirty) return _run(t);
+    final pick = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        scrollable: true,
+        actionsOverflowDirection: VerticalDirection.down,
+        title: Text(tr('고친 옵션을 저장하지 않았습니다')),
+        content: Text(trf('칸에 보이는 옵션: {0}\n저장된 옵션: {1}\n\n고친 옵션을 저장하고 실행할까요?', [
+          '${_method == 'builtin' ? tr('현재 방식') : _method} ${_options.text.trim()}',
+          '${t.method == 'builtin' ? tr('현재 방식') : t.method} ${t.options}',
+        ])),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('취소'))),
+          TextButton(onPressed: () => Navigator.pop(ctx, 'old'), child: Text(tr('저장된 옵션으로 실행'))),
+          FilledButton(onPressed: () => Navigator.pop(ctx, 'save'), child: Text(tr('저장하고 실행'))),
+        ],
+      ),
+    );
+    if (!mounted || pick == null) return;
+    if (pick == 'old') return _run(t);
+    final edited = _edited();
+    await center.update(edited);
+    if (mounted) await _run(edited);
+  }
+
   /// 옵션 저장 → 지금 실행할지 묻기 (현재 유지 / 반영 후 실행)
   Future<void> _save() async {
-    final t = widget.task.copyWith(
-      method: _method,
-      options: _options.text.trim(),
-      bandwidthKBps: int.tryParse(_bw.text) ?? 0,
-      once: _once,
-      prune: _prune,
-    );
+    final t = _edited();
     await center.update(t);
     if (!mounted) return;
     final running = center.isRunning(t.id);
@@ -364,15 +474,19 @@ class _CopyCardState extends State<_CopyCard> {
             Icon(icon, color: color, size: 20),
             const SizedBox(width: 8),
             Expanded(
+              // 112: 끝 폴더가 보이게 짧게, 전체 경로는 작게
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(
-                  '${t.sources.length == 1 ? vDisplay(t.sources.first) : trf('{0} 외 {1}개', [vBasename(t.sources.first), t.sources.length - 1])}'
-                  '${t.contents ? '/' : ''}',
+                  t.sources.length == 1
+                      ? shortPath(t.sources.first)
+                      : trf('{0} 외 {1}개', [shortPath(t.sources.first), t.sources.length - 1]),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
-                Text('→  ${vDisplay(t.dest)}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
+                Text('→  ${shortPath(t.dest)}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
+                Text('${vDisplay(t.sources.first)}${t.contents ? '/' : ''}  →  ${vDisplay(t.dest)}',
+                    maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: JjColors.textDim)),
               ]),
             ),
             Chip(
@@ -451,7 +565,7 @@ class _CopyCardState extends State<_CopyCard> {
               TextButton.icon(onPressed: () => center.cancel(t.id), icon: const Icon(Icons.stop, size: 18), label: Text(tr('취소')))
             else
               FilledButton.icon(
-                onPressed: () => _run(t),
+                onPressed: () => _runPressed(t),
                 icon: const Icon(Icons.play_arrow, size: 18),
                 label: Text(t.lastResult == 'cancelled' || t.lastResult == 'failed' ? tr('재개') : tr('실행')),
               ),
@@ -553,12 +667,15 @@ class _LiveTabState extends State<_LiveTab> {
       messenger.showSnackBar(SnackBar(content: Text(tr('rsync 실행 파일을 찾을 수 없습니다. 환경 설정 > Rsync 에서 확인하세요.'))));
       return;
     }
-    await _replace(x, x.copyWith(enabled: false));
     final center = CopyCenter.of(c);
     var t = await center.remember([x.source], x.target, move: true, contents: true, method: 'rsync');
     // 처음이면 정해진 옵션 (모니터링에서 고친 것이 있으면 그것)
     t = t.copyWith(prune: prune, options: t.lastRun.isEmpty ? '-avHPOg' : null);
     await center.update(t);
+    // 104: 고친 옵션에 지우기가 있으면 미리 보기를 거친다
+    if (!mounted || !await confirmDeletingRun(context, t) || !mounted) return;
+    await _replace(x, x.copyWith(enabled: false));
+    c.note(trf('rsync 시작 ({0}): {1} → {2}', [tr('실시간 동기화의 [최종 정리]'), x.source, x.target]));
     final job = await center.start(t, rsyncExe: exe);
     if (!mounted) return;
     if (job == null) {
@@ -610,6 +727,77 @@ class _LiveTabState extends State<_LiveTab> {
     );
   }
 
+  /// 69: 카드의 길게 누르기 · 오른쪽 클릭 메뉴
+  Future<void> _pairMenu(BuildContext context, LiveSyncPair x, Offset at) async {
+    final pick = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(at.dx, at.dy, at.dx, at.dy),
+      items: [
+        PopupMenuItem(value: 'edit', child: Text(tr('고치기'))),
+        PopupMenuItem(value: 'remove', child: Text(tr('지우기'))),
+      ],
+    );
+    if (!context.mounted) return;
+    if (pick == 'edit') {
+      await editLiveSyncPairDialog(context, c, x);
+    } else if (pick == 'remove') {
+      await removeLiveSyncPair(context, c, x);
+    }
+  }
+
+  /// 원본 문제 안내 (68 · 70)
+  Widget _problemPanel(BuildContext context, LiveSync live, LiveSyncPair x, SourceUnreadableException e) {
+    final k = LiveSync.keyOf(x);
+    final dels = live.emptyDeletes[k] ?? const <String>[];
+    final running = live.isRunning(x);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+      decoration: BoxDecoration(
+        color: Colors.redAccent.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.redAccent.withValues(alpha: 0.6)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(e.empty ? Icons.folder_off_outlined : Icons.error_outline, color: Colors.redAccent, size: 20),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              e.empty ? tr('원본 폴더가 비어 있어 멈췄습니다') : tr('원본을 읽을 수 없어 멈췄습니다'),
+              style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.redAccent),
+            ),
+          ),
+        ]),
+        const SizedBox(height: 4),
+        Text(tr('대상 파일은 지우지 않았습니다.'), style: const TextStyle(fontSize: 12)),
+        Text(
+          e.empty
+              ? trf('원본에는 아무것도 없는데 대상에는 {0}개가 있습니다. SD 카드가 빠졌거나 네트워크 · 권한 문제일 수 있습니다. '
+                  '일부러 원본을 비웠다면 지울 목록을 보고 [그래도 맞추기] 를 누르세요.', [dels.length])
+              : tr('SD 카드가 꽂혀 있는지, 네트워크 (NAS · VPN) 가 연결되어 있는지, 폴더 권한이 있는지 확인한 뒤 [다시 시도] 를 누르세요.'),
+          style: const TextStyle(fontSize: 12),
+        ),
+        const SizedBox(height: 4),
+        Text('${vDisplay(x.source)}${e.detail.isEmpty ? '' : '  ·  ${e.detail}'}',
+            style: const TextStyle(fontSize: 11, color: JjColors.textDim)),
+        const SizedBox(height: 6),
+        Wrap(spacing: 8, runSpacing: 4, children: [
+          FilledButton.tonalIcon(
+            onPressed: running ? null : () => live.syncNow(x),
+            icon: const Icon(Icons.refresh, size: 18),
+            label: Text(tr('다시 시도')),
+          ),
+          if (e.empty && dels.isNotEmpty)
+            OutlinedButton(
+              onPressed: running ? null : () => confirmEmptySourceSync(context, live, x),
+              child: Text(tr('지울 목록 보고 결정')),
+            ),
+        ]),
+      ]),
+    );
+  }
+
   Widget _liveCard(BuildContext context, LiveSync? live, LiveSyncPair x) {
     final k = LiveSync.keyOf(x);
     final pend = live?.pending[k];
@@ -637,10 +825,21 @@ class _LiveTabState extends State<_LiveTab> {
                 color: x.enabled && !held ? (active ? JjColors.accent : Colors.orangeAccent) : JjColors.textDim),
             const SizedBox(width: 8),
             Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('${vDisplay(x.source)}/', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
-                Text('→  ${vDisplay(x.target)}/', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
-              ]),
+              // 67: 끝 폴더가 보이게 짧게 · 69: 길게 누르면 (오른쪽 클릭) 고치기 · 지우기
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onLongPressStart: (d) => _pairMenu(context, x, d.globalPosition),
+                onSecondaryTapDown: (d) => _pairMenu(context, x, d.globalPosition),
+                child: Tooltip(
+                  // 길게 누르기는 메뉴에 (마우스를 올리면 전체 경로)
+                  triggerMode: TooltipTriggerMode.manual,
+                  message: '${vDisplay(x.source)}\n→ ${vDisplay(x.target)}',
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(shortPath(x.source), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
+                    Text('→  ${shortPath(x.target)}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
+                  ]),
+                ),
+              ),
             ),
             Chip(
               visualDensity: VisualDensity.compact,
@@ -660,6 +859,20 @@ class _LiveTabState extends State<_LiveTab> {
               padding: const EdgeInsets.only(left: 32, top: 2),
               child: Text(tr('멈춤 (이번 실행 동안) · 시작 버튼을 누르면 다시 동기화합니다'),
                   style: const TextStyle(fontSize: 12, color: Colors.orangeAccent)),
+            ),
+          // 42: 지우기를 아직 확인하지 않았고 지울 것이 있다 → 지우지 않고 맞추는 중. 목록을 보고 결정
+          if (live != null && (live.toDelete[k]?.isNotEmpty ?? false))
+            Padding(
+              padding: const EdgeInsets.only(left: 32, top: 4),
+              child: Wrap(spacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                const Icon(Icons.warning_amber_rounded, size: 16, color: Colors.orangeAccent),
+                Text(trf('대상에만 있는 {0}개를 지울지 확인이 필요합니다 (확인 전에는 지우지 않음)', [live.toDelete[k]!.length]),
+                    style: const TextStyle(fontSize: 12, color: Colors.orangeAccent)),
+                OutlinedButton(
+                  onPressed: () => confirmLiveDeletes(context, live, x),
+                  child: Text(tr('지울 목록 보고 결정')),
+                ),
+              ]),
             ),
           Padding(
             padding: const EdgeInsets.only(left: 32, top: 4),
@@ -687,10 +900,14 @@ class _LiveTabState extends State<_LiveTab> {
               ),
               if (st != null)
                 Text('${tr('마지막')}: ${st.$1.hour.toString().padLeft(2, '0')}:${st.$1.minute.toString().padLeft(2, '0')} ${st.$2}',
-                    style: const TextStyle(fontSize: 12, color: JjColors.textDim)),
+                    style: TextStyle(fontSize: 12, color: live?.problems[k] != null ? Colors.redAccent : JjColors.textDim)),
               _DiskInfo(path: x.target),
             ]),
           ),
+          // 68 · 70: 원본을 읽지 못함 / 원본이 비어 멈춤 - "맞출 것 없음" 대신 눈에 띄게, 할 일과 [다시 시도]
+          if (live?.problems[k] case final prob?)
+            Padding(padding: const EdgeInsets.only(left: 32, top: 8), child: _problemPanel(context, live!, x, prob))
+          else
           // 맞출 것 (바뀐 파일) - 자동으로 다시 셈
           Padding(
             padding: const EdgeInsets.only(left: 32, top: 8),
@@ -749,11 +966,14 @@ class _LiveTabState extends State<_LiveTab> {
               label: Text(tr('복사 · rsync 로 이동')),
             ),
             IconButton(
+              tooltip: tr('고치기'),
+              icon: const Icon(Icons.edit_outlined),
+              onPressed: () => editLiveSyncPairDialog(context, c, x),
+            ),
+            IconButton(
               tooltip: tr('지우기'),
               icon: const Icon(Icons.delete_outline, color: JjColors.textDim),
-              onPressed: () => c.updateSettings((y) => y.liveSyncPairs = [
-                    for (final o in y.liveSyncPairs) if (!(o.source == x.source && o.target == x.target)) o,
-                  ]),
+              onPressed: () => removeLiveSyncPair(context, c, x),
             ),
           ]),
         ]),

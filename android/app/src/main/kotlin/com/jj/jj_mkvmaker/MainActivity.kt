@@ -81,6 +81,30 @@ class MainActivity : FlutterActivity() {
         }
         ch.setMethodCallHandler { call, result ->
             when (call.method) {
+                "secretReadAll" -> {
+                    try {
+                        result.success(SecretBox.readAll(applicationContext))
+                    } catch (e: Exception) {
+                        result.error("secret", e.toString(), null)
+                    }
+                }
+                "secretWrite" -> {
+                    try {
+                        SecretBox.write(applicationContext, call.argument<String>("key")!!, call.argument<String>("value")!!)
+                        result.success(null)
+                    } catch (e: Exception) {
+                        result.error("secret", e.toString(), null)
+                    }
+                }
+                "secretDelete" -> {
+                    SecretBox.delete(applicationContext, call.argument<String>("key")!!)
+                    result.success(null)
+                }
+                "moveToBack" -> {
+                    // 작업 중에 ← : 앱을 끝내지 않고 뒤로 보낸다 (작업 계속)
+                    moveTaskToBack(true)
+                    result.success(null)
+                }
                 "setBackground" -> {
                     background = call.argument<Boolean>("on") ?: false
                     result.success(null)

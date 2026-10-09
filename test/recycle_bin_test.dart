@@ -1,0 +1,63 @@
+import 'dart:io';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:jj_mkvmaker/platform/windows/recycle_bin.dart';
+import 'package:path/path.dart' as p;
+
+/// 시험이 휴지통에 넣은 것만 (원래 위치가 이 시험의 임시 폴더인 항목) 휴지통에서 지운다. 사용자 항목은 건드리지 않는다.
+Future<int> _purgeFromRecycleBin(String fromDir) async {
+  final dir = fromDir.replaceAll("'", "''");
+  final r = await Process.run('powershell.exe', [
+    '-NoProfile',
+    '-NonInteractive',
+    '-Command',
+    '''
+\$rb = (New-Object -ComObject Shell.Application).Namespace(10)
+\$n = 0
+foreach (\$it in @(\$rb.Items())) {
+  if (\$rb.GetDetailsOf(\$it, 1) -ne '$dir') { continue }
+  \$path = \$it.Path; \$d = Split-Path \$path; \$leaf = Split-Path \$path -Leaf
+  Remove-Item -LiteralPath \$path -Recurse -Force -Confirm:\$false
+  \$info = Join-Path \$d ('\$I' + \$leaf.Substring(2))
+  if (Test-Path -LiteralPath \$info) { Remove-Item -LiteralPath \$info -Force -Confirm:\$false }
+  \$n++
+}
+\$n
+''',
+  ]);
+  return int.tryParse('${r.stdout}'.trim().split('\n').last.trim()) ?? -1;
+}
+
+/// 65 · 94 · 98: Windows 휴지통 (실제 휴지통 - 시험 파일 하나 · 폴더 하나, 끝나면 휴지통에서도 지움)
+void main() {
+  test('파일 · 폴더를 휴지통으로 (실제로 들어갔는지까지) · 없는 것은 그냥 성공', () async {
+    final tmp = Directory.systemTemp.createTempSync('jj_recycle_');
+    addTearDown(() async {
+      if (tmp.existsSync()) tmp.deleteSync(recursive: true);
+    });
+    final f = File(p.join(tmp.path, 'jj_recycle_test.txt'))..writeAsStringSync('x');
+    final d = Directory(p.join(tmp.path, 'jj_recycle_dir'))..createSync();
+    File(p.join(d.path, 'a.txt')).writeAsStringSync('a');
+    try {
+      expect(hasRecycleBin(f.path), isTrue); // 임시 폴더는 고정 디스크
+      expect(moveToRecycleBin(f.path), RecycleResult.recycled);
+      expect(f.existsSync(), isFalse);
+      expect(moveToRecycleBin(d.path), RecycleResult.recycled);
+      expect(d.existsSync(), isFalse);
+      expect(moveToRecycleBin(p.join(tmp.path, 'none.txt')), RecycleResult.recycled);
+    } finally {
+      // 사용자 휴지통에 시험 항목을 남기지 않는다
+      expect(await _purgeFromRecycleBin(tmp.absolute.path), 2);
+    }
+  }, skip: !Platform.isWindows);
+
+  test('94: 휴지통이 없는 곳 (네트워크 공유 · 없는 드라이브) 은 휴지통으로 보내지 않는다 · 98: 이유는 읽을 수 있는 말', () {
+    expect(hasRecycleBin(r'\\NAS\share\a.mkv'), isFalse);
+    // 쓰지 않는 드라이브 문자
+    final unused = 'QRSTUVWXYZ'.split('').firstWhere((l) => !Directory('$l:\\').existsSync(), orElse: () => '');
+    if (unused.isNotEmpty) expect(hasRecycleBin('$unused:\\a.mkv'), isFalse);
+    expect(recycleErrorText(0x7C), contains('경로가 너무 깁니다'));
+    expect(recycleErrorText(0x20), contains('다른 프로그램'));
+    expect(recycleErrorText(0x12345), contains('0x12345'));
+  }, skip: !Platform.isWindows);
+}

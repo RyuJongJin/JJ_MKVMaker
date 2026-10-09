@@ -59,4 +59,29 @@ void main() {
     await again.load();
     expect(again.problem, isNull);
   });
+
+  test('업데이트로 옮긴 기본값: 예전 파일에 그 값이 있을 때만 알림 목록에, 새로 저장한 파일은 다시 옮기지 않음', () {
+    final old = AppSettings.fromJson({
+      'screenOrientation': 'landscape',
+      'explorerLayout': 'dual',
+      'explorerClick': 'select',
+      'zipComic': true,
+      'imageExts': ['jpg'],
+      'runInBackground': false,
+    });
+    expect(old.screenOrientation, 'auto');
+    expect(old.explorerLayout, 'auto');
+    expect(old.zipComic, isFalse);
+    expect(old.migrated, containsAll(['orientation', 'explorerLayout', 'zipComic']));
+    // 다시 저장 · 읽기: 이제 사용자가 고른 값으로 보고 그대로 · 알림 없음
+    final again = AppSettings.fromJson((old
+          ..explorerLayout = 'dual'
+          ..screenOrientation = 'landscape')
+        .toJson());
+    expect(again.explorerLayout, 'dual');
+    expect(again.screenOrientation, 'landscape');
+    expect(again.migrated, isEmpty);
+    // 처음 설치 (빈 설정) 는 알릴 것 없음
+    expect(AppSettings.fromJson({}).migrated, isEmpty);
+  });
 }

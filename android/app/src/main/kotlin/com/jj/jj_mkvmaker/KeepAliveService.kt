@@ -37,7 +37,12 @@ class KeepAliveService : Service() {
         if (wakeLock == null) {
             wakeLock = (getSystemService(Context.POWER_SERVICE) as PowerManager)
                 .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "jj_mkvmaker:jobs")
-                .apply { acquire(6 * 60 * 60 * 1000L) }
+                .apply {
+                    setReferenceCounted(false)
+                    acquire(RENEW_MS * 2)
+                }
+            // 22: 6시간이 지나면 잠금이 풀려 화면을 끈 채 걸어 둔 동기화 · 긴 작업이 조용히 멈출 수 있었다 → 작업 중에는 늘 다시 건다
+            renewer.postDelayed(renew, RENEW_MS)
         }
         return START_NOT_STICKY
     }
@@ -47,7 +52,25 @@ class KeepAliveService : Service() {
         stopSelf()
     }
 
+    private val renewer = android.os.Handler(android.os.Looper.getMainLooper())
+    private val renew = object : Runnable {
+        override fun run() {
+            wakeLock?.let { if (running) it.acquire(RENEW_MS * 2) }
+            if (running) renewer.postDelayed(this, RENEW_MS)
+        }
+    }
+
+    /// 최근 앱에서 밀어 닫음: "백그라운드로 실행" 이 꺼져 있으면 작업이 멈추므로 알림을 남기고 서비스도 끝낸다 (21)
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        if (!MainActivity.background) {
+            notifyStopped(this)
+            stopSelf()
+        }
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onDestroy() {
+        renewer.removeCallbacks(renew)
         running = false
         wakeLock?.let { if (it.isHeld) it.release() }
         wakeLock = null
@@ -57,6 +80,32 @@ class KeepAliveService : Service() {
     companion object {
         const val CHANNEL_ID = "jobs"
         const val NOTIFICATION_ID = 1
+        const val STOPPED_ID = 2
+
+        /// 잠금을 다시 거는 간격 (1시간, 잠금은 그 두 배 동안)
+        const val RENEW_MS = 60 * 60 * 1000L
+
+        /// 앱을 닫아 작업이 멈췄다는 알림 (누르면 앱을 다시 연다)
+        fun notifyStopped(context: Context) {
+            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val open = PendingIntent.getActivity(
+                context, 1, Intent(context, MainActivity::class.java),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            )
+            val b = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                Notification.Builder(context, CHANNEL_ID)
+            } else {
+                @Suppress("DEPRECATION") Notification.Builder(context)
+            }
+            b.setSmallIcon(android.R.drawable.stat_notify_error)
+                .setContentTitle("JJ_MKVMaker 작업이 멈췄습니다")
+                .setContentText("앱을 닫아 진행 중이던 작업이 멈췄습니다. 닫아도 계속하려면 환경 설정에서 '백그라운드로 실행' 을 켜세요.")
+                .setStyle(Notification.BigTextStyle().bigText(
+                    "앱을 닫아 진행 중이던 작업 (MKV · 다운로드 · 동기화) 이 멈췄습니다. 앱을 닫아도 계속하려면 환경 설정 > Rsync > '백그라운드로 실행' 을 켜세요."))
+                .setContentIntent(open)
+                .setAutoCancel(true)
+            nm.notify(STOPPED_ID, b.build())
+        }
         const val EXTRA_TEXT = "text"
         const val EXTRA_PROGRESS = "progress"
         const val EXTRA_ICON = "icon"

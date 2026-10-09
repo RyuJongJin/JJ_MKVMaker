@@ -37,6 +37,27 @@ class VersionSnapshot {
   /// 이 버전의 보관본이 있는지
   bool has(String version) => File(p.join(dirOf(version), 'settings.json')).existsSync();
 
+  /// 115: 보관본 (또는 데이터 폴더) [dir] 에 든 것 - 동영상 목록 수 · WebDAV 서버 이름 · 보관한 때 (모르면 null)
+  static ({int videos, List<String> servers, DateTime? saved}) summaryOf(String dir) {
+    var videos = 0;
+    var servers = <String>[];
+    DateTime? saved;
+    try {
+      final v = jsonDecode(File(p.join(dir, 'videos.json')).readAsStringSync());
+      if (v is List) videos = v.length;
+    } catch (_) {}
+    try {
+      final j = jsonDecode(File(p.join(dir, 'settings.json')).readAsStringSync());
+      final list = j is Map ? j['webdavServers'] : null;
+      if (list is List) servers = [for (final x in list) if (x is Map) '${x['name'] ?? x['url'] ?? ''}'];
+    } catch (_) {}
+    try {
+      final s = jsonDecode(File(p.join(dir, 'snapshot.json')).readAsStringSync());
+      if (s is Map) saved = DateTime.tryParse('${s['saved']}');
+    } catch (_) {}
+    return (videos: videos, servers: servers, saved: saved);
+  }
+
   /// 지금 버전 ([version]) 의 설정을 보관한다 (같은 버전의 보관본은 새것으로). 공용 폴더에도 (있으면).
   Future<void> save(String version) async {
     for (final dir in [dirOf(version), if (sharedDir != null) p.join(sharedDir!, version)]) {

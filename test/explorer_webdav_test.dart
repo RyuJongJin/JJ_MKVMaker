@@ -123,8 +123,11 @@ void main() {
     await act(tester, () => tester.tap(find.text('원격')));
     await settle(tester, () => false, rounds: 5);
     await act(tester, () => tester.tap(find.text('좌 → 우')));
-    await tester.pumpAndSettle();
-    expect(find.text('→  ☁ 집 NAS/원격/'), findsOneWidget);
+    await settle(tester, () => find.textContaining('비교하는 중').evaluate().isEmpty, rounds: 400);
+    expect(find.text('→  ☁ 집 NAS › 원격'), findsOneWidget); // 109: 짧은 경로
+    // 72: 비교 - 보낼 것 · 받는 쪽 (WebDAV) 에만 있는 것 (지우기 없으니 그대로 둠)
+    expect(find.textContaining('→ + inner.txt'), findsOneWidget);
+    expect(find.textContaining('= note.txt'), findsOneWidget);
     expect(find.textContaining('WebDAV: rsync 대신 앱이 직접 맞춥니다'), findsOneWidget);
     await act(tester, () => tester.tap(find.widgetWithText(FilledButton, '실행')));
     final got = File(p.join(remote.path, '원격', 'inner.txt'));

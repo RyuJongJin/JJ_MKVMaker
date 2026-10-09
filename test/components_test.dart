@@ -105,6 +105,16 @@ void main() {
     expect(find.byTooltip('MKV 화면 (지금 여기)'), findsOneWidget);
     await swipe(600); // 오른쪽으로 → 이전 (끝으로)
     expect(find.byTooltip('Rsync (지금 여기)'), findsOneWidget);
+    // 102: 끝에서 처음으로 돌기를 끄면 끝에서 멈춘다
+    await c.updateSettings((s) => s.swipeWrap = false);
+    await tester.pump();
+    await swipe(-600);
+    expect(find.byTooltip('Rsync (지금 여기)'), findsOneWidget);
+    await swipe(600);
+    expect(find.byTooltip('파일 탐색기 (지금 여기)'), findsOneWidget);
+    await swipe(-600);
+    expect(find.byTooltip('Rsync (지금 여기)'), findsOneWidget);
+    await c.updateSettings((s) => s.swipeWrap = true);
     // 끄면 밀어도 그대로
     await c.updateSettings((s) => s.swipeNav = false);
     await tester.pump();

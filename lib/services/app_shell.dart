@@ -22,6 +22,15 @@ abstract class AppShell {
   /// 트레이 알림 글 (다운로드 개수 등)
   Future<void> setTooltip(String text);
 
+  /// 운영 체제 알림 (Windows 토스트). [onClick]: 알림을 누르면 (창을 보인 뒤). 띄웠으면 true
+  Future<bool> notify(String title, String body, {void Function()? onClick});
+
+  /// 트레이 아이콘을 눌러 창을 보인 뒤 (예: 멈춘 동기화가 있으면 그 카드로 - 92)
+  set onTrayShown(void Function()? f);
+
+  /// 창이 앞에 보이는지 (숨김 · 최소화 · 다른 창 뒤면 false)
+  Future<bool> isInFront();
+
   /// 프로그램 종료
   Future<void> quit();
 
@@ -92,6 +101,15 @@ class NoopShell implements AppShell {
   Future<bool> setHotkey(String hotkey) async => true;
   @override
   Future<void> setTooltip(String text) async {}
+
+  @override
+  Future<bool> notify(String title, String body, {void Function()? onClick}) async => false;
+
+  @override
+  set onTrayShown(void Function()? f) {}
+
+  @override
+  Future<bool> isInFront() async => true;
   @override
   Future<void> quit() async {}
   @override

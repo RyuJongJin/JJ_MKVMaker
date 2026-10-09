@@ -26,8 +26,9 @@ class _Shell extends NoopShell {
 void main() {
   test('화면 크기 설정: 범위 · 5% 단위 · 저장', () {
     expect(AppSettings.clampUiScale(null), 1.0);
-    expect(AppSettings.clampUiScale(0.1), 0.7);
-    expect(AppSettings.clampUiScale(9), 1.6);
+    expect(AppSettings.clampUiScale(0.1), 0.5);
+    expect(AppSettings.clampUiScale(9), 2.5);
+    expect(AppSettings.clampUiScale(2.5), 2.5);
     expect(AppSettings.clampUiScale(1.1000000001), 1.1);
     final s = AppSettings()
       ..uiScale = 1.2

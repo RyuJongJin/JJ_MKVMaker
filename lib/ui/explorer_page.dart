@@ -15,7 +15,7 @@ import '../app/settings.dart' show CopyTask;
 import '../app/transfer_job.dart';
 import '../core/sync_tools.dart';
 import '../core/file_ops.dart';
-import '../core/playlist.dart' show isVideoFile;
+import '../core/playlist.dart' show isAudioFile, isVideoFile;
 import '../core/vfs.dart';
 import '../core/webdav.dart' show DavRegistry;
 import '../platform/android/android_storage.dart';
@@ -25,6 +25,11 @@ import 'monitor_page.dart';
 import 'player_page.dart';
 import 'rsync_setup.dart';
 import 'theme.dart';
+import 'dav_external.dart';
+import '../platform/windows/recycle_bin.dart';
+import '../core/sync_preview.dart';
+import 'path_label.dart';
+import 'sync_preview_view.dart';
 import 'webdav_settings.dart';
 import 'reader_page.dart';
 import '../app/component_store.dart';
@@ -101,6 +106,8 @@ enum ExplorerButton {
   sort(Icons.sort, '정렬 기준'),
   hidden(Icons.visibility_outlined, '숨은 항목 표시'),
   history(Icons.history, '내역'),
+  // 118: 두 창을 좌우 ⇆ / 위아래 ⇅ 로 한 번에 바꾸기 (한 창이면 두 창 (좌우) 으로)
+  orient(Icons.swap_horiz, '좌우 ⇆ / 위아래 ⇅'),
   layout(Icons.view_quilt_outlined, '창 배치'),
   buttons(Icons.tune, '버튼 구성');
 
@@ -296,20 +303,35 @@ class _ExplorerPageState extends State<ExplorerPage> {
     );
   }
 
+  /// 목록 위 안내들 (없으면 null). 좁은 화면 (접은 폴드 · 두 창) 에서 목록이 밀려 사라지지 않게 높이를 제한한다
+  Widget? _noticeArea(List<Widget?> notices, double paneHeight) {
+    final list = notices.whereType<Widget>().toList();
+    if (list.isEmpty) return null;
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: paneHeight.isFinite ? paneHeight * 0.35 : 240),
+      child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: list)),
+    );
+  }
+
   /// 목록 위 안내 상자
-  Widget _notice({required IconData icon, required String title, required String body, required List<Widget> actions}) =>
+  Widget _notice(
+          {required IconData icon,
+          required String title,
+          required String body,
+          required List<Widget> actions,
+          Color color = Colors.redAccent}) =>
       Container(
         width: double.infinity,
         margin: const EdgeInsets.fromLTRB(6, 6, 6, 0),
         padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
         decoration: BoxDecoration(
-          color: Colors.redAccent.withValues(alpha: 0.12),
+          color: color.withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.redAccent.withValues(alpha: 0.5)),
+          border: Border.all(color: color.withValues(alpha: 0.5)),
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
           Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Icon(icon, size: 18, color: Colors.redAccent),
+            Icon(icon, size: 18, color: color),
             const SizedBox(width: 8),
             Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.w600))),
           ]),
@@ -319,10 +341,69 @@ class _ExplorerPageState extends State<ExplorerPage> {
         ]),
       );
 
+  // ───────── 만들다 만 파일 (71) ─────────
+
+  /// 복사 · 동기화가 중간에 끊겨 남은 임시 파일 (.jjpart · .jjsync). 지금 쓰는 중인 것 (2분 안에 바뀜) 은 빼고
+  List<FileEntry> _partials(_Pane pane, String dir) {
+    final old = DateTime.now().subtract(const Duration(minutes: 2));
+    return [
+      for (final e in pane.cache[dir] ?? const <FileEntry>[])
+        if (!e.isDir && isPartialFile(e.name) && e.modified.isBefore(old)) e,
+    ];
+  }
+
+  Widget? _partialNotice(_Pane pane, String dir) {
+    final list = _partials(pane, dir);
+    if (list.isEmpty) return null;
+    return _notice(
+      icon: Icons.broken_image_outlined,
+      color: Colors.orangeAccent,
+      title: trf('만들다 만 파일 {0}개', [list.length]),
+      body: tr('복사 · 동기화가 중간에 끊겨 남은 임시 파일입니다 (.jjpart). 완성된 파일이 아니므로 지워도 됩니다. '
+          '같은 파일을 다시 복사하면 새로 만듭니다.'),
+      actions: [
+        TextButton(
+          onPressed: () async {
+            final ok = await showDialog<bool>(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                scrollable: true,
+                title: Text(trf('만들다 만 파일 {0}개를 지울까요?', [list.length])),
+                content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  for (final e in list.take(50)) Text(e.name, style: const TextStyle(fontSize: 12)),
+                  if (list.length > 50) Text(trf('… 외 {0}개', [list.length - 50])),
+                ]),
+                actions: [
+                  TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('취소'))),
+                  FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('지우기'))),
+                ],
+              ),
+            );
+            if (ok != true) return;
+            final failed = <String>[];
+            for (final e in list) {
+              try {
+                await vDelete(e.path);
+              } catch (_) {
+                failed.add(e.name);
+              }
+            }
+            // 같은 폴더를 보는 다른 창도 새로
+            for (final q in _panes) {
+              if (q == pane || q.cache.containsKey(dir)) await _load(q, dir, force: true);
+            }
+            if (failed.isNotEmpty) _snack(trf('지우지 못한 파일: {0}', [failed.join(', ')]));
+          },
+          child: Text(tr('지우기')),
+        ),
+      ],
+    );
+  }
+
   // ───────── 읽을 수 없을 때 (12) ─────────
 
   /// 오류 → (무엇이 문제인지, 무엇을 하면 되는지)
-  (String, String) _explain(String e, {required bool dav}) {
+  (String, String) _explain(String e, {required bool dav, bool noPassword = false}) {
     final s = e.toLowerCase();
     if (dav && (s.contains('socketexception') || s.contains('connection refused') || s.contains('failed host lookup') ||
         s.contains('network is unreachable') || s.contains('no route') || s.contains('timed out') ||
@@ -333,6 +414,13 @@ class _ExplorerPageState extends State<ExplorerPage> {
       );
     }
     if (s.contains(' 401') || s.contains('status: 401') || s.contains('아이디 · 비밀번호')) {
+      // 54: 비밀번호가 틀린 것이 아니라 저장된 것이 없다 (예전 판 설치 · 앱 다시 설치 등)
+      if (noPassword) {
+        return (
+          tr('저장된 비밀번호가 없습니다. 한 번만 다시 넣어 주세요'),
+          tr('[서버 설정 고치기] 에서 비밀번호를 넣으면 이 기기의 안전 저장소에 남아 다음부터는 다시 넣지 않아도 됩니다.'),
+        );
+      }
       return (tr('아이디 또는 비밀번호가 맞지 않습니다'), tr('[서버 설정 고치기] 에서 아이디 · 비밀번호를 확인하세요.'));
     }
     if (s.contains('handshake') || s.contains('certificate')) {
@@ -357,7 +445,8 @@ class _ExplorerPageState extends State<ExplorerPage> {
     if (err == null) return null;
     final where = pane.errors[dir] != null ? dir : pane.root;
     final dav = isDav(where);
-    final (title, body) = _explain(err, dav: dav);
+    final server = dav ? DavRegistry.server(DavPath.parse(where).server) : null;
+    final (title, body) = _explain(err, dav: dav, noPassword: server != null && server.password.isEmpty);
     return _notice(
       icon: dav ? Icons.cloud_off_outlined : Icons.error_outline,
       title: '${_displayPath(where)}: $title',
@@ -432,6 +521,8 @@ class _ExplorerPageState extends State<ExplorerPage> {
 
   String _volumeOf(String path) {
     if (isDav(path)) return '$davScheme${DavPath.parse(path).server}/';
+    // 37: Windows 네트워크 공유 (\\NAS\공유) 는 그 공유가 맨 위
+    if (Platform.isWindows && path.startsWith(r'\\')) return uncRoot(path);
     String best = _local.first.$1;
     var len = -1;
     for (final (v, _) in _local) {
@@ -470,7 +561,8 @@ class _ExplorerPageState extends State<ExplorerPage> {
   }
 
   /// 그 폴더로: 저장 장치부터 그 폴더까지 펼치고 지금 폴더로 정한다
-  Future<void> _goTo(_Pane pane, String dir, {bool remember = true}) async {
+  /// [fresh]: 경로 입력 · 찾기 · 내역으로 갈 때 - 그 폴더를 새로 읽는다 (앱 밖에서 바뀐 것까지 보이게, 122)
+  Future<void> _goTo(_Pane pane, String dir, {bool remember = true, bool fresh = false}) async {
     pane.root = _volumeOf(dir);
     final chain = <String>[];
     dir = isDav(dir) ? vNorm(dir) : p.normalize(dir);
@@ -480,9 +572,13 @@ class _ExplorerPageState extends State<ExplorerPage> {
       if (samePath(d, pane.root) || vDirname(d) == d) break;
       d = vDirname(d);
     }
-    for (final x in chain) {
+    for (final (k, x) in chain.indexed) {
       pane.expanded.add(x);
-      await _load(pane, x);
+      await _load(pane, x, force: fresh && k == chain.length - 1);
+      // 122: 읽어 둔 목록에 다음 폴더가 없으면 (앱 밖에서 새로 만듦) 새로 읽어야 그 폴더까지 펼쳐진다
+      if (k < chain.length - 1 && !(pane.cache[x] ?? const <FileEntry>[]).any((e) => samePath(e.path, chain[k + 1]))) {
+        await _load(pane, x, force: true);
+      }
     }
     pane
       ..current = dir
@@ -707,6 +803,11 @@ class _ExplorerPageState extends State<ExplorerPage> {
     _remember(pane, e.path);
   }
 
+  /// 다른 앱으로 열지 못했을 때: 음악 · 동영상이면 내장 플레이어를 알려 준다 (29)
+  String _noAppMessage(String path) => isAudioFile(path) || isVideoFile(path)
+      ? tr('이 형식을 여는 앱이 없습니다. 길게 누르거나 오른쪽 클릭 → [내장 플레이어로 재생] 으로 들어 보세요.')
+      : tr('이 파일을 열 수 있는 앱이 없습니다.');
+
   /// 파일 열기 (기본 동작): 동영상은 내장 플레이어 (또는 확장자별 프로그램), 그 밖은 기본 연결 프로그램
   Future<void> _open(String path, {_Pane? pane}) async {
     if (isVideoFile(path)) {
@@ -728,56 +829,11 @@ class _ExplorerPageState extends State<ExplorerPage> {
     final local = await _fetch(path);
     if (local == null) return;
     final ok = await c.services.shell.openWith(local);
-    if (!ok) _snack(tr('이 파일을 열 수 있는 앱이 없습니다.'));
+    if (!ok) _snack(_noAppMessage(path));
   }
 
-  /// WebDAV 파일은 열거나 재생하려면 임시 폴더로 받는다 (받는 동안 진행 창 · 취소). 로컬은 그대로.
-  Future<String?> _fetch(String path) async {
-    if (!isDav(path)) return path;
-    final temp = await c.services.storage.tempDirectory();
-    if (!mounted) return null;
-    final progress = ValueNotifier<(int, int)>((0, 0));
-    var cancelled = false;
-    final dialog = showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        scrollable: true,
-        title: Text(tr('WebDAV 에서 받는 중')),
-        content: ValueListenableBuilder<(int, int)>(
-          valueListenable: progress,
-          builder: (_, v, _) => Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(vBasename(path)),
-            const SizedBox(height: 10),
-            LinearProgressIndicator(value: v.$2 > 0 ? v.$1 / v.$2 : null),
-            const SizedBox(height: 6),
-            Text('${formatSize(v.$1)}${v.$2 > 0 ? ' / ${formatSize(v.$2)}' : ''}',
-                style: const TextStyle(fontSize: 12, color: JjColors.textDim)),
-          ]),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              cancelled = true;
-              Navigator.pop(ctx);
-            },
-            child: Text(tr('취소')),
-          ),
-        ],
-      ),
-    );
-    try {
-      final local = await vLocalCopy(path, temp, onProgress: (d, t) => progress.value = (d, t));
-      return cancelled ? null : local;
-    } catch (e) {
-      if (!cancelled) _snack(trf('받지 못했습니다: {0}', [e]));
-      return null;
-    } finally {
-      if (!cancelled && mounted) Navigator.of(context).pop();
-      await dialog;
-      progress.dispose();
-    }
-  }
+  /// WebDAV 파일은 열거나 재생하려면 임시 폴더로 받는다 (dav_external.dart)
+  Future<String?> _fetch(String path) => fetchDav(context, c, path);
 
   /// 동영상 재생 (WebDAV 는 받지 않고 바로 스트리밍)
   Future<void> _play(List<String> paths, {bool internal = false, bool keepOrder = false}) async {
@@ -891,6 +947,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
     pane.focused = e.path;
     pane.changed();
     final video = !e.isDir && isVideoFile(e.path);
+    final audio = !e.isDir && isAudioFile(e.path);
     final dav = isDav(e.path);
     // 그림 → PDF: 표시한 것 중 그림 (누른 것이 표시에 없으면 누른 것만)
     final viewer = c.settings.components.contains('viewer');
@@ -900,11 +957,23 @@ class _ExplorerPageState extends State<ExplorerPage> {
     final viewable = viewer && !e.isDir &&
         (c.settings.imageExts.contains(ext) || ext == 'pdf' || zipExtensions.contains(ext));
     final dual = _dual;
-    final items = <(String, IconData, String)>[
+    // 25: Rsync 화면은 폴더만 보이므로 폴더에 맞는 것만 (고르기 · 열기 · 이름 변경 · 삭제 · 정보)
+    final items = widget.rsync
+        ? <(String, IconData, String)>[
+            ('pickRsync', Icons.check_circle_outline,
+                _isMarked(pane, e.path) ? tr('고르기 취소') : tr('rsync 에 고르기')),
+            ('open', Icons.folder_open, tr('열기')),
+            ('openOther', Icons.vertical_split_outlined, tr('다른 창에서 열기')),
+            ('rename', Icons.drive_file_rename_outline, tr('이름 변경')),
+            ('delete', Icons.delete_outline, tr('삭제')),
+            if (!dav) ('reveal', Icons.folder_outlined, tr('파일 관리자에서 보기')),
+            ('info', Icons.info_outline, tr('정보')),
+          ]
+        : <(String, IconData, String)>[
       if (e.isDir) ('open', Icons.folder_open, tr('열기')),
       if (e.isDir && dual) ('openOther', Icons.vertical_split_outlined, tr('다른 창에서 열기')),
       if (e.isDir) ('playFolder', Icons.play_circle_outline, tr('이 폴더의 동영상 재생')),
-      if (video) ('playInternal', Icons.play_circle_outline, tr('내장 플레이어로 재생')),
+      if (video || audio) ('playInternal', Icons.play_circle_outline, tr('내장 플레이어로 재생')),
       if (viewable) ('view', Icons.visibility_outlined, tr('보기')),
       if (!e.isDir) ('openWith', Icons.open_in_new, tr('다른 앱으로 열기')),
       if (!e.isDir && !video) ('openDefault', Icons.launch, tr('기본 앱으로 열기')),
@@ -933,12 +1002,18 @@ class _ExplorerPageState extends State<ExplorerPage> {
         for (final (id, icon, label) in items)
           PopupMenuItem(
             value: id,
-            child: Row(children: [Icon(icon, size: 18), const SizedBox(width: 12), Text(label)]),
+            child: Row(children: [
+              Icon(icon, size: 18),
+              const SizedBox(width: 12),
+              Flexible(child: Text(label, overflow: TextOverflow.ellipsis)),
+            ]),
           ),
       ],
     );
     if (pick == null || !mounted) return;
     switch (pick) {
+      case 'pickRsync':
+        await _pick(pane, e);
       case 'open':
         await _goTo(pane, e.path);
       case 'openOther':
@@ -951,10 +1026,10 @@ class _ExplorerPageState extends State<ExplorerPage> {
         await _play([e.path], internal: true);
       case 'openWith':
         final local = await _fetch(e.path);
-        if (local != null && !await c.services.shell.openWith(local, choose: true)) _snack(tr('이 파일을 열 수 있는 앱이 없습니다.'));
+        if (local != null && !await c.services.shell.openWith(local, choose: true)) _snack(_noAppMessage(e.path));
       case 'openDefault':
         final local = await _fetch(e.path);
-        if (local != null && !await c.services.shell.openWith(local)) _snack(tr('이 파일을 열 수 있는 앱이 없습니다.'));
+        if (local != null && !await c.services.shell.openWith(local)) _snack(_noAppMessage(e.path));
       case 'addMkv':
         await _addMkv([e.path]);
       case 'select':
@@ -1102,6 +1177,8 @@ class _ExplorerPageState extends State<ExplorerPage> {
         _snack(c.settings.explorerShowHidden ? tr('숨은 항목을 보입니다.') : tr('숨은 항목을 감춥니다.'));
       case ExplorerButton.history:
         await _historyDialog(pane);
+      case ExplorerButton.orient:
+        await _toggleOrientation();
       case ExplorerButton.layout:
         await _layoutDialog();
       case ExplorerButton.buttons:
@@ -1156,40 +1233,114 @@ class _ExplorerPageState extends State<ExplorerPage> {
     }
   }
 
+  /// Shift+Delete 로 불렀는지 (휴지통을 거치지 않고 지우기를 미리 골라 둔다 - 65)
+  bool _shiftDelete = false;
+
+  /// 지우기. Windows 의 로컬 파일은 기본으로 휴지통으로 (창에서 "영구 삭제" 를 고르거나 Shift+Delete).
+  /// WebDAV · Android 는 휴지통이 없어 바로 지운다. 여러 개면 실패해도 나머지를 계속하고, 못 지운 것을 알린다 (65).
   Future<void> _delete(_Pane pane, List<String> paths) async {
+    final shift = _shiftDelete;
+    _shiftDelete = false;
     if (paths.isEmpty) {
       _snack(tr('지울 항목을 고르세요 (누르거나 오른쪽 동그라미로 표시).'));
       return;
     }
+    // 휴지통이 있는 곳: Windows 의 고정 디스크 (94: 네트워크 드라이브 · \\NAS · USB 메모리는 휴지통이 없어 처음부터 영구 삭제로 묻는다)
+    final local = Platform.isWindows && paths.every((x) => !isDav(x));
+    final canRecycle = local && c.settings.recycleOnDelete && paths.every(hasRecycleBin);
+    var permanent = !canRecycle || shift;
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        scrollable: true,
-        title: Text(tr('삭제')),
-        // 무엇을 지우는지 늘 보여 준다 (여러 개면 앞의 8개 이름 · 폴더)
-        content: Text(paths.length == 1
-            ? '${trf('"{0}" 을(를) 지울까요? 되돌릴 수 없습니다.', [vBasename(paths.first)])}\n${vDirname(paths.first)}'
-            : [
-                trf('{0}개 항목을 지울까요? 되돌릴 수 없습니다.', [paths.length]),
-                for (final x in paths.take(8)) '· ${vBasename(x)}',
-                if (paths.length > 8) trf('… 외 {0}개', [paths.length - 8]),
-                {for (final x in paths) vDirname(x)}.join('\n'),
-              ].join('\n')),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('취소'))),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(tr('삭제')),
-          ),
-        ],
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, set) => AlertDialog(
+          scrollable: true,
+          title: Text(permanent ? tr('영구 삭제') : tr('휴지통으로 보내기')),
+          // 무엇을 지우는지 늘 보여 준다 (여러 개면 앞의 8개 이름 · 폴더)
+          content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(paths.length == 1
+                ? '${permanent ? trf('"{0}" 을(를) 지울까요? 되돌릴 수 없습니다.', [vBasename(paths.first)]) : trf('"{0}" 을(를) 휴지통으로 보낼까요?', [vBasename(paths.first)])}'
+                    '\n${vDirname(paths.first)}'
+                : [
+                    permanent
+                        ? trf('{0}개 항목을 지울까요? 되돌릴 수 없습니다.', [paths.length])
+                        : trf('{0}개 항목을 휴지통으로 보낼까요?', [paths.length]),
+                    for (final x in paths.take(8)) '· ${vBasename(x)}',
+                    if (paths.length > 8) trf('… 외 {0}개', [paths.length - 8]),
+                    {for (final x in paths) vDirname(x)}.join('\n'),
+                  ].join('\n')),
+            if (local && !canRecycle)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(tr('이 위치 (네트워크 드라이브 · 네트워크 공유 · USB 메모리 등) 에는 휴지통이 없어 바로 지워집니다.'),
+                    style: const TextStyle(fontSize: 12, color: Colors.orangeAccent)),
+              ),
+            if (canRecycle)
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                value: permanent,
+                onChanged: (v) => set(() => permanent = v ?? false),
+                title: Text(tr('휴지통을 거치지 않고 영구 삭제 (Shift+Delete)')),
+              ),
+          ]),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('취소'))),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: permanent ? Colors.red.shade700 : null),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(permanent ? tr('영구 삭제') : tr('휴지통으로')),
+            ),
+          ],
+        ),
       ),
     );
     if (ok != true) return;
-    try {
-      await FileOps().delete(paths);
-    } catch (e) {
-      _snack(trf('지우지 못했습니다: {0}', [e]));
+    // 하나씩: 실패해도 나머지는 계속. 실제로 어떻게 됐는지 세어 그대로 알린다 (94)
+    final failed = <(String, String)>[];
+    var recycled = 0, nuked = 0, kept = 0;
+    for (final x in paths) {
+      try {
+        if (!permanent) {
+          switch (moveToRecycleBin(x)) {
+            case RecycleResult.recycled:
+              recycled++;
+            case RecycleResult.deletedPermanently:
+              nuked++;
+            case RecycleResult.cancelled:
+              kept++;
+          }
+        } else {
+          await FileOps().delete([x]);
+        }
+      } catch (e) {
+        failed.add((x, e is FileSystemException ? (e.osError?.message ?? e.message) : '$e'));
+      }
+    }
+    if (failed.isNotEmpty && mounted) {
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          scrollable: true,
+          icon: const Icon(Icons.error_outline, color: Colors.redAccent),
+          title: Text(trf('{0}개 중 {1}개를 지우지 못했습니다', [paths.length, failed.length])),
+          content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            for (final (x, why) in failed.take(30)) ...[
+              Text(vBasename(x), style: const TextStyle(fontWeight: FontWeight.w600)),
+              Text('${vDirname(x)} · $why', style: const TextStyle(fontSize: 12, color: JjColors.textDim)),
+              const SizedBox(height: 4),
+            ],
+            if (failed.length > 30) Text(trf('… 외 {0}개', [failed.length - 30])),
+            const SizedBox(height: 6),
+            Text(tr('다른 프로그램이 쓰고 있거나 권한이 없을 수 있습니다. 나머지는 지웠습니다.'), style: const TextStyle(fontSize: 12)),
+          ]),
+          actions: [FilledButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('확인')))],
+        ),
+      );
+    } else if (!permanent) {
+      _snack([
+        if (recycled > 0) trf('{0}개 항목을 휴지통으로 보냈습니다.', [recycled]),
+        if (nuked > 0) trf('{0}개는 휴지통보다 커서 영구 삭제했습니다 (Windows 가 물은 대로).', [nuked]),
+        if (kept > 0) trf('{0}개는 지우지 않았습니다 (취소).', [kept]),
+      ].join(' '));
     }
     for (final x in _panes) {
       x.marked.removeAll(paths);
@@ -1265,8 +1416,9 @@ class _ExplorerPageState extends State<ExplorerPage> {
       _snack(tr('복사 · 이동할 항목을 고르세요 (누르거나 오른쪽 동그라미로 표시).'));
       return false;
     }
-    if (_jobs.any((j) => !j.finished)) {
-      _snack(tr('앞의 복사 · 이동이 끝난 뒤에 하세요.'));
+    // 23: 앞의 복사 · 이동이 끝나지 않아도 함께 시작한다 (아래 진행 막대에 하나씩). 같은 것을 같은 곳으로만 막는다
+    if (_jobs.any((j) => !j.finished && samePath(j.dest, dest) && j.sources.toSet().containsAll(sources))) {
+      _snack(tr('같은 항목을 같은 곳으로 복사 · 이동하는 중입니다.'));
       return false;
     }
     // 원본 · 대상이 없거나 (다른 곳에서 지움 - 목록을 새로 고침) 폴더를 자기 안으로 넣으려 하면 시작하지 않는다
@@ -1301,6 +1453,8 @@ class _ExplorerPageState extends State<ExplorerPage> {
       ),
     );
     if (go != true || !mounted) return false;
+    // 104: 설정의 옵션에 지우기 (robocopy /MIR · /PURGE 등) 가 있으면 미리 보기를 거친다
+    if (!await confirmDeletingRun(context, task) || !mounted) return false;
     String? rsync;
     if (method == CopyMethod.rsync && !_viaDav([...sources, dest])) {
       rsync = await _ensureRsync();
@@ -1308,7 +1462,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
     }
     final job = await center.start(task, rsyncExe: rsync);
     if (job == null || !mounted) return false;
-    setState(() => _jobs = [job]);
+    setState(() => _jobs = [..._jobs.where((j) => !j.finished), job]);
     await job.done;
     final error = job.error;
     if (!mounted) return false;
@@ -1330,28 +1484,52 @@ class _ExplorerPageState extends State<ExplorerPage> {
             : trf('{0}개 항목을 {1}', [job.made.length, move ? tr('옮겼습니다.') : tr('복사했습니다.')]));
     // 다 되면 진행 막대가 잠깐 100% 를 보인 뒤 내려간다
     await Future<void>.delayed(const Duration(milliseconds: 1200));
-    if (mounted && _jobs.contains(job)) setState(() => _jobs = const []);
+    if (mounted && _jobs.contains(job)) setState(() => _jobs = [for (final j in _jobs) if (j != job) j]);
     return error == null;
   }
 
   /// Rsync 화면: 고른 왼쪽 · 오른쪽 폴더로 rsync. [right] 왼쪽 → 오른쪽, [left] 오른쪽 → 왼쪽 (둘 다면 함께).
   /// 폴더 "안의 것" 을 맞춘다 (원본/ → 대상/). 함께 할 때는 받는 쪽이 더 새 파일은 건너뛴다 (-u).
   /// 실행한 것은 모니터링에 남는다 (같은 것을 다시 하면 기억한 옵션으로).
+  /// 확인 창이 떠 있는 동안 또 누르면 무시 (창이 겹쳐 아래 창을 잘못 누르지 않게 - 110)
+  bool _rsyncAsking = false;
+
   Future<void> _runRsync({required bool right, required bool left}) async {
+    if (_rsyncAsking) return;
+    _rsyncAsking = true;
+    try {
+      await _runRsyncInner(right: right, left: left);
+    } finally {
+      _rsyncAsking = false;
+    }
+  }
+
+  Future<void> _runRsyncInner({required bool right, required bool left}) async {
     final l = _panes[0].marked.firstOrNull, r = _panes[1].marked.firstOrNull;
     if (l == null || r == null) {
       _snack(tr('왼쪽 · 오른쪽 창에서 폴더를 하나씩 고르세요.'));
       return;
     }
-    if (isSameOrInside(l, r) || isSameOrInside(r, l)) {
-      _snack(tr('같은 폴더이거나 한쪽이 다른 쪽 안에 있습니다. 다른 폴더를 고르세요.'));
-      return;
-    }
-    if (_jobs.any((j) => !j.finished)) {
-      _snack(tr('앞의 rsync 가 끝난 뒤에 하세요.'));
-      return;
-    }
     final runs = [if (right) (l, r), if (left) (r, l)];
+    // 34: 대상이 원본과 같거나 원본 안이면 막는다 (맞출 때마다 원본이 바뀜). 원본이 대상 안 (안쪽 → 바깥) 은 지우기가 없을 때만
+    if (runs.any((x) => isSameOrInside(x.$2, x.$1))) {
+      _snack(tr('대상이 원본과 같거나 원본 안에 있습니다 (맞출 때마다 원본이 바뀝니다). 다른 폴더를 고르세요.'));
+      return;
+    }
+    final nested = runs.any((x) => isSameOrInside(x.$1, x.$2));
+    if (nested && !c.settings.allowInnerToOuter) {
+      _snack(tr('원본이 대상 안에 있습니다 (환경 설정에서 막아 둠). 다른 폴더를 고르세요.'));
+      return;
+    }
+    // 23: 다른 쌍은 함께 돌릴 수 있다. 같은 폴더끼리 도는 중이면 (서로 덮어쓰지 않게) 막는다
+    if (_jobs.any((j) =>
+        !j.finished &&
+        runs.any((x) =>
+            (samePath(j.sources.first, x.$1) && samePath(j.dest, x.$2)) ||
+            (samePath(j.sources.first, x.$2) && samePath(j.dest, x.$1))))) {
+      _snack(tr('이 두 폴더는 지금 rsync 하는 중입니다. 끝난 뒤에 하세요.'));
+      return;
+    }
     for (final (src, dst) in runs) {
       final problem = transferProblem([src], dst, move: false);
       if (problem != null) {
@@ -1366,32 +1544,102 @@ class _ExplorerPageState extends State<ExplorerPage> {
     final both = right && left;
     final center = CopyCenter.of(c);
     // 확인 창에는 기억한 옵션 (없으면 지금 설정) 을 보여 주고, 실행할 때 모니터링에 기억한다
-    var tasks = [for (final (src, dst) in runs) center.peek([src], dst, contents: true, method: 'rsync')];
+    // 96: 확인 창 · 미리 보기 · 실행이 같은 작업 (원본 파일 지우기 = 이동 작업) 과 같은 옵션을 쓴다
+    List<CopyTask> shownTasks(bool move) =>
+        [for (final (src, dst) in runs) center.peek([src], dst, contents: true, method: 'rsync', move: move)];
+    var tasks = shownTasks(false);
     String opts(CopyTask t) => both ? withUpdateOption(t.options) : t.options;
+    // 95: ⇄ 는 → 다음에 ← (차례로). ← 에서는 지우지 않는다 (→ 가 방금 복사한 것을 지우지 않게)
+    String runOpts(int i) => both && i > 0 ? withoutDeleteOptions(opts(tasks[i])) : opts(tasks[i]);
+    if (nested && tasks.any((t) => optionsDelete(opts(t)))) {
+      _snack(tr('원본이 대상 안에 있으면 지우기 (--delete) 를 함께 쓸 수 없습니다 (대상의 다른 파일이 모두 지워집니다).'));
+      return;
+    }
     // 한 방향 (→ · ←) 만: 원본 파일 지우기 (--remove-source-files) 와 끝난 뒤 원본 정리
     var removeSource = false;
     var prune = 'keep';
+    // 72: 실행 전 비교 결과 (지워질 수를 실행 버튼에)
+    List<PreviewItem>? preview;
+    Object? previewError;
+    // 93: 지우는 실행 (--delete 등. 100: WebDAV 도 따른다) 은 비교가 끝나 지울 목록이 보인 뒤에만
+    bool deletes() => tasks.any((t) => optionsDelete(opts(t)));
+    // 105: 원본이 대상 안인데 지우기가 들어가면 막는다 - 창 안에서 옵션이 바뀔 때 (원본 파일 지우기) 와 실행 직전에도 본다
+    bool nestedDelete() => nested && deletes();
     if (!mounted) return;
     final go = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(builder: (ctx, set) => AlertDialog(
         scrollable: true,
+        // 110: 버튼이 좁아 세로로 쌓여도 [취소] 가 먼저 (아래 · 위가 바뀌어 [취소] 자리에 [실행] 이 오지 않게)
+        actionsOverflowDirection: VerticalDirection.down,
         title: Text(both ? tr('rsync 양쪽 (⇄)') : 'rsync'),
         content: SizedBox(
           width: 560,
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             for (final t in tasks) ...[
-              Text('${vDisplay(t.sources.first)}/', style: const TextStyle(fontWeight: FontWeight.w600)),
-              Text('→  ${vDisplay(t.dest)}/', style: const TextStyle(fontWeight: FontWeight.w600)),
-              Text('rsync ${opts(t)}${removeSource ? ' --remove-source-files' : ''}'
+              // 109: 끝 폴더가 보이게 짧게, 전체 경로는 작게
+              Text(shortPath(t.sources.first), style: const TextStyle(fontWeight: FontWeight.w600)),
+              Text('→  ${shortPath(t.dest)}', style: const TextStyle(fontWeight: FontWeight.w600)),
+              Text('${vDisplay(t.sources.first)}/  →  ${vDisplay(t.dest)}/',
+                  style: const TextStyle(fontSize: 11, color: JjColors.textDim)),
+              // 111: 이 쌍은 처음 실행 때 기억한 옵션을 쓴다 (환경 설정의 rsync 옵션을 바꿔도 그대로)
+              if (center.tasks.any((x) => x.id == t.id))
+                Text(tr('이 폴더 쌍은 기억한 옵션을 씁니다 (환경 설정이 아니라 모니터링 > 복사 · rsync 에서 고칩니다)'),
+                    style: const TextStyle(fontSize: 11, color: JjColors.textDim)),
+              Text('rsync ${runOpts(tasks.indexOf(t))}${removeSource ? ' --remove-source-files' : ''}'
                   '${t.bandwidthKBps > 0 ? ' · ${trf('속도 제한 {0} KB/s', [t.bandwidthKBps])}' : ''}',
                   style: const TextStyle(fontSize: 12, fontFamily: 'monospace', color: JjColors.textDim)),
               const SizedBox(height: 10),
             ],
             Text(tr('폴더 안의 것을 맞춥니다 (대상에 같은 이름의 폴더를 새로 만들지 않음).'),
                 style: const TextStyle(fontSize: 12, color: JjColors.textDim)),
+            if (nested)
+              Text(tr('원본이 대상 폴더 안에 있습니다: 원본의 내용이 대상 폴더 바로 아래에 복사됩니다 (원본 폴더는 그대로 남음).'),
+                  style: const TextStyle(fontSize: 12, color: Colors.orangeAccent)),
+            // 72: 무엇이 바뀌는지 파일별로 (→ · ← · 받는 쪽에만 있음 · 지워짐)
+            const SizedBox(height: 8),
+            SyncPreviewView(
+              // 옵션이 바뀌면 (원본 파일 지우기) 다시 비교
+              key: ValueKey([for (var i = 0; i < tasks.length; i++) runOpts(i)].join('|')),
+              compute: () async => both
+                  ? previewBoth(l, r, delete: deletes())
+                  : [
+                      for (final t in tasks)
+                        ...await previewSync(t.sources.first, t.dest,
+                            toRight: t.sources.first == l, delete: deletes(), update: optionsUpdate(opts(t))),
+                    ],
+              // 97: 다시 비교하는 동안은 예전 결과로 실행하지 못하게
+              onStart: () => set(() {
+                preview = null;
+                previewError = null;
+              }),
+              onResult: (items) => set(() {
+                preview = items;
+                previewError = null;
+              }),
+              onError: (e) => set(() {
+                preview = null;
+                previewError = e;
+              }),
+            ),
+            if (nestedDelete())
+              Text(tr('원본이 대상 안에 있으면 지우기 (--delete) 를 함께 쓸 수 없습니다 (대상의 다른 파일이 모두 지워집니다).'),
+                  style: const TextStyle(fontSize: 12, color: Colors.redAccent, fontWeight: FontWeight.w600)),
+            // 110: 이 줄은 늘 같은 자리를 차지한다 (글이 사라져 창 높이가 바뀌면 버튼이 움직인다)
+            SizedBox(
+              height: 34,
+              child: deletes() && preview == null
+                  ? Text(
+                      previewError != null
+                          ? tr('지우기가 들어간 실행이라, 비교하지 못하면 실행할 수 없습니다. 원본 · 대상을 확인한 뒤 [다시 비교] 를 누르세요.')
+                          : tr('지우기가 들어간 실행이라, 지울 목록이 나온 뒤에 실행할 수 있습니다.'),
+                      style: const TextStyle(fontSize: 12, color: Colors.orangeAccent),
+                    )
+                  : null,
+            ),
+            const SizedBox(height: 4),
             if (_viaDav([l, r]))
-              Text(tr('WebDAV: rsync 대신 앱이 직접 맞춥니다 (크기 · 바뀐 때 비교, 옵션 중 -u · --remove-source-files 만 따름).'),
+              Text(tr('WebDAV: rsync 대신 앱이 직접 맞춥니다 (크기 · 바뀐 때 비교, 옵션 중 -u · --delete · --remove-source-files 를 따름).'),
                   style: const TextStyle(fontSize: 12, color: JjColors.accent)),
             if (both)
               Text(tr('양쪽을 함께: 받는 쪽이 더 새 파일은 덮어쓰지 않습니다 (-u).'),
@@ -1400,7 +1648,12 @@ class _ExplorerPageState extends State<ExplorerPage> {
               CheckboxListTile(
                 contentPadding: EdgeInsets.zero,
                 value: removeSource,
-                onChanged: (v) => set(() => removeSource = v ?? false),
+                onChanged: (v) => set(() {
+                  removeSource = v ?? false;
+                  tasks = shownTasks(removeSource);
+                  preview = null;
+                  previewError = null;
+                }),
                 title: Text(tr('원본 파일 지우기 (--remove-source-files)')),
                 subtitle: Text(tr('대상으로 옮긴 파일을 원본에서 지웁니다 (이동)')),
               ),
@@ -1415,32 +1668,55 @@ class _ExplorerPageState extends State<ExplorerPage> {
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('취소'))),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(removeSource ? tr('이동') : tr('실행'))),
+          Builder(builder: (_) {
+            final dels = preview?.where((x) => x.action == PreviewAction.delete).length ?? 0;
+            return FilledButton(
+              style: dels > 0 ? FilledButton.styleFrom(backgroundColor: JjColors.danger) : null,
+              onPressed: nestedDelete() || (deletes() && preview == null) ? null : () => Navigator.pop(ctx, true),
+              // 110: 글자는 늘 같게 (비교가 끝나 글이 길어지면 버튼 배치가 바뀌어 [취소] 를 누르려다 [실행] 을 누르게 됨).
+              // 지울 수는 위의 빨간 글 "받는 쪽에서 N개가 지워집니다" 로 보인다
+              child: Text(removeSource ? tr('이동') : tr('실행')),
+            );
+          }),
         ],
       )),
     );
+    // 110: 무엇을 골랐는지 작업 기록에 (실행 · 취소 · 닫힘)
+    c.note(trf('Rsync 확인 창 ({0}): {1}', [
+      both ? '⇄' : right ? '→' : '←',
+      go == true ? tr('실행') : go == false ? tr('취소') : tr('닫힘 (실행 안 함)'),
+    ]));
     if (go != true || !mounted) return;
+    if (nestedDelete()) {
+      _snack(tr('원본이 대상 안에 있으면 지우기 (--delete) 를 함께 쓸 수 없습니다 (대상의 다른 파일이 모두 지워집니다).'));
+      return;
+    }
     final dav = _viaDav([l, r]);
     final exe = dav ? '' : await _ensureRsync();
     if (exe == null || !mounted) return;
-    tasks = [
+    // 96: 확인 창에 보인 그 옵션으로 (기억한 작업의 옵션이 달라도)
+    final shownOpts = [for (var i = 0; i < tasks.length; i++) runOpts(i)];
+    var run = [
       for (final (src, dst) in runs) await center.remember([src], dst, contents: true, method: 'rsync', move: removeSource),
     ];
     if (removeSource) {
-      tasks = [for (final t in tasks) t.copyWith(prune: prune)];
-      for (final t in tasks) {
+      run = [for (final t in run) t.copyWith(prune: prune)];
+      for (final t in run) {
         await center.update(t);
       }
     }
+    // 95: 차례로 (→ 가 끝난 뒤 ←). 앞의 것이 실패 · 취소되면 뒤의 것은 하지 않는다
     final jobs = <TransferJob>[];
-    for (final t in tasks) {
-      final j = await center.start(t.copyWith(options: opts(t)), rsyncExe: dav ? null : exe);
-      if (j != null) jobs.add(j);
+    for (var i = 0; i < run.length; i++) {
+      c.note(trf('rsync 시작 ({0}): {1} → {2}', [tr('Rsync 화면 확인 창의 [실행]'), run[i].sources.first, run[i].dest]));
+      final j = await center.start(run[i].copyWith(options: shownOpts[i]), rsyncExe: dav ? null : exe);
+      if (j == null || !mounted) break;
+      jobs.add(j);
+      setState(() => _jobs = [..._jobs.where((x) => !x.finished), j]);
+      await j.done;
+      if (j.error != null) break;
     }
     if (jobs.isEmpty || !mounted) return;
-    setState(() => _jobs = jobs);
-    await Future.wait(jobs.map((j) => j.done));
-    if (!mounted) return;
     // 원본 폴더까지 지웠으면 고른 표시도 뺀다
     for (final x in _panes) {
       x.marked.removeWhere((m) => vMissingSync(m));
@@ -1456,7 +1732,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
             ? trf('끝나지 못했습니다: {0}', [error])
             : trf('rsync 끝: {0}', [jobs.map((j) => '${vBasename(j.sources.first)} → ${vBasename(j.dest)}').join(' · ')]));
     await Future<void>.delayed(const Duration(milliseconds: 1200));
-    if (mounted && identical(_jobs, jobs)) setState(() => _jobs = const []);
+    if (mounted) setState(() => _jobs = [for (final j in _jobs) if (!jobs.contains(j)) j]);
   }
 
   /// 아래에서 올라오는 진행 막대 (위: 전체 항목 중 · 아래: 지금 폴더의 파일 중)
@@ -1474,12 +1750,18 @@ class _ExplorerPageState extends State<ExplorerPage> {
               borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 10, 12, 12),
-                child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  for (final (k, job) in jobs.indexed) ...[
-                    if (k > 0) const Divider(height: 18),
-                    ListenableBuilder(listenable: job, builder: (context, _) => _jobView(job)),
-                  ],
-                ]),
+                // 여러 개가 함께 돌면 (23) 높이를 넘지 않게 넘겨 보기
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.45),
+                  child: SingleChildScrollView(
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      for (final (k, job) in jobs.indexed) ...[
+                        if (k > 0) const Divider(height: 18),
+                        ListenableBuilder(listenable: job, builder: (context, _) => _jobView(job)),
+                      ],
+                    ]),
+                  ),
+                ),
               ),
             ),
     );
@@ -1580,10 +1862,10 @@ class _ExplorerPageState extends State<ExplorerPage> {
     ]);
   }
 
-  Future<String?> _askName(String title, String initial) {
+  Future<String?> _askName(String title, String initial, {String? hint, bool selectAll = false}) {
     final ctl = TextEditingController(text: initial);
     final dot = initial.lastIndexOf('.');
-    ctl.selection = TextSelection(baseOffset: 0, extentOffset: dot > 0 ? dot : initial.length);
+    ctl.selection = TextSelection(baseOffset: 0, extentOffset: dot > 0 && !selectAll ? dot : initial.length);
     return showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -1592,7 +1874,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
         content: TextField(
           controller: ctl,
           autofocus: true,
-          decoration: InputDecoration(hintText: tr('이름')),
+          decoration: InputDecoration(hintText: hint ?? tr('이름')),
           onSubmitted: (v) => Navigator.pop(ctx, v.trim().isEmpty ? null : v.trim()),
         ),
         actions: [
@@ -1633,9 +1915,10 @@ class _ExplorerPageState extends State<ExplorerPage> {
       builder: (ctx) => _SearchDialog(root: pane.current, query: q, showHidden: c.settings.explorerShowHidden),
     );
     if (found == null) return;
-    await _goTo(pane, found.isDir ? found.path : vDirname(found.path));
+    await _goTo(pane, found.isDir ? found.path : vDirname(found.path), fresh: true);
     pane.focused = found.path;
     pane.changed();
+    _reveal(pane, found.path);
   }
 
   Future<void> _sortDialog() async {
@@ -1695,7 +1978,31 @@ class _ExplorerPageState extends State<ExplorerPage> {
         ],
       ),
     );
-    if (pick != null) await _goTo(pane, pick);
+    if (pick != null) await _goTo(pane, pick, fresh: true);
+  }
+
+  /// 118: 두 창이면 좌우 ⇆ 위아래 를 바꾸고, 한 창이면 두 창 (좌우) 으로. 한 번 눌러 바로
+  Future<void> _toggleOrientation() async {
+    final s = c.settings;
+    if (!(_dual || _split)) {
+      await c.updateSettings((x) => x
+        ..explorerLayout = 'dual'
+        ..explorerOrientation = 'side');
+    } else {
+      // 지금 보이는 배치의 반대 ('화면 모양 따라' 였으면 지금 모양에서 정함)
+      final size = MediaQuery.sizeOf(context);
+      final nowSide = switch (s.explorerOrientation) {
+        'side' => true,
+        'stacked' => false,
+        _ => size.width >= size.height,
+      };
+      await c.updateSettings((x) => x.explorerOrientation = nowSide ? 'stacked' : 'side');
+    }
+    if (!mounted) return;
+    setState(() {});
+    for (final pane in _panes) {
+      _reveal(pane, pane.current);
+    }
   }
 
   Future<void> _layoutDialog() async {
@@ -1736,9 +2043,9 @@ class _ExplorerPageState extends State<ExplorerPage> {
                   ),
                 if (layout != 'single')
                   group(tr('두 창 배치'), orient, [
-                    ('auto', tr('화면 모양 따라')),
-                    ('side', tr('좌우')),
+                    ('side', tr('좌우 (기본)')),
                     ('stacked', tr('위아래')),
+                    ('auto', tr('화면 모양 따라')),
                   ], (v) => orient = v),
                 group(tr('기능 버튼 줄'), bar, [
                   ('middle', layout != 'single' ? tr('두 창 사이') : tr('왼쪽')),
@@ -1840,6 +2147,11 @@ class _ExplorerPageState extends State<ExplorerPage> {
       bindings: {
         const SingleActivator(LogicalKeyboardKey.f5): () => _button(ExplorerButton.refresh),
         const SingleActivator(LogicalKeyboardKey.delete): () => _button(ExplorerButton.delete),
+        // 65: Shift+Delete = 휴지통을 거치지 않고 (창에서 한 번 더 확인)
+        const SingleActivator(LogicalKeyboardKey.delete, shift: true): () {
+          _shiftDelete = true;
+          _button(ExplorerButton.delete);
+        },
         const SingleActivator(LogicalKeyboardKey.f2): () => _button(ExplorerButton.rename),
         const SingleActivator(LogicalKeyboardKey.backspace): () => _button(ExplorerButton.up),
         const SingleActivator(LogicalKeyboardKey.tab): () =>
@@ -1937,6 +2249,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
               },
               selected: (b) =>
                   (b == ExplorerButton.hidden && s.explorerShowHidden) || (b == ExplorerButton.select && _selecting),
+              twoPanes: dual || split,
             );
       final middle = bar != null && (widget.rsync || s.explorerToolbar == 'middle');
       final edge = bar != null && !widget.rsync && s.explorerToolbar == 'edge';
@@ -2007,11 +2320,12 @@ class _ExplorerPageState extends State<ExplorerPage> {
     final pane = _panes[i];
     final rows = _rows(pane, foldersOnly: foldersOnly);
     final look = _look;
-    return _frame(i, [
+    // 38: 창 높이를 알아야 안내 상자의 높이를 제한할 수 있다
+    return LayoutBuilder(builder: (context, box) => _frame(i, [
       _paneHeader(pane),
       const Divider(height: 1),
-      ?_accessNotice(pane),
-      ?_errorNotice(pane, pane.current),
+      // 38: 안내가 길어도 목록을 덮지 않게 (창 높이의 35% 까지, 넘치면 넘겨 봄)
+      ?_noticeArea([_accessNotice(pane), _errorNotice(pane, pane.current), _partialNotice(pane, pane.current)], box.maxHeight),
       // 읽는 중 (WebDAV 서버를 기다릴 때 등)
       if (pane.loading.isNotEmpty) const LinearProgressIndicator(minHeight: 2),
       if (look.columns && !foldersOnly) ExplorerColumnsHeader(style: look, markColumn: _selecting),
@@ -2024,7 +2338,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
         ),
       ),
       if (_selecting && !foldersOnly) _marksBar(pane),
-    ]);
+    ]));
   }
 
   /// "폴더 + 파일 목록" 배치의 오른쪽: 왼쪽 트리에서 고른 폴더의 내용 (맨 위 ".." = 상위 폴더)
@@ -2037,7 +2351,8 @@ class _ExplorerPageState extends State<ExplorerPage> {
       for (final e in entries) _Row(e, 0),
     ];
     final look = _look;
-    return _frame(0, [
+    // 38: 창 높이를 알아야 안내 상자의 높이를 제한할 수 있다
+    return LayoutBuilder(builder: (context, box) => _frame(0, [
       Container(
         height: 40,
         alignment: Alignment.centerLeft,
@@ -2045,8 +2360,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
         child: Text(_displayPath(dir), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: JjColors.textDim)),
       ),
       const Divider(height: 1),
-      ?_accessNotice(pane),
-      ?_errorNotice(pane, dir),
+      ?_noticeArea([_accessNotice(pane), _errorNotice(pane, dir), _partialNotice(pane, dir)], box.maxHeight),
       if (look.columns) ExplorerColumnsHeader(style: look, markColumn: _selecting),
       Expanded(
         child: pane.loading.contains(dir)
@@ -2061,7 +2375,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
                   ),
       ),
       if (_selecting) _marksBar(pane, listDir: dir),
-    ]);
+    ]));
   }
 
   /// 창 위쪽: 저장 장치 고르기
@@ -2071,7 +2385,13 @@ class _ExplorerPageState extends State<ExplorerPage> {
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
           children: [
-            for (final (path, label) in _volumes)
+            // 37: 지금 열어 둔 네트워크 공유 (\\NAS\공유) 도 탭으로
+            for (final (path, label) in [
+              ..._volumes,
+              for (final x in _panes)
+                if (Platform.isWindows && x.root.startsWith(r'\\') && !_volumes.any((v) => samePath(v.$1, x.root)))
+                  (x.root, x.root),
+            ])
               Padding(
                 padding: const EdgeInsets.only(right: 4),
                 child: TextButton.icon(
@@ -2113,9 +2433,39 @@ class _ExplorerPageState extends State<ExplorerPage> {
                 icon: const Icon(Icons.add, size: 16),
                 onPressed: () => _editDav(pane, null),
               ),
+            // 37: 경로를 직접 넣어 가기 (Windows 는 \\NAS\공유 도)
+            IconButton(
+              tooltip: tr('경로 입력'),
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(Icons.edit_location_alt_outlined, size: 16),
+              onPressed: () => _enterPath(pane),
+            ),
           ],
         ),
       );
+
+  /// 경로를 직접 넣어 가기 (37). 없는 폴더면 알린다
+  Future<void> _enterPath(_Pane pane) async {
+    setState(() => _active = _panes.indexOf(pane));
+    final input = await _askName(
+        Platform.isWindows ? tr('경로 입력 (예: D:\\영상 · \\\\NAS\\공유)') : tr('경로 입력'), pane.current,
+        hint: tr('경로'), selectAll: true);
+    if (input == null || !mounted) return;
+    var path = input.trim().replaceAll('"', '');
+    if (path.isEmpty) return;
+    if (Platform.isWindows && RegExp(r'^\\\\[^\\/]+[\\/]?$').hasMatch(path)) {
+      _snack(tr('네트워크 공유는 공유 폴더 이름까지 넣으세요 (예: \\\\NAS\\영상).'));
+      return;
+    }
+    if (!isDav(path) && Platform.isWindows && RegExp(r'^[a-zA-Z]:$').hasMatch(path)) path = '$path\\';
+    final ok = isDav(path) || await Directory(path).exists();
+    if (!mounted) return;
+    if (!ok) {
+      _snack(trf('폴더가 없거나 열 수 없습니다: {0}', [path]));
+      return;
+    }
+    await _goTo(pane, path, fresh: true);
+  }
 
   /// WebDAV 서버 추가 (없으면 [root] 는 null) · 고치기 (탭 길게 누르기). 저장하면 그 서버로 간다.
   Future<void> _editDav(_Pane pane, String? root) async {
@@ -2167,8 +2517,12 @@ class _ExplorerPageState extends State<ExplorerPage> {
               : null,
         );
 
-    Widget nameCell() => Row(children: [
-          SizedBox(width: list ? 0 : row.depth * look.indent),
+    // 좁은 창 (폰 세로의 좌우 두 창) 에서 깊은 폴더: 들여쓰기는 이름 자리를 남기는 만큼만 (넘치지 않게)
+    Widget nameCell() => LayoutBuilder(builder: (context, box) {
+          final fixed = (list ? 0 : 20) + (look.rich ? 64 : look.iconSize + 12) + 48.0;
+          final indent = list ? 0.0 : (row.depth * look.indent).clamp(0.0, (box.maxWidth - fixed).clamp(0.0, double.infinity));
+          return Row(children: [
+          SizedBox(width: indent),
           if (!list) chevron(),
           SizedBox(
             width: look.rich ? 56 : look.iconSize + 6,
@@ -2184,7 +2538,11 @@ class _ExplorerPageState extends State<ExplorerPage> {
                     children: [
                       Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: nameStyle),
                       Row(children: [
-                        Text('${formatSize(e.size)} · ${_date(e.modified)}', style: dim),
+                        // 좁은 화면 · 깊은 폴더에서 넘치지 않게
+                        Flexible(
+                          child: Text('${formatSize(e.size)} · ${_date(e.modified)}',
+                              style: dim, maxLines: 1, overflow: TextOverflow.ellipsis),
+                        ),
                         if (isVideoFile(e.path)) ...[
                           const SizedBox(width: 8),
                           Flexible(child: _MetaText(c: c, path: e.path)),
@@ -2203,6 +2561,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
                   ),
           ),
         ]);
+        });
 
     final real = !row.isRoot && !row.isUp;
     Widget cell(String t, int flex, {TextAlign align = TextAlign.start}) => Expanded(
@@ -2228,8 +2587,9 @@ class _ExplorerPageState extends State<ExplorerPage> {
 
     return GestureDetector(
       // Rsync 화면은 고르기만 (파일 기능 메뉴 없음)
-      onSecondaryTapUp: real && !widget.rsync ? (d) => _menu(pane, e, d.globalPosition) : null,
-      onLongPressStart: real && !widget.rsync ? (d) => _menu(pane, e, d.globalPosition) : null,
+      // 25: Rsync 화면에서도 (폴더 메뉴)
+      onSecondaryTapUp: real ? (d) => _menu(pane, e, d.globalPosition) : null,
+      onLongPressStart: real ? (d) => _menu(pane, e, d.globalPosition) : null,
       child: Material(
         color: marked
             ? JjColors.accent.withValues(alpha: 0.18)
@@ -2313,11 +2673,29 @@ class _Toolbar extends StatelessWidget {
   final void Function(ExplorerButton) onPressed;
   final bool Function(ExplorerButton) enabled;
   final bool Function(ExplorerButton) selected;
+
+  /// 창이 둘인지 (두 창 · 폴더 + 파일 목록). 하나면 [orient] 는 "두 창으로"
+  final bool twoPanes;
   const _Toolbar(
-      {required this.buttons, required this.vertical, required this.onPressed, required this.enabled, required this.selected});
+      {required this.buttons,
+      required this.vertical,
+      required this.onPressed,
+      required this.enabled,
+      required this.selected,
+      this.twoPanes = true});
+
+  /// 118: 지금 배치를 보여 준다 (누르면 반대로)
+  String _orientLabel() => !twoPanes ? '두 창으로' : vertical ? '좌우 ⇆' : '위아래 ⇅';
+  String _orientTip() => !twoPanes
+      ? '두 창으로 보기 (좌우)'
+      : vertical
+          ? '창 배치: 좌우 (누르면 위아래)'
+          : '창 배치: 위아래 (누르면 좌우)';
 
   /// 창이 위아래로 놓이면 (버튼 줄이 가로) "좌 → 우" 대신 "위 → 아래"
-  String _label(ExplorerButton b) => vertical
+  String _label(ExplorerButton b) => b == ExplorerButton.orient
+      ? _orientLabel()
+      : vertical
       ? b.label
       : switch (b) {
           ExplorerButton.toRight => '위 → 아래',
@@ -2326,7 +2704,9 @@ class _Toolbar extends StatelessWidget {
           _ => b.label,
         };
 
-  IconData _icon(ExplorerButton b) => vertical
+  IconData _icon(ExplorerButton b) => b == ExplorerButton.orient
+      ? (!twoPanes ? Icons.vertical_split_outlined : vertical ? Icons.swap_horiz : Icons.swap_vert)
+      : vertical
       ? b.icon
       : switch (b) {
           ExplorerButton.toRight => Icons.arrow_downward,
@@ -2341,7 +2721,7 @@ class _Toolbar extends StatelessWidget {
       final on = enabled(b);
       final sel = selected(b);
       return Tooltip(
-        message: tr(_label(b)),
+        message: tr(b == ExplorerButton.orient ? _orientTip() : _label(b)),
         child: InkWell(
           onTap: on ? () => onPressed(b) : null,
           borderRadius: BorderRadius.circular(6),
@@ -2393,14 +2773,47 @@ class _SearchDialogState extends State<_SearchDialog> {
   StreamSubscription<FileEntry>? _sub;
   bool _done = false;
 
+  /// 24: 찾기를 멈추는 개수 · 읽지 못한 폴더
+  static const limit = 2000;
+  final _skipped = <(String, String)>[];
+
   @override
   void initState() {
     super.initState();
-    _sub = searchFiles(widget.root, widget.query, showHidden: widget.showHidden).listen(
+    _sub = searchFiles(widget.root, widget.query, showHidden: widget.showHidden, limit: limit, onSkipped: (dir, e) {
+      if (mounted) {
+        setState(() => _skipped.add((dir, e is FileSystemException ? (e.osError?.message ?? e.message) : '$e')));
+      }
+    }).listen(
       (e) => setState(() => _found.add(e)),
       onDone: () => setState(() => _done = true),
       onError: (_) {},
     );
+  }
+
+  /// 아래 안내: 개수 한도에서 멈춤 · 읽지 못한 폴더
+  Widget? _footer() {
+    final limited = _found.length >= limit;
+    if (!limited && _skipped.isEmpty) return null;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+      if (limited)
+        Text(trf('{0}개를 찾아 여기서 멈췄습니다. 이름을 더 자세히 넣거나 아래 폴더로 들어가 찾으세요.', [limit]),
+            style: const TextStyle(fontSize: 12, color: Colors.orangeAccent)),
+      if (_skipped.isNotEmpty)
+        ExpansionTile(
+          tilePadding: EdgeInsets.zero,
+          dense: true,
+          title: Text(trf('읽지 못한 폴더 {0}개 (권한 · 연결 문제) - 그 안은 찾지 못했습니다', [_skipped.length]),
+              style: const TextStyle(fontSize: 12, color: Colors.orangeAccent)),
+          children: [
+            for (final (dir, why) in _skipped.take(50))
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text('$dir · $why', style: const TextStyle(fontSize: 11, color: JjColors.textDim)),
+              ),
+          ],
+        ),
+    ]);
   }
 
   @override
@@ -2418,6 +2831,8 @@ class _SearchDialogState extends State<_SearchDialog> {
         content: SizedBox(
           width: 560,
           height: 420,
+          child: Column(children: [
+            Expanded(
           child: _found.isEmpty && _done
               ? Center(child: Text(tr('찾은 것이 없습니다.')))
               : ListView.builder(
@@ -2434,6 +2849,9 @@ class _SearchDialogState extends State<_SearchDialog> {
                     );
                   },
                 ),
+            ),
+            ?_footer(),
+          ]),
         ),
         actions: [TextButton(onPressed: () => Navigator.pop(context), child: Text(tr('닫기')))],
       );

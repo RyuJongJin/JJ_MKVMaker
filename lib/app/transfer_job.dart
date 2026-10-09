@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 
 import '../core/file_ops.dart';
+import '../core/sync_preview.dart' show isRsyncDeleteOption;
 import '../core/sync_tools.dart';
 import '../core/vfs.dart';
 
@@ -140,6 +141,9 @@ class TransferJob extends ChangeNotifier {
   /// rsync -u (--update) 를 옵션에 넣었는지 (앱이 맞출 때도 같은 뜻으로: 대상이 더 새것이면 건너뜀)
   bool get _update => splitOptions(options).any((o) => o == '--update' || (o.startsWith('-') && !o.startsWith('--') && o.contains('u')));
 
+  /// 100: WebDAV 를 앱이 맞출 때도 rsync 의 지우기 (--delete 계열) 를 따른다 (확인 창에서 지울 목록을 본 뒤에만 실행됨)
+  bool get _delete => method == CopyMethod.rsync && splitOptions(options).any(isRsyncDeleteOption);
+
   static Future<int> countFiles(String path) async {
     if (isDav(path)) return vCountFiles(path);
     if (!FileSystemEntity.isDirectorySync(path)) return 1;
@@ -204,8 +208,8 @@ class TransferJob extends ChangeNotifier {
       );
       _tick();
       if (contents && (isDav(sources[i]) || FileSystemEntity.isDirectorySync(sources[i]))) {
-        // 폴더 "안의 것" 맞추기 (rsync 원본/ 대상/ 과 같은 뜻): -u · 원본 파일 지우기 (--remove-source-files) 도
-        await _ops!.mirror(sources[i], dest, update: _update);
+        // 폴더 "안의 것" 맞추기 (rsync 원본/ 대상/ 과 같은 뜻): -u · --delete · 원본 파일 지우기 (--remove-source-files) 도
+        await _ops!.mirror(sources[i], dest, update: _update, delete: _delete);
         if (move && !cancelled) await _deleteFilesIn(sources[i]);
         made.add(dest);
       } else {

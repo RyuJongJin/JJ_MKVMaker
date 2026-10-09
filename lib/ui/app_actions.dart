@@ -162,7 +162,10 @@ class AppNavButtons extends StatelessWidget {
     if (pages.length < 2) return;
     var i = pages.indexWhere((p) => p.id == current);
     if (i < 0) i = 0;
-    open(context, pages[(i + step) % pages.length].id);
+    final j = i + step;
+    // 102 · 66: 끝에서 처음으로 돌기를 끄면 끝에서 멈춘다
+    if (!scope.controller.settings.swipeWrap && (j < 0 || j >= pages.length)) return;
+    open(context, pages[j % pages.length].id);
   }
 
   @override

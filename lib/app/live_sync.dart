@@ -9,6 +9,7 @@ import 'package:path/path.dart' as p;
 
 import '../core/cron_window.dart';
 import '../core/file_ops.dart';
+import '../core/sync_preview.dart' show isRsyncDeleteOption, isSourceRemovingOption;
 import '../core/sync_tools.dart';
 import '../core/vfs.dart';
 import '../l10n/tr.dart';
@@ -144,7 +145,13 @@ class LiveSync extends ChangeNotifier {
     Future<void> walk(String src, String dst, String rel) async {
       if (out.length >= limit) return;
       final names = <String>{};
-      await for (final e in Directory(src).list(followLinks: false).handleError((_) {})) {
+      List<FileSystemEntity> items;
+      try {
+        items = await Directory(src).list(followLinks: false).toList();
+      } catch (_) {
+        return; // 원본을 읽지 못함: 이 폴더의 "지울 것" 은 세지 않는다
+      }
+      for (final e in items) {
         if (out.length >= limit) return;
         final name = p.basename(e.path);
         names.add(name);
@@ -187,7 +194,13 @@ class LiveSync extends ChangeNotifier {
         }
       } catch (_) {} // 대상 폴더가 아직 없음
       final names = <String>{};
-      for (final e in await vList(src)) {
+      List<({String path, bool isDir, int size, DateTime modified})> items;
+      try {
+        items = await vList(src, strict: true);
+      } catch (_) {
+        return; // 원본을 읽지 못함: "지울 것" 을 세지 않는다
+      }
+      for (final e in items) {
         if (out.length >= limit) return;
         final name = vBasename(e.path);
         names.add(name);
@@ -213,13 +226,53 @@ class LiveSync extends ChangeNotifier {
   }
 
   Future<void> refreshPending(LiveSyncPair x) async {
+    final k = keyOf(x);
+    // 68: 원본을 읽을 수 없으면 "맞출 것 없음" 이 아니라 문제로 알린다
     try {
-      pending[keyOf(x)] = await diff(x);
+      if (!await vExists(x.source)) throw const FileSystemException('없음');
+      await vList(x.source, strict: true);
+      if (problems[k]?.empty == false) problems.remove(k); // 다시 읽힌다
+    } catch (e) {
+      problems[k] = SourceUnreadableException(x.source, cause: e);
+    }
+    try {
+      pending[k] = await diff(x);
     } catch (_) {}
     notifyListeners();
   }
 
   static String keyOf(LiveSyncPair x) => '${x.source}=>${x.target}';
+
+  /// 지우기를 확인하지 않은 쌍: 대상에만 있어 지워질 항목 (원본 기준 상대 경로). 확인 창에 보여 준다 (42)
+  final toDelete = <String, List<String>>{};
+
+  /// 원본을 읽지 못했거나 원본이 비어 멈춘 쌍 (68 · 70). 성공하면 지운다. 카드에 빨갛게 · 작업 알림에도
+  final problems = <String, SourceUnreadableException>{};
+
+  /// 원본이 비어 멈춘 쌍에서 지워질 항목 (70: 목록을 보고 [그래도 맞추기])
+  final emptyDeletes = <String, List<String>>{};
+
+  /// 다음 한 번은 원본이 비어도 맞춘다 (70)
+  final _allowEmpty = <String>{};
+
+  /// 70: 원본이 정말 비어 있는 것을 확인했다 → 이번 한 번 그대로 맞춘다 (대상에서 지움)
+  Future<void> syncEmptyAnyway(LiveSyncPair x) async {
+    _allowEmpty.add(keyOf(x));
+    await syncNow(x);
+  }
+
+  /// 설정의 쌍을 바꾼다 (같은 원본 → 대상)
+  Future<void> _setPair(LiveSyncPair old, LiveSyncPair now) => c.updateSettings((s) => s.liveSyncPairs = [
+        for (final p in s.liveSyncPairs) keyOf(p) == keyOf(old) ? now : p,
+      ]);
+
+  /// 지울 목록을 보고 결정: [delete] true = 지우기 포함으로 맞추기 (확인함), false = 지우기 끄기. 그 뒤 바로 맞춘다
+  Future<void> decideDelete(LiveSyncPair x, {required bool delete}) async {
+    final now = delete ? x.copyWith(deleteConfirmed: true) : x.copyWith(delete: false);
+    toDelete.remove(keyOf(x));
+    await _setPair(x, now);
+    await syncNow(now);
+  }
 
   void _stopAll() {
     for (final s in _watch.values) {
@@ -247,9 +300,9 @@ class LiveSync extends ChangeNotifier {
         status[k] = (DateTime.now(), tr('원본 폴더가 없습니다'));
         continue;
       }
-      // 대상이 원본 안이면 맞출 때마다 원본이 바뀌어 끝없이 돈다
-      if (isSameOrInside(x.target, x.source) || isSameOrInside(x.source, x.target)) {
-        status[k] = (DateTime.now(), tr('원본과 대상이 서로 안에 있습니다'));
+      // 대상이 원본 안이면 맞출 때마다 원본이 바뀌어 끝없이 돈다. 34: 원본이 대상 안 (안쪽 → 바깥) 은 지우기가 없을 때만
+      if (nestingProblem(x, allowInnerToOuter: s.allowInnerToOuter) case final nest?) {
+        status[k] = (DateTime.now(), nest);
         continue;
       }
       if (Platform.isWindows && !isDav(x.source)) {
@@ -283,8 +336,23 @@ class LiveSync extends ChangeNotifier {
   bool get anyRunning => _running.isNotEmpty;
 
   /// 지금 맞추기 (원본 내용 → 대상)
+  /// 맞추면 안 되는 쌍이면 그 이유 (34: 대상이 원본 안 = 끝없이 돎, 원본이 대상 안 + 지우기 = 대상의 다른 파일이 지워짐)
+  static String? nestingProblem(LiveSyncPair x, {bool allowInnerToOuter = true}) {
+    if (isSameOrInside(x.target, x.source)) return tr('대상이 원본과 같거나 원본 안에 있습니다');
+    if (x.delete && isSameOrInside(x.source, x.target)) return tr('원본이 대상 안에 있으면 지우기 포함으로 맞출 수 없습니다');
+    // 102: 환경 설정에서 안쪽 → 바깥을 끄면 늘 막는다
+    if (!allowInnerToOuter && isSameOrInside(x.source, x.target)) return tr('원본이 대상 안에 있습니다 (환경 설정에서 막아 둠)');
+    return null;
+  }
+
   Future<void> syncNow(LiveSyncPair x) async {
     final k = keyOf(x);
+    final nest = nestingProblem(x, allowInnerToOuter: c.settings.allowInnerToOuter);
+    if (nest != null) {
+      status[k] = (DateTime.now(), nest);
+      notifyListeners();
+      return;
+    }
     if (_running.contains(k)) {
       _schedule(x); // 도는 중에 바뀐 것은 끝난 뒤 다시
       return;
@@ -292,17 +360,50 @@ class LiveSync extends ChangeNotifier {
     _running.add(k);
     notifyListeners();
     final s = c.settings;
+    final asked = x;
     try {
+      // 42: 지우기를 아직 확인하지 않았으면, 지울 것이 있을 때 지우지 않고 맞추고 확인을 기다린다 (목록은 [toDelete])
+      if (x.delete && !x.deleteConfirmed) {
+        final del = [for (final d in await diff(x, limit: 100000)) if (d.startsWith('− ')) d.substring(2)];
+        if (del.isEmpty) {
+          await _setPair(x, x.copyWith(deleteConfirmed: true));
+        } else {
+          toDelete[k] = del;
+          x = x.copyWith(delete: false);
+        }
+      } else {
+        toDelete.remove(k);
+      }
+      // 지우기 포함이면 원본을 확실히 읽을 수 있을 때만 (rsync --delete · robocopy /PURGE 도). 못 읽으면 멈추고 알린다
+      final allowEmpty = _allowEmpty.remove(k);
+      if (x.delete) await ensureSourceForDelete(x.source, x.target, allowEmpty: allowEmpty);
       // 한쪽이라도 WebDAV 면 rsync · robocopy 대신 앱이 맞춘다 (크기 · 시각 비교)
       final method = isDav(x.source) || isDav(x.target) ? CopyMethod.builtin : CopyMethod.of(x.method);
       final n = switch (method) {
-        CopyMethod.builtin => await FileOps(bandwidthKBps: s.copyBandwidthKBps).mirror(x.source, x.target, delete: x.delete),
+        CopyMethod.builtin => await FileOps(bandwidthKBps: s.copyBandwidthKBps)
+            .mirror(x.source, x.target, delete: x.delete, allowEmptySource: allowEmpty),
         CopyMethod.rsync => await _rsync(x, s),
         CopyMethod.robocopy => await _robocopy(x, s),
       };
-      status[k] = (DateTime.now(), n < 0 ? tr('맞춤') : trf('{0}개 맞춤', [n]));
-      pending[k] = await diff(x);
+      status[k] = toDelete[k] != null
+          ? (DateTime.now(), trf('지우지 않고 맞춤 · 대상에만 있는 {0}개를 지울지 확인 필요', [toDelete[k]!.length]))
+          : (DateTime.now(), n < 0 ? tr('맞춤') : trf('{0}개 맞춤', [n]));
+      problems.remove(k);
+      emptyDeletes.remove(k);
+      pending[k] = await diff(asked);
       if (n != 0) c.note(trf('실시간 동기화 ({0}): {1} → {2}', [method.label, x.source, x.target]));
+    } on SourceUnreadableException catch (e) {
+      // 68 · 70: 대상은 건드리지 않고 멈춤. 카드에 빨갛게 · 작업 알림에 · 로그에
+      problems[k] = e;
+      status[k] = (DateTime.now(), e.empty ? tr('원본 폴더가 비어 있어 멈춤') : tr('원본을 읽을 수 없어 멈춤'));
+      if (e.empty) {
+        try {
+          emptyDeletes[k] = [for (final d in await diff(asked, limit: 100000)) if (d.startsWith('− ')) d.substring(2)];
+        } catch (_) {}
+      } else {
+        emptyDeletes.remove(k);
+      }
+      c.note(trf('실시간 동기화 멈춤: {0} → {1}: {2}', [x.source, x.target, e]));
     } catch (e) {
       status[k] = (DateTime.now(), trf('실패: {0}', [e]));
       c.note(trf('실시간 동기화 실패: {0} → {1}: {2}', [x.source, x.target, e]));
@@ -316,32 +417,45 @@ class LiveSync extends ChangeNotifier {
   Future<int> _rsync(LiveSyncPair x, AppSettings s) async {
     final exe = await rsyncExecutable(s);
     if (exe == null) throw StateError(tr('rsync 가 없습니다 (환경 설정 > 파일 탐색기에서 내려받기 · 경로 지정)'));
-    final win = Platform.isWindows;
-    final args = [
-      ...splitOptions(s.rsyncOptions).where((o) => o != '-P' && o != '--progress'),
-      if (!win) '-8', // 한글 등 이름을 \#355… 로 바꾸지 않고 그대로 (Android 빌드는 iconv 없음)
-      if (s.copyBandwidthKBps > 0) '--bwlimit=${s.copyBandwidthKBps}',
-      if (x.delete) '--delete',
-      '${toCygwinPath(x.source, windows: win)}/',
-      '${toCygwinPath(x.target, windows: win)}/',
-    ];
+    final args = rsyncArgsFor(x, s, windows: Platform.isWindows);
     await Directory(x.target).create(recursive: true);
     final r = await Process.run(exe, args, stdoutEncoding: utf8, stderrEncoding: utf8);
     if (!rsyncOk(r.exitCode)) throw ProcessException(exe, const [], '${r.stderr}'.trim(), r.exitCode);
     return RsyncOutput().feed('${r.stdout}\n').length;
   }
 
-  Future<int> _robocopy(LiveSyncPair x, AppSettings s) async {
-    final opts = splitOptions(s.robocopyOptions);
-    final r = await Process.run('robocopy', [
+  /// rsync 인수 (실시간 동기화). 지우기는 쌍의 "지우기 포함" 으로만 - 설정의 rsync 옵션에 --delete · --del 이 있어도
+  /// 41 · 42 의 확인을 건너뛰지 않게 뺀다 (97)
+  static List<String> rsyncArgsFor(LiveSyncPair x, AppSettings s, {required bool windows}) => [
+        // 107: 원본을 지우는 옵션 (--remove-source-files) 도 실시간 동기화에서는 쓰지 않는다
+        ...splitOptions(s.rsyncOptions)
+            .where((o) => o != '-P' && o != '--progress' && !isRsyncDeleteOption(o) && !isSourceRemovingOption(o)),
+        if (!windows) '-8', // 한글 등 이름을 \#355… 로 바꾸지 않고 그대로 (Android 빌드는 iconv 없음)
+        if (s.copyBandwidthKBps > 0) '--bwlimit=${s.copyBandwidthKBps}',
+        if (x.delete) '--delete',
+        '${toCygwinPath(x.source, windows: windows)}/',
+        '${toCygwinPath(x.target, windows: windows)}/',
+      ];
+
+  /// robocopy 인수 (실시간 동기화). 지우기 (/MIR · /PURGE) 는 쌍의 "지우기 포함" 으로만 (/MIR 는 /E 로) - 97
+  static List<String> robocopyArgsFor(LiveSyncPair x, AppSettings s) {
+    final opts = [
+      for (final o in splitOptions(s.robocopyOptions))
+        if (o.toUpperCase() == '/MIR') '/E' else if (o.toUpperCase() != '/PURGE' && !isSourceRemovingOption(o)) o,
+    ];
+    return [
       x.source,
       x.target,
       ...opts,
-      if (!opts.any((o) => o.toUpperCase() == '/E' || o.toUpperCase() == '/MIR')) '/E',
+      if (!opts.any((o) => o.toUpperCase() == '/E')) '/E',
       if (x.delete) '/PURGE',
       if (s.copyBandwidthKBps > 0) '/IPG:${robocopyIpg(s.copyBandwidthKBps)}',
       '/BYTES', '/NJH', '/NJS', '/NDL', '/NP',
-    ]);
+    ];
+  }
+
+  Future<int> _robocopy(LiveSyncPair x, AppSettings s) async {
+    final r = await Process.run('robocopy', robocopyArgsFor(x, s));
     if (!robocopyOk(r.exitCode)) throw ProcessException('robocopy', const [], '${r.stdout}'.trim(), r.exitCode);
     return RobocopyOutput().feed('${r.stdout}\n').length;
   }

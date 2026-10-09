@@ -9,6 +9,7 @@ import '../app/app_controller.dart';
 import '../core/encode_options.dart';
 import '../core/models.dart';
 import '../l10n/tr.dart';
+import 'encode_notice.dart';
 import 'theme.dart';
 
 /// 화면 · 색 보정 (파이널 컷의 뷰어 + 인스펙터처럼): 왼쪽은 지금 보고 있는 동영상의 한 장면 미리보기,
@@ -105,6 +106,7 @@ class _VideoAdjustState extends State<_VideoAdjust> {
 
   void _set(EncodeSettings e) {
     c.setAdjust(e);
+    showEncodeNotice(context, c); // 103
     setState(() {});
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 250), _render);

@@ -37,16 +37,12 @@ class DavPath {
   DavClient get client => DavRegistry.client(server);
 }
 
-/// WebDAV 파일을 받지 않고 바로 재생 (스트리밍) 할 주소 · 헤더. [withUserInfo] 면 주소에 아이디:비밀번호를 넣는다
-/// (헤더를 넘길 수 없는 외부 프로그램용).
-({String url, Map<String, String> headers, bool insecure}) davStream(String path, {bool withUserInfo = false}) {
+/// WebDAV 파일을 받지 않고 바로 재생 (스트리밍) 할 주소 · 헤더 (인증은 헤더로만 - 주소에 비밀번호를 넣지 않는다)
+({String url, Map<String, String> headers, bool insecure}) davStream(String path) {
   final d = DavPath.parse(path);
   final server = DavRegistry.server(d.server);
   final client = d.client;
-  var uri = client.uriOf(d.rel);
-  if (withUserInfo && server != null && server.user.isNotEmpty) {
-    uri = uri.replace(userInfo: '${Uri.encodeComponent(server.user)}:${Uri.encodeComponent(server.password)}');
-  }
+  final uri = client.uriOf(d.rel);
   final auth = client.authHeader;
   return (
     url: uri.toString(),
@@ -55,8 +51,9 @@ class DavPath {
   );
 }
 
-/// 플레이어 · 외부 프로그램에 넘길 주소: WebDAV 는 스트리밍 주소 (아이디 포함), 로컬은 그대로
-String vPlayable(String path) => isDav(path) ? davStream(path, withUserInfo: true).url : path;
+/// 외부 프로그램 · 다른 앱에 넘길 주소: WebDAV 는 스트리밍 주소, 로컬은 그대로.
+/// 사용자 결정 (55): 다른 앱으로 넘기는 주소에는 아이디 · 비밀번호를 넣지 않는다 (받는 앱이 물어본다)
+String vPlayable(String path) => isDav(path) ? davStream(path).url : path;
 
 /// 경로를 한 모양으로 (dav:// 만 정리, 로컬은 그대로)
 String vNorm(String path) => isDav(path) ? DavPath.parse(path).full : path;
@@ -98,8 +95,9 @@ Future<bool> vExists(String path) async => (await vStat(path)) != null;
 bool vMissingSync(String path) => !isDav(path) && FileSystemEntity.typeSync(path) == FileSystemEntityType.notFound;
 bool vIsDirSync(String path) => isDav(path) ? !DavPath.parse(path).name.contains('.') : FileSystemEntity.isDirectorySync(path);
 
-/// 폴더 안의 항목: (경로, 폴더인지, 크기, 바뀐 때)
-Future<List<({String path, bool isDir, int size, DateTime modified})>> vList(String dir) async {
+/// 폴더 안의 항목: (경로, 폴더인지, 크기, 바뀐 때).
+/// [strict]: 폴더를 읽지 못하면 빈 목록 대신 오류 (동기화의 "지우기" 가 원본을 빈 것으로 보지 않게)
+Future<List<({String path, bool isDir, int size, DateTime modified})>> vList(String dir, {bool strict = false}) async {
   if (isDav(dir)) {
     final d = DavPath.parse(dir);
     return [
@@ -108,7 +106,8 @@ Future<List<({String path, bool isDir, int size, DateTime modified})>> vList(Str
     ];
   }
   final out = <({String path, bool isDir, int size, DateTime modified})>[];
-  await for (final e in Directory(dir).list(followLinks: false).handleError((_) {})) {
+  final list = strict ? Directory(dir).list(followLinks: false) : Directory(dir).list(followLinks: false).handleError((_) {});
+  await for (final e in list) {
     try {
       final st = await e.stat();
       final isDir = st.type == FileSystemEntityType.directory;
@@ -153,14 +152,31 @@ Future<Stream<List<int>>> vOpenRead(String path) async {
 /// [data] 를 [path] 에 쓴다 (로컬은 임시 이름에 쓴 뒤 바꾸고, [modified] 가 있으면 바뀐 때도 맞춘다)
 Future<void> vWrite(String path, Stream<List<int>> data, {int? length, DateTime? modified}) async {
   if (isDav(path)) {
+    // 임시 이름으로 다 올린 뒤 서버에서 이름을 바꾼다 (보내다 끊겨도 반쪽 파일이 완성된 이름으로 남지 않게)
     final d = DavPath.parse(path);
-    await d.client.write(d.rel, data, length: length);
+    final tmp = d.parent.child('${d.name}.jjpart');
+    try {
+      await d.client.write(tmp.rel, data, length: length);
+    } catch (_) {
+      try {
+        await d.client.delete(tmp.rel);
+      } catch (_) {}
+      rethrow;
+    }
+    await d.client.move(tmp.rel, d.rel, overwrite: true);
     return;
   }
   final tmp = '$path.jjsync';
   final out = File(tmp).openWrite();
   try {
     await out.addStream(data);
+  } catch (_) {
+    // 실패 · 취소: 반쯤 쓴 임시 파일을 남기지 않는다 (원래 파일은 그대로)
+    await out.close();
+    try {
+      await File(tmp).delete();
+    } catch (_) {}
+    rethrow;
   } finally {
     await out.close();
   }

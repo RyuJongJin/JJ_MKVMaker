@@ -9,10 +9,10 @@ import 'package:window_manager/window_manager.dart';
 
 import '../app/app_controller.dart';
 import '../core/playlist.dart';
-import '../core/vfs.dart';
 import '../core/srt.dart' show formatSrtTime;
 import '../services/media_player.dart';
 import 'app_actions.dart';
+import 'dav_external.dart';
 import 'theme.dart';
 import '../l10n/tr.dart';
 
@@ -20,7 +20,12 @@ import '../l10n/tr.dart';
 Future<void> playFiles(BuildContext context, AppController c, List<String> files,
     {bool keepOrder = false, bool internal = false}) async {
   final create = c.services.createMediaPlayer;
-  final plan = await c.preparePlayback(files, keepOrder: keepOrder, internal: internal);
+  final plan = await c.preparePlayback(files,
+      keepOrder: keepOrder,
+      internal: internal,
+      external: (program, videos) async {
+        if (context.mounted) await openExternalPlayable(context, c, program, videos);
+      });
   if (plan == null || create == null || !context.mounted) return;
   final (list, start) = plan;
   await Navigator.of(context).push(MaterialPageRoute<void>(
@@ -303,6 +308,8 @@ class _PlayerPageState extends State<PlayerPage> {
           behavior: HitTestBehavior.opaque,
           onDoubleTap: _toggleFull,
           onSecondaryTapDown: (d) => _menu.open(position: d.localPosition),
+          // 터치 화면: 길게 누르면 같은 메뉴 (오른쪽 클릭이 없으므로)
+          onLongPressStart: (d) => _menu.open(position: d.localPosition),
           child: Stack(fit: StackFit.expand, children: [
             view,
             if (_error != null)
@@ -364,6 +371,12 @@ class _PlayerPageState extends State<PlayerPage> {
         item(tr('끄기'), () => _setSub(null), checked: s.subtitleId == null),
         for (final t in subs) item(t.label, () => _setSub(t), checked: s.subtitleId == t.id),
       ], child: Text(tr('자막 선택'))),
+      // 자막 글자 크기 (설정에 남는다)
+      SubmenuButton(menuChildren: [
+        for (final r in const [0.6, 0.8, 1.0, 1.2, 1.5, 2.0, 2.5])
+          item('${(r * 100).round()}%', () => c.updateSettings((x) => x.subtitleScale = r),
+              checked: (c.settings.subtitleScale - r).abs() < 0.01),
+      ], child: Text(tr('자막 크기'))),
       if (s.audioTracks.length > 1)
         SubmenuButton(menuChildren: [
           for (final t in s.audioTracks) item(t.label, () => pl.setAudioTrack(t), checked: s.audioId == t.id),
@@ -374,8 +387,8 @@ class _PlayerPageState extends State<PlayerPage> {
       ], child: Text(tr('재생 속도'))),
       item(tr('재생 목록'), () => setState(() => _showList = !_showList), key: 'L', checked: _showList),
       const Divider(height: 1),
-      if (vlc != null) item(tr('VLC 로 열기'), () => c.services.shell.openExternal(vlc, [vPlayable(_currentFile)])),
-      item(tr('기본 프로그램으로 열기'), () => c.services.shell.openExternal('system', [vPlayable(_currentFile)])),
+      if (vlc != null) item(tr('VLC 로 열기'), () => openExternalPlayable(context, c, vlc, [_currentFile])),
+      item(tr('기본 프로그램으로 열기'), () => openExternalPlayable(context, c, 'system', [_currentFile])),
     ];
   }
 

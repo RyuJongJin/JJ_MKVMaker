@@ -106,14 +106,31 @@ class I18nController extends ChangeNotifier {
     }
   }
 
-  /// 화면 언어 바꾸기 (설정에 저장하고 화면 전체를 다시 그린다)
+  /// "시스템 언어 따르기" 를 고른 값 (58 · 102: 처음 설치의 기본)
+  static const system = 'system';
+
+  /// 기기 (Windows · Android) 의 언어 → 들어 있는 언어 (한국어 · 日本語 · 简体中文, 그 밖의 언어는 English)
+  static String systemCode([String? localeName]) {
+    final l = (localeName ?? Platform.localeName).toLowerCase();
+    if (l.startsWith('ko')) return 'ko';
+    if (l.startsWith('ja')) return 'ja';
+    if (l.startsWith('zh')) return 'zh-Hans';
+    return 'en';
+  }
+
+  /// 설정에서 고른 값 ('system' 이면 시스템 언어 따르기)
+  String get chosen => _app?.settings.uiLanguage ?? uiLanguage;
+
+  /// 화면 언어 바꾸기 (설정에 저장하고 화면 전체를 다시 그린다). [system] 이면 기기 언어를 따른다
   Future<void> apply(String code, {bool save = true}) async {
+    final want = code;
+    if (code == system) code = systemCode();
     if (code != 'ko' && !available.contains(code)) code = 'ko';
     final dict = code == 'ko' ? const <String, String>{} : await _read(code);
     final fallback = code == 'ko' || code == 'en' ? const <String, String>{} : await _read('en');
     setTranslations(code, dict, fallback);
-    if (save && _app != null && _c.settings.uiLanguage != code) {
-      await _c.updateSettings((x) => x.uiLanguage = code);
+    if (save && _app != null && _c.settings.uiLanguage != want) {
+      await _c.updateSettings((x) => x.uiLanguage = want);
     }
     rebuildAll();
     notifyListeners();

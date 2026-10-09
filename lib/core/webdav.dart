@@ -4,7 +4,9 @@ import 'dart:io';
 
 import 'package:xml/xml.dart';
 
-/// WebDAV 서버 설정 (환경 설정 > 파일 탐색기 > WebDAV). 비밀번호는 설정 파일에만 (버전별 설정 보관본에는 넣지 않음).
+import '../l10n/tr.dart';
+
+/// WebDAV 서버 설정 (환경 설정 > 파일 탐색기 > WebDAV). 비밀번호는 안전 저장소에 (설정 파일 · 보관본에는 넣지 않음).
 class DavServer {
   final String id;
   final String name;
@@ -38,14 +40,16 @@ class DavServer {
         insecure: insecure ?? this.insecure,
       );
 
+  /// 비밀번호는 넣지 않는다 (안전 저장소에 둔다 - 54). 저장해 두었는지만
   Map<String, Object?> toJson() =>
-      {'id': id, 'name': name, 'url': url, 'user': user, 'password': password, 'insecure': insecure};
+      {'id': id, 'name': name, 'url': url, 'user': user, 'hasPassword': password.isNotEmpty, 'insecure': insecure};
 
   factory DavServer.fromJson(Map<Object?, Object?> j) => DavServer(
         id: '${j['id'] ?? DateTime.now().microsecondsSinceEpoch}',
         name: j['name'] as String? ?? '',
         url: j['url'] as String? ?? '',
         user: j['user'] as String? ?? '',
+        // 예전 설정 파일의 평문 비밀번호 (읽으면 안전 저장소로 옮긴다)
         password: j['password'] as String? ?? '',
         insecure: j['insecure'] == true,
       );
@@ -63,7 +67,13 @@ class DavItem {
 class DavException implements Exception {
   final String message;
   final int? status;
-  const DavException(this.message, {this.status});
+
+  /// 서버가 옮기라고 한 주소 (301 · 302 · 307 · 308)
+  final String? location;
+  const DavException(this.message, {this.status, this.location});
+
+  /// http 주소의 서버가 https 로 옮기라고 했는지
+  bool get wantsHttps => location != null && location!.toLowerCase().startsWith('https://');
   @override
   String toString() => message;
 }
@@ -107,7 +117,21 @@ class DavClient {
   }
 
   Never _fail(String what, HttpClientResponse res, [String body = '']) {
+    // 다른 주소로 옮기라고 함 (http → https 등): 이유와 할 일을 알린다
+    if (const [301, 302, 303, 307, 308].contains(res.statusCode)) {
+      final loc = res.headers.value(HttpHeaders.locationHeader);
+      final https = loc != null && loc.toLowerCase().startsWith('https://') && server.url.toLowerCase().startsWith('http://');
+      throw DavException(
+        https
+            ? trf('서버가 https 주소로 옮기라고 합니다 ({0}). 서버 설정의 주소를 https:// 로 바꾸세요.', [loc])
+            : trf('서버가 다른 주소로 옮기라고 합니다 ({0}). 서버 설정의 주소를 확인하세요.', [loc ?? '-']),
+        status: res.statusCode,
+        location: loc,
+      );
+    }
     final hint = switch (res.statusCode) {
+      // 54: 비밀번호가 틀린 것이 아니라 저장된 것이 없다 (동기화 · 복사 오류에도 그대로 보인다)
+      401 when server.password.isEmpty => ' (${tr('저장된 비밀번호가 없습니다. 한 번만 다시 넣어 주세요')})',
       401 => ' (아이디 · 비밀번호를 확인하세요)',
       403 => ' (권한 없음)',
       404 => ' (없는 경로)',
@@ -288,7 +312,11 @@ class DavRegistry {
     final keep = {for (final s in servers) s.id: s};
     for (final id in _clients.keys.toList()) {
       final old = _servers[id], now = keep[id];
-      if (now == null || old == null || jsonEncode(old.toJson()) != jsonEncode(now.toJson())) {
+      // 비밀번호는 toJson 에 없으므로 따로 비교 (바꾸면 바로 새 비밀번호로 접속 - 40-2)
+      if (now == null ||
+          old == null ||
+          old.password != now.password ||
+          jsonEncode(old.toJson()) != jsonEncode(now.toJson())) {
         _clients.remove(id)?.close();
       }
     }

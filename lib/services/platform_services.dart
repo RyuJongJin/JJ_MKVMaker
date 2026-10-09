@@ -97,7 +97,7 @@ class PlatformServices {
         createDownloadBackends: (s) => [
           YtDlpBackend(
             ffmpegDir: ffmpegDir,
-            formatArgs: () => ytDlpFormatArgs(s().ytContainer, s().ytQuality),
+            formatArgs: () => ytDlpFormatArgs(s().ytContainer, s().ytQuality, preferH264: s().ytPreferH264),
             cookieArgs: () => ytDlpCookieArgs(
                 browser: s().ytCookiesBrowser,
                 file: s().ytCookiesFile,

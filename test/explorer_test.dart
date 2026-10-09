@@ -9,6 +9,7 @@ import 'package:jj_mkvmaker/platform/windows/process_media_tool.dart';
 import 'package:jj_mkvmaker/services/app_shell.dart';
 import 'package:jj_mkvmaker/services/platform_services.dart';
 import 'package:jj_mkvmaker/ui/explorer_page.dart';
+import 'package:jj_mkvmaker/ui/path_label.dart';
 import 'package:path/path.dart' as p;
 
 /// 다른 앱으로 열기를 기록만 하는 셸 (실제로 프로그램을 띄우지 않게)
@@ -212,6 +213,31 @@ void main() {
     expect(find.byTooltip('표시 (여러 개 고르기)'), findsNothing);
   });
 
+  testWidgets('65: 여러 개를 지울 때 하나가 실패해도 나머지는 지우고, 못 지운 것을 알린다', (tester) async {
+    final locked = File(p.join(left, 'locked.txt'))..writeAsStringSync('l');
+    final h = locked.openSync(mode: FileMode.append); // Windows: 열려 있는 파일은 지울 수 없다
+    addTearDown(h.closeSync);
+    await open(tester);
+    await act(tester, () => tester.tap(find.text('선택').first));
+    await act(tester, () => tester.tap(markOf('doc.txt')));
+    await act(tester, () => tester.tap(markOf('locked.txt')));
+    await act(tester, () => tester.tap(markOf('sub')));
+    await settle(tester, () => find.text('3개 표시함').evaluate().isNotEmpty);
+    await act(tester, () => tester.tap(find.text('삭제').first));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('휴지통을 거치지 않고 영구 삭제 (Shift+Delete)'));
+    await tester.pumpAndSettle();
+    await act(tester, () => tester.tap(find.widgetWithText(FilledButton, '영구 삭제')));
+    await settle(tester, () => find.textContaining('지우지 못했습니다').evaluate().isNotEmpty);
+    expect(find.text('3개 중 1개를 지우지 못했습니다'), findsOneWidget);
+    expect(find.text('locked.txt'), findsWidgets);
+    expect(File(p.join(left, 'doc.txt')).existsSync(), isFalse);
+    expect(Directory(p.join(left, 'sub')).existsSync(), isFalse);
+    expect(locked.existsSync(), isTrue);
+    await tester.tap(find.widgetWithText(FilledButton, '확인'));
+    await tester.pumpAndSettle();
+  }, skip: !Platform.isWindows);
+
   testWidgets('여러 개 표시 → 삭제 · 새 폴더 · 이름 변경', (tester) async {
     await open(tester);
     await act(tester, () => tester.tap(find.text('선택').first));
@@ -222,11 +248,15 @@ void main() {
     expect(find.text('2개 표시함'), findsOneWidget);
     await act(tester, () => tester.tap(find.text('삭제').first));
     await tester.pumpAndSettle();
-    // 지울 항목 이름이 확인 창에 보인다
-    expect(find.textContaining('2개 항목을 지울까요?'), findsOneWidget);
+    // 지울 항목 이름이 확인 창에 보인다. 65: Windows 는 기본이 휴지통 (시험에서는 영구 삭제를 골라 휴지통을 어지럽히지 않음)
+    expect(find.textContaining('2개 항목을 휴지통으로 보낼까요?'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, '휴지통으로'), findsOneWidget);
     expect(find.textContaining('· sub'), findsOneWidget);
     expect(find.textContaining('· doc.txt'), findsOneWidget);
-    await act(tester, () => tester.tap(find.widgetWithText(FilledButton, '삭제')));
+    await tester.tap(find.text('휴지통을 거치지 않고 영구 삭제 (Shift+Delete)'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('2개 항목을 지울까요? 되돌릴 수 없습니다.'), findsOneWidget);
+    await act(tester, () => tester.tap(find.widgetWithText(FilledButton, '영구 삭제')));
     await settle(tester, () => find.text('doc.txt').evaluate().isEmpty);
     expect(Directory(left).listSync(), isEmpty);
 
@@ -286,6 +316,7 @@ void main() {
     Directory(p.join(left, 'sub2')).createSync();
     Directory(p.join(right, 'rsub')).createSync();
     File(p.join(right, 'r.txt')).writeAsStringSync('r');
+    File(p.join(right, 'rsub', 'back.txt')).writeAsStringSync('b'); // ⇄ 비교에서 ← 로 건너갈 것
     c.settings
       ..explorerLayout = 'single' // 파일 탐색기 배치와 상관없이 두 창
       ..rsyncPaths = [left, right];
@@ -323,12 +354,17 @@ void main() {
 
     // ⇄ : 두 방향을 보여 주고 -u, 취소하면 모니터링에 남지 않는다
     await act(tester, () => tester.tap(find.text('좌 ⇄ 우')));
-    await tester.pumpAndSettle();
+    await settle(tester, () => find.textContaining('비교하는 중').evaluate().isEmpty, rounds: 400);
+    // 72: 실행 전에 무엇이 바뀌는지 (⇄: 양쪽에만 있는 파일이 서로 건너감)
+    expect(find.textContaining('→ 새로'), findsOneWidget);
+    expect(find.textContaining('← 새로'), findsOneWidget);
     expect(find.text('rsync 양쪽 (⇄)'), findsOneWidget);
-    expect(find.text('${p.join(left, 'sub')}/'), findsOneWidget);
-    expect(find.text('→  ${p.join(right, 'rsub')}/'), findsOneWidget);
-    expect(find.text('${p.join(right, 'rsub')}/'), findsOneWidget);
-    expect(find.text('→  ${p.join(left, 'sub')}/'), findsOneWidget);
+    // 109: 짧은 경로 (끝 폴더) + 전체 경로는 작게
+    final ls = p.join(left, 'sub'), rs = p.join(right, 'rsub');
+    expect(find.text('→  ${shortPath(rs)}'), findsOneWidget);
+    expect(find.text('→  ${shortPath(ls)}'), findsOneWidget);
+    expect(find.text('$ls/  →  $rs/'), findsOneWidget);
+    expect(find.text('$rs/  →  $ls/'), findsOneWidget);
     expect(find.textContaining('-avPog -u'), findsNWidgets(2));
     await tester.tap(find.text('취소'));
     await tester.pumpAndSettle();
@@ -336,9 +372,9 @@ void main() {
     expect(find.text('원본 파일 지우기 (--remove-source-files)'), findsNothing); // 양쪽에는 없음
     // → 는 한 방향 · -u 없이 · 원본 파일 지우기를 고를 수 있다 (고르면 원본 폴더 남김 / 지움)
     await act(tester, () => tester.tap(find.text('좌 → 우')));
-    await tester.pumpAndSettle();
-    expect(find.text('→  ${p.join(right, 'rsub')}/'), findsOneWidget);
-    expect(find.text('→  ${p.join(left, 'sub')}/'), findsNothing);
+    await settle(tester, () => find.textContaining('비교하는 중').evaluate().isEmpty, rounds: 400);
+    expect(find.text('$ls/  →  $rs/'), findsOneWidget);
+    expect(find.text('$rs/  →  $ls/'), findsNothing);
     expect(find.textContaining('-u'), findsNothing);
     expect(find.text('빈 폴더 지움 · 원본 폴더는 남김'), findsNothing);
     await tester.tap(find.text('원본 파일 지우기 (--remove-source-files)'));

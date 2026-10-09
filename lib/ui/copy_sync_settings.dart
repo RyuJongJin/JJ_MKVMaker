@@ -7,10 +7,14 @@ import 'package:flutter/services.dart';
 import '../app/app_controller.dart';
 import '../app/live_sync.dart';
 import '../app/settings.dart';
+import '../core/file_ops.dart' show isSameOrInside;
 import '../core/sync_tools.dart';
+import '../core/vfs.dart' show vDisplay;
 import '../l10n/tr.dart';
 import '../platform/windows/rsync_installer.dart';
+import 'confirm.dart';
 import 'folder_picker.dart';
+import 'path_label.dart';
 import 'rsync_setup.dart';
 import 'schedule_editor.dart';
 import 'theme.dart';
@@ -141,7 +145,9 @@ class _CopySyncSettingsState extends State<CopySyncSettings> {
     final s = c.settings;
     final desk = Platform.isWindows;
     return Column(children: [
-      _options(tr('rsync 옵션'), tr('예: -avPog (보관 · 자세히 · 진행 · 소유자 · 그룹). 속도 제한은 파일 탐색기의 속도 제한을 함께 씀'),
+      // 111: 이미 실행한 쌍은 기억한 옵션을 쓴다는 것을 알린다
+      _options(tr('rsync 옵션'), tr('예: -avPog (보관 · 자세히 · 진행 · 소유자 · 그룹). 속도 제한은 파일 탐색기의 속도 제한을 함께 씀. '
+              '새로 맞추는 폴더 쌍에 씁니다 - 이미 실행한 쌍은 기억한 옵션을 쓰며 모니터링 > 복사 · rsync 에서 따로 고칩니다'),
           s.rsyncOptions, defaultRsyncOptions, (x, v) => x.rsyncOptions = v),
       SettingTile(
         title: Text(tr('rsync 가져오기')),
@@ -210,27 +216,75 @@ class _CopySyncSettingsState extends State<CopySyncSettings> {
 /// 실시간 동기화 쌍 추가 (원본 · 대상 폴더 고르기 → 방법 · 지우기 · 일정)
 Future<void> addLiveSyncPairDialog(BuildContext context, AppController c) => _LiveSyncTile._add(context, c);
 
+/// 실시간 동기화 쌍 고치기 (원본 · 대상 · 방법 · 지우기 · 일정) - 모니터링 카드 · 환경 설정 (69)
+Future<void> editLiveSyncPairDialog(BuildContext context, AppController c, LiveSyncPair old) =>
+    _LiveSyncTile._edit(context, c, old: old);
+
+/// 실시간 동기화 쌍 지우기 - 확인 뒤 (46). 폴더 · 파일은 그대로
+Future<void> removeLiveSyncPair(BuildContext context, AppController c, LiveSyncPair x) async {
+  final ok = await confirmAction(
+    context,
+    title: tr('실시간 동기화를 지울까요?'),
+    body: '${shortPath(x.source)}\n→ ${shortPath(x.target)}\n\n${tr('동기화 설정만 지웁니다. 폴더 · 파일은 그대로 둡니다.')}',
+    ok: tr('지우기'),
+  );
+  if (!ok) return;
+  await c.updateSettings((y) => y.liveSyncPairs = [
+        for (final o in y.liveSyncPairs) if (!(o.source == x.source && o.target == x.target)) o,
+      ]);
+}
+
 /// 실시간 동기화 (lsyncd 처럼): 폴더 쌍 목록 · 추가 · 켜기 / 끄기 · 일정 · 지금 맞추기 · 지우기
 class _LiveSyncTile extends StatelessWidget {
   final AppController c;
   const _LiveSyncTile({required this.c});
 
-  static Future<void> _add(BuildContext context, AppController c) async {
-    final src = await pickFolder(context, tr('실시간 동기화: 원본 폴더'));
+  static Future<void> _add(BuildContext context, AppController c) => _edit(context, c);
+
+  /// 추가 ([old] 없음: 원본 · 대상을 먼저 고른다) · 고치기 ([old])
+  static Future<void> _edit(BuildContext context, AppController c, {LiveSyncPair? old}) async {
+    var src = old?.source ?? await pickFolder(context, tr('실시간 동기화: 원본 폴더'));
     if (src == null || !context.mounted) return;
-    final dst = await pickFolder(context, tr('실시간 동기화: 대상 폴더'));
+    var dst = old?.target ?? await pickFolder(context, tr('실시간 동기화: 대상 폴더'));
     if (dst == null || !context.mounted) return;
-    var method = copyMethodAvailable(CopyMethod.rsync, c.settings) ? 'rsync' : 'builtin';
-    var delete = false;
-    var schedule = <String>[];
+    var method = old?.method ?? (copyMethodAvailable(CopyMethod.rsync, c.settings) ? 'rsync' : 'builtin');
+    var delete = old?.delete ?? false;
+    var schedule = old?.schedule ?? <String>[];
+    // 경로 줄: 짧게 (끝 폴더가 보이게 - 67) + 전체 경로는 작게, 고치기면 [바꾸기]
+    Widget pathRow(BuildContext ctx, String label, String path, void Function(String) onPick) => Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: Row(children: [
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('$label  ${shortPath(path)}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                Text(vDisplay(path), style: const TextStyle(fontSize: 11, color: JjColors.textDim)),
+              ]),
+            ),
+            TextButton(
+              onPressed: () async {
+                final r = await pickFolder(ctx, label);
+                if (r != null) onPick(r);
+              },
+              child: Text(tr('바꾸기')),
+            ),
+          ]),
+        );
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, set) => AlertDialog(
         scrollable: true,
-          title: Text(tr('실시간 동기화 추가')),
+          title: Text(old == null ? tr('실시간 동기화 추가') : tr('실시간 동기화 고치기')),
           content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('$src\n→ $dst', style: const TextStyle(fontSize: 13)),
+            pathRow(ctx, tr('원본'), src!, (v) => set(() => src = v)),
+            pathRow(ctx, tr('대상'), dst!, (v) => set(() => dst = v)),
+            // 34: 안쪽 → 바깥은 지우기 없이만, 바깥 → 안쪽은 안 됨 (끝없이 돎)
+            if (LiveSync.nestingProblem(LiveSyncPair(src!, dst!, delete: delete), allowInnerToOuter: c.settings.allowInnerToOuter)
+                case final nest?)
+              Text(nest, style: const TextStyle(fontSize: 12, color: Colors.redAccent))
+            else if (isSameOrInside(src!, dst!))
+              Text(tr('원본이 대상 폴더 안에 있습니다: 원본의 내용이 대상 폴더 바로 아래에 복사됩니다 (지우기는 쓸 수 없음).'),
+                  style: const TextStyle(fontSize: 12, color: Colors.orangeAccent)),
             const SizedBox(height: 12),
             Wrap(spacing: 6, children: [
               for (final m in CopyMethod.values)
@@ -260,14 +314,31 @@ class _LiveSyncTile extends StatelessWidget {
           ]),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('취소'))),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('추가'))),
+            FilledButton(
+              onPressed: LiveSync.nestingProblem(LiveSyncPair(src!, dst!, delete: delete), allowInnerToOuter: c.settings.allowInnerToOuter) !=
+                      null
+                  ? null
+                  : () => Navigator.pop(ctx, true),
+              child: Text(old == null ? tr('추가') : tr('저장')),
+            ),
           ],
         ),
       ),
     );
     if (ok != true) return;
-    await c.updateSettings(
-        (x) => x.liveSyncPairs = [...x.liveSyncPairs, LiveSyncPair(src, dst, method: method, delete: delete, schedule: schedule)]);
+    if (old == null) {
+      await c.updateSettings((x) =>
+          x.liveSyncPairs = [...x.liveSyncPairs, LiveSyncPair(src!, dst!, method: method, delete: delete, schedule: schedule)]);
+      return;
+    }
+    // 원본 · 대상이 바뀌면 새 쌍 (지우기 확인도 새로 - 42), 아니면 방법 · 지우기 · 일정만
+    final same = src == old.source && dst == old.target;
+    final now = same
+        ? old.copyWith(method: method, delete: delete, schedule: schedule)
+        : LiveSyncPair(src!, dst!, method: method, delete: delete, schedule: schedule, enabled: old.enabled);
+    await c.updateSettings((x) => x.liveSyncPairs = [
+          for (final o in x.liveSyncPairs) o.source == old.source && o.target == old.target ? now : o,
+        ]);
   }
 
   @override
@@ -287,13 +358,39 @@ class _LiveSyncTile extends StatelessWidget {
             ),
           ),
           Padding(padding: const EdgeInsets.only(left: 16), child: LiveSyncRunOptions(c: c)),
+          // 17: 살펴보는 간격 (Android 와 WebDAV 원본은 폴더 감시가 안 되어 이 간격마다 살핀다. 기본 30초)
+          Padding(
+            padding: const EdgeInsets.only(left: 16),
+            child: SettingTile(
+              dense: true,
+              title: Text(tr('바뀐 것을 살펴보는 간격')),
+              subtitle: Text(Platform.isWindows
+                  ? tr('WebDAV 원본에 씁니다 (PC 의 폴더는 바뀌면 바로 맞춤). 짧을수록 빨리 맞추지만 서버 · 배터리를 더 씁니다.')
+                  : tr('짧을수록 빨리 맞추지만 배터리를 더 씁니다.')),
+              trailing: DropdownButton<int>(
+                value: c.settings.liveSyncIntervalSec,
+                items: [
+                  for (final v in {5, 10, 15, 30, 60, 120, 300, 600, 1800, 3600, c.settings.liveSyncIntervalSec}.toList()..sort())
+                    DropdownMenuItem(value: v, child: Text(v < 60 ? trf('{0}초', [v]) : trf('{0}분', [v ~/ 60]))),
+                ],
+                onChanged: (v) {
+                  if (v != null) c.updateSettings((x) => x.liveSyncIntervalSec = v);
+                },
+              ),
+            ),
+          ),
           for (var i = 0; i < pairs.length; i++)
             Padding(
               padding: const EdgeInsets.only(left: 16),
               child: SettingTile(
                 dense: true,
                 leading: Icon(Icons.sync, color: pairs[i].enabled ? JjColors.accent : JjColors.textDim),
-                title: Text('${pairs[i].source}  →  ${pairs[i].target}', maxLines: 2, overflow: TextOverflow.ellipsis),
+                // 67: 끝 폴더가 보이게 짧게 (전체 경로는 길게 누르거나 마우스를 올리면)
+                title: Tooltip(
+                  message: '${vDisplay(pairs[i].source)}\n→ ${vDisplay(pairs[i].target)}',
+                  child: Text('${shortPath(pairs[i].source)}  →  ${shortPath(pairs[i].target)}',
+                      maxLines: 2, overflow: TextOverflow.ellipsis),
+                ),
                 subtitle: Text([
                   tr(CopyMethod.of(pairs[i].method).label),
                   if (pairs[i].delete) tr('지우기 포함'),
@@ -325,10 +422,14 @@ class _LiveSyncTile extends StatelessWidget {
                         (x) => x.liveSyncPairs = [for (var k = 0; k < pairs.length; k++) k == i ? pairs[k].copyWith(enabled: v) : pairs[k]]),
                   ),
                   IconButton(
+                    tooltip: tr('고치기'),
+                    icon: const Icon(Icons.edit_outlined, size: 18),
+                    onPressed: () => editLiveSyncPairDialog(context, c, pairs[i]),
+                  ),
+                  IconButton(
                     tooltip: tr('지우기'),
                     icon: const Icon(Icons.delete_outline, size: 18, color: JjColors.textDim),
-                    onPressed: () => c.updateSettings(
-                        (x) => x.liveSyncPairs = [for (var k = 0; k < pairs.length; k++) if (k != i) pairs[k]]),
+                    onPressed: () => removeLiveSyncPair(context, c, pairs[i]),
                   ),
                 ]),
               ),

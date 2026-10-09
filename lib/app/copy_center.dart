@@ -31,6 +31,12 @@ class CopyCenter extends ChangeNotifier {
   List<CopyTask> get tasks => c.settings.copyTasks;
 
   bool isRunning(String id) => jobs[id] != null && !jobs[id]!.finished;
+
+  /// 지금 도는 복사 · 이동 수 (끝낼 때 확인 · Android 작업 알림에)
+  int get activeCount => jobs.values.where((j) => !j.finished).length;
+
+  /// 이미 만들어진 것 (없으면 null - 새로 만들지 않음)
+  static CopyCenter? peekOf(AppController c) => _instance != null && _instance!.c == c ? _instance : null;
   bool get anyRunning => jobs.values.any((j) => !j.finished);
 
   /// 새 작업: 지금 설정의 방법 · 옵션으로
@@ -39,6 +45,8 @@ class CopyCenter extends ChangeNotifier {
     final hasDir = sources.any((s) => isDav(s) || FileSystemEntity.isDirectorySync(s));
     var m = CopyMethod.of(method ?? (hasDir ? s.copyMethodFolder : s.copyMethodFile));
     if (!copyMethodAvailable(m, s)) m = CopyMethod.builtin;
+    // WebDAV 가 끼면 실제로는 앱이 직접 복사한다 (확인 창에 robocopy 로 잘못 보이지 않게). Rsync 화면 ([method] 지정) 은 그대로
+    if (method == null && [...sources, dest].any(isDav)) m = CopyMethod.builtin;
     return CopyTask(
       id: '${DateTime.now().microsecondsSinceEpoch}',
       sources: sources,

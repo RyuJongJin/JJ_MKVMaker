@@ -11,6 +11,9 @@ import '../l10n/tr.dart';
 /// 마지막으로 본 폴더 (다음에 열 때 여기서)
 String? _lastDir;
 
+/// 이름이 . 으로 시작하는 (숨긴) 폴더 · 파일도 보이기 (앱이 켜져 있는 동안 기억)
+bool _showHidden = false;
+
 /// Android 앱 안 파일 고르기: 폴더를 오가며 [extensions] 파일을 여러 개 고른다. 고른 파일의 실제 경로를 돌려준다.
 /// 내장 저장소와 SD 카드 · USB 메모리를 오갈 수 있다.
 Future<List<String>?> showAndroidFileBrowser(
@@ -96,7 +99,7 @@ class _FileBrowserState extends State<_FileBrowser> {
     try {
       for (final e in Directory(dir).listSync(followLinks: false)) {
         final name = p.basename(e.path);
-        if (name.startsWith('.')) continue;
+        if (!_showHidden && name.startsWith('.')) continue;
         if (e is Directory) dirs.add(e);
         if (!widget.folder && e is File && _match(e.path)) files.add(e);
       }
@@ -164,6 +167,15 @@ class _FileBrowserState extends State<_FileBrowser> {
           ),
           title: Text(widget.title),
           actions: [
+            // 숨긴 항목 (. 으로 시작) 보이기 / 숨기기
+            IconButton(
+              tooltip: _showHidden ? tr('숨긴 항목 숨기기') : tr('숨긴 항목 (. 으로 시작) 보이기'),
+              icon: Icon(_showHidden ? Icons.visibility : Icons.visibility_off_outlined),
+              onPressed: () {
+                _showHidden = !_showHidden;
+                if (dir != null) _open(dir);
+              },
+            ),
             if (widget.folder) ...[
               // 지금 보고 있는 폴더 아래에 새 폴더 (만든 뒤 그 폴더로 들어간다)
               OutlinedButton.icon(

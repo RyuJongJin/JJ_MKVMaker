@@ -12,7 +12,7 @@ import '../app/app_controller.dart';
 import '../app/bookmarks_controller.dart';
 import '../app/download_manager.dart';
 import '../core/bookmarks.dart';
-import '../core/download_detect.dart' show CookieRecord, toNetscapeCookies;
+import '../core/download_detect.dart' show CookieRecord, isLoginCookieDomain, toNetscapeCookies;
 import '../core/web_address.dart';
 import '../core/web_translate.dart';
 import '../app/i18n_controller.dart' show I18nController;
@@ -239,7 +239,7 @@ class _BrowserPageState extends State<BrowserPage> with RouteAware {
     if (!_trOn || _trBusy || nav == null || !_visible || !_url.startsWith('http') || _trFails >= 3) return;
     _trBusy = true;
     try {
-      final target = googleLang(widget.c.settings.uiLanguage);
+      final target = googleLang(uiLanguage); // 실제 화면 언어 (시스템 언어 따르기면 그 언어)
       // 한 번에 300개씩, 페이지가 크면 몇 번 더
       for (var round = 0; round < 10 && mounted && _trOn; round++) {
         final got = CollectedText.parse(await nav.evaluate(webTranslateCollectScript(target, force: _trForce)));
@@ -334,8 +334,14 @@ class _BrowserPageState extends State<BrowserPage> with RouteAware {
     _nav?.load(url);
   }
 
-  bool get _canDownload =>
-      widget.downloads != null && (looksLikeVideoPage(_url) || (_hasVideo && _url.startsWith('http')));
+  /// 27: 어느 사이트에서나 받아 볼 수 있다 (yt-dlp 가 지원하면 받고, 아니면 다운로드 목록에 이유가 보인다)
+  bool get _canDownload => widget.downloads != null && _url.startsWith('http');
+
+  /// 동영상이 있어 보이는 페이지 (버튼을 눈에 띄게)
+  bool get _likelyVideo => looksLikeVideoPage(_url) || _hasVideo;
+
+  String get _downloadTip =>
+      _likelyVideo ? tr('다운로드') : tr('다운로드 (이 페이지에서 동영상을 찾지 못했지만 받아 볼 수 있습니다)');
 
   Future<void> _download() async {
     // 로그인 쿠키를 먼저 내보내 yt-dlp 가 같은 로그인으로 받도록
@@ -574,17 +580,33 @@ class _BrowserPageState extends State<BrowserPage> with RouteAware {
             color: _trOn ? JjColors.accent : null),
         const SizedBox(width: 4),
         if (compact)
-          IconButton.filled(
-            tooltip: tr('다운로드'),
-            visualDensity: VisualDensity.compact,
-            onPressed: _canDownload ? _download : null,
-            icon: const Icon(Icons.download, size: 18),
-          )
+          _likelyVideo
+              ? IconButton.filled(
+                  tooltip: _downloadTip,
+                  visualDensity: VisualDensity.compact,
+                  onPressed: _canDownload ? _download : null,
+                  icon: const Icon(Icons.download, size: 18),
+                )
+              : IconButton.filledTonal(
+                  tooltip: _downloadTip,
+                  visualDensity: VisualDensity.compact,
+                  onPressed: _canDownload ? _download : null,
+                  icon: const Icon(Icons.download, size: 18),
+                )
         else
-          FilledButton.icon(
-            onPressed: _canDownload ? _download : null,
-            icon: const Icon(Icons.download, size: 18),
-            label: Text(tr('다운로드')),
+          Tooltip(
+            message: _downloadTip,
+            child: _likelyVideo
+                ? FilledButton.icon(
+                    onPressed: _canDownload ? _download : null,
+                    icon: const Icon(Icons.download, size: 18),
+                    label: Text(tr('다운로드')),
+                  )
+                : FilledButton.tonalIcon(
+                    onPressed: _canDownload ? _download : null,
+                    icon: const Icon(Icons.download, size: 18),
+                    label: Text(tr('다운로드')),
+                  ),
           ),
         const SizedBox(width: 4),
         if (!compact) btn(Icons.open_in_new, tr('외부 브라우저로 열기'), () => _openExternal(_url)),
@@ -839,6 +861,14 @@ class _InAppNav implements WebNav {
     'https://m.youtube.com/',
     'https://accounts.google.com/',
     'https://www.google.com/',
+    // 28: 로그인해야 받을 수 있는 동영상이 많은 곳 (앱 안 브라우저에서 로그인하면 yt-dlp 가 같은 로그인으로 받는다)
+    'https://www.instagram.com/',
+    'https://x.com/',
+    'https://twitter.com/',
+    'https://chzzk.naver.com/',
+    'https://www.naver.com/',
+    'https://nid.naver.com/',
+    'https://tv.naver.com/',
   ];
 
   @override
@@ -1014,7 +1044,7 @@ class _CefNav implements WebNav {
   @override
   Future<void> setJavaScript(bool on) async {}
 
-  /// YouTube · Google 쿠키를 yt-dlp 용 cookies.txt 로 (Edge 와 같은 파일 - 지금 쓰는 엔진의 로그인이 쓰인다).
+  /// YouTube · Google 등의 쿠키를 yt-dlp 용 cookies.txt 로 (Edge 와 같은 파일 - 지금 쓰는 엔진의 로그인이 쓰인다).
   /// Chrome 엔진은 쿠키의 이름 · 값만 알려 주므로 만료 · 보안 표시는 기본값으로 적는다.
   @override
   Future<void> exportCookies() async {
@@ -1025,7 +1055,7 @@ class _CefNav implements WebNav {
     final later = DateTime.now().add(const Duration(days: 30)).millisecondsSinceEpoch ~/ 1000;
     raw.forEach((domain, cookies) {
       final d = '$domain';
-      if (!(d.endsWith('youtube.com') || d.endsWith('google.com')) || cookies is! Map) return;
+      if (!isLoginCookieDomain(d) || cookies is! Map) return;
       cookies.forEach((name, value) => all.add(CookieRecord(
           name: '$name', value: '$value', domain: d, expires: later, secure: true)));
     });
@@ -1083,11 +1113,15 @@ class _BookmarkBar extends StatelessWidget {
     final items = bm.tree.bar.children!;
     // 빈 곳: 오른쪽 클릭 메뉴 (페이지 · 폴더 추가, 관리자), 다른 폴더의 즐겨찾기를 끌어다 놓으면 표시줄 맨 뒤로
     return DragTarget<BookmarkDrag>(
-      onWillAcceptWithDetails: (d) => bm.canMoveInto(d.data.id, BookmarkTree.barId),
+      // 다른 폴더에서 온 것만 (표시줄 안에서는 다른 즐겨찾기 위에 놓아 순서를 바꾼다. 길게 눌렀다 떼도 맨 뒤로 가지 않게)
+      onWillAcceptWithDetails: (d) =>
+          bm.canMoveInto(d.data.id, BookmarkTree.barId) && bm.tree.parentOf(d.data.id)?.id != BookmarkTree.barId,
       onAcceptWithDetails: (d) => bm.moveInto(d.data.id, BookmarkTree.barId),
       builder: (context, _, _) => GestureDetector(
         behavior: HitTestBehavior.opaque,
         onSecondaryTapDown: (d) => _menu(context, d.globalPosition),
+        // 터치 화면: 길게 누르면 같은 메뉴
+        onLongPressStart: (d) => _menu(context, d.globalPosition),
         child: Container(
           height: 32,
           color: JjColors.panel,
@@ -1136,6 +1170,8 @@ class _BookmarkBar extends StatelessWidget {
           child: Tooltip(
             message: '${n.title}\n${n.url}',
             waitDuration: const Duration(milliseconds: 600),
+            // 길게 누르기는 메뉴에 (마우스를 올리면 주소)
+            triggerMode: TooltipTriggerMode.manual,
             child: TextButton.icon(
               onPressed: () => onOpen(n.url!),
               icon: const Icon(Icons.public, size: 14),
@@ -1147,7 +1183,8 @@ class _BookmarkBar extends StatelessWidget {
     }
     return GestureDetector(
       onSecondaryTapDown: (d) => _menu(context, d.globalPosition, n),
-      child: BookmarkDraggable(n: n, child: button),
+      // 길게 누르기 (터치 화면): 움직이지 않고 떼면 메뉴, 끌면 옮기기 (BookmarkDraggable)
+      child: BookmarkDraggable(n: n, onMenu: (at) => _menu(context, at, n), child: button),
     );
   }
 
@@ -1351,6 +1388,16 @@ class _BookmarkPanelState extends State<BookmarkPanel> {
                   onReorderItem: (o, n) => bm.reorder(folder.id, o, n),
                   itemBuilder: (_, i) {
                     final n = items[i];
+                    // 오른쪽 클릭 · 길게 누르기 (터치 화면) 로 같은 메뉴
+                    void menuAt(Offset at) => showBookmarkMenu(context,
+                        bm: bm,
+                        globalPosition: at,
+                        n: n,
+                        folderId: folder.id,
+                        onOpen: widget.onOpen,
+                        onOpenExternal: widget.onOpenExternal,
+                        currentUrl: widget.currentUrl,
+                        currentTitle: widget.currentTitle);
                     final tile = ListTile(
                       dense: true,
                       leading: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -1362,6 +1409,7 @@ class _BookmarkPanelState extends State<BookmarkPanel> {
                         // 아이콘을 끌어 폴더 줄 · 위 경로에 놓으면 그 폴더로
                         BookmarkDraggable(
                           n: n,
+                          onMenu: menuAt,
                           child: Icon(n.isFolder ? Icons.folder : Icons.public,
                               size: 18, color: n.isFolder ? Colors.amber : JjColors.textDim),
                         ),
@@ -1405,15 +1453,8 @@ class _BookmarkPanelState extends State<BookmarkPanel> {
                     return KeyedSubtree(
                       key: ValueKey(n.id),
                       child: GestureDetector(
-                        onSecondaryTapDown: (d) => showBookmarkMenu(context,
-                            bm: bm,
-                            globalPosition: d.globalPosition,
-                            n: n,
-                            folderId: folder.id,
-                            onOpen: widget.onOpen,
-                            onOpenExternal: widget.onOpenExternal,
-                            currentUrl: widget.currentUrl,
-                            currentTitle: widget.currentTitle),
+                        onSecondaryTapDown: (d) => menuAt(d.globalPosition),
+                        onLongPressStart: (d) => menuAt(d.globalPosition),
                         child: n.isFolder ? BookmarkFolderDrop(bm: bm, folderId: n.id, child: tile) : tile,
                       ),
                     );
@@ -1422,7 +1463,7 @@ class _BookmarkPanelState extends State<BookmarkPanel> {
         ),
         Padding(
           padding: EdgeInsets.all(8),
-          child: Text(tr('⋮⋮ 를 끌어 순서 바꾸기 · 아이콘을 끌어 폴더에 넣기 · 오른쪽 클릭 메뉴'),
+          child: Text(tr('⋮⋮ 를 끌어 순서 바꾸기 · 아이콘을 끌어 폴더에 넣기 · 오른쪽 클릭 (길게 누르기) 메뉴'),
               textAlign: TextAlign.center, style: TextStyle(fontSize: 11, color: JjColors.textDim)),
         ),
       ]),

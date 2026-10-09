@@ -223,18 +223,22 @@ class MediaKitFullPlayer implements MediaPlayer {
   }
 
   @override
-  Widget buildView() => Video(
-        controller: _video,
-        controls: NoVideoControls,
-        fill: Colors.black,
-        subtitleViewConfiguration: const SubtitleViewConfiguration(
-          style: TextStyle(
-            fontSize: 44,
-            color: Colors.white,
-            height: 1.3,
-            shadows: [Shadow(blurRadius: 6, color: Colors.black), Shadow(offset: Offset(2, 2))],
+  Widget buildView() => ValueListenableBuilder<double>(
+        // 자막 글자 크기 (플레이어 메뉴 > 자막 크기)
+        valueListenable: playerSubtitleScale,
+        builder: (_, scale, _) => Video(
+          controller: _video,
+          controls: NoVideoControls,
+          fill: Colors.black,
+          subtitleViewConfiguration: SubtitleViewConfiguration(
+            style: TextStyle(
+              fontSize: 44 * scale,
+              color: Colors.white,
+              height: 1.3,
+              shadows: const [Shadow(blurRadius: 6, color: Colors.black), Shadow(offset: Offset(2, 2))],
+            ),
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 36),
           ),
-          padding: EdgeInsets.fromLTRB(24, 0, 24, 36),
         ),
       );
 

@@ -8,7 +8,12 @@ const subtitleExtensions = ['srt', 'ass', 'ssa', 'smi', 'sami', 'vtt'];
 /// 선택 가능한 동영상 확장자
 const videoExtensions = [
   'mkv', 'mp4', 'avi', 'mov', 'wmv', 'm4v', 'ts', 'm2ts', 'webm', 'flv', //
+  // 29: 예전 캠코더 · 휴대폰 · DVD 형식도 (FFmpeg · 내장 플레이어가 연다)
+  'mpg', 'mpeg', 'vob', '3gp', '3g2', 'mts', 'ogv', 'asf', //
 ];
+
+/// 음악 (내장 플레이어로도 재생할 수 있게 - 29)
+const audioExtensions = ['mp3', 'flac', 'm4a', 'aac', 'ogg', 'opus', 'wav', 'wma'];
 
 /// 파일명 규칙 (확정 사항 2)
 const aiSuffix = 'AI';

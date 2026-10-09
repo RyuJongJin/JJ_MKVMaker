@@ -22,6 +22,7 @@ import '../services/subtitle_provider.dart';
 import '../core/text_codec.dart';
 import '../core/ai_subtitle.dart';
 import '../services/ai_services.dart';
+import '../services/media_player.dart' show playerSubtitleScale;
 import '../services/media_tool.dart';
 import '../services/model_store.dart';
 import '../services/platform_services.dart';
@@ -129,7 +130,18 @@ class AppController extends ChangeNotifier {
     await settingsStore?.save(settings);
   }
 
+  /// 안전 저장소에 저장하지 못한 비밀번호를 다시 저장 (화면 위 알림의 [다시 시도] - 40-1 · 40-3)
+  Future<bool> retrySecrets() async {
+    final store = settingsStore;
+    if (store == null) return true;
+    final ok = await store.retrySecrets(settings);
+    _applySettings();
+    notifyListeners();
+    return ok;
+  }
+
   void _applySettings() {
+    playerSubtitleScale.value = settings.subtitleScale;
     // WebDAV 서버 (파일 탐색기 · Rsync 화면 · 복사 · 동기화가 dav:// 경로로 쓴다)
     DavRegistry.configure(settings.webdavServers);
     outputRootOverride =
@@ -190,7 +202,24 @@ class AppController extends ChangeNotifier {
   bool isCodecAvailable(VideoCodecChoice c) =>
       c == VideoCodecChoice.copy || c.pickEncoder(encoders) != null;
 
+  /// 103: 크기 · 보정 때문에 "원본 유지" 에서 H.264 로 저절로 바꿨는지 (원래대로 돌리면 코덱도 원본 유지로 되돌린다)
+  bool _autoCodec = false;
+
+  /// 코덱이 저절로 바뀌었을 때 화면에 짧게 알릴 글 (보여 주면 비움)
+  String? encodeNotice;
+
+  /// 크기 · 보정이 모두 원래대로이고 저절로 바꾼 코덱이면 원본 유지로 되돌린다
+  EncodeSettings _maybeRestoreCodec(EncodeSettings e) {
+    if (_autoCodec && e.resolution == ResolutionChoice.original && !e.adjusts && e.codec == VideoCodecChoice.h264) {
+      _autoCodec = false;
+      encodeNotice = tr('크기 · 보정을 원래대로 돌려 코덱도 "원본 유지" 로 되돌렸습니다.');
+      return e.copyWith(codec: VideoCodecChoice.copy);
+    }
+    return e;
+  }
+
   void setCodec(VideoCodecChoice c) {
+    _autoCodec = false; // 사용자가 직접 고름
     // 원본 유지(복사)는 크기 · 화면 비율 · 회전 · 색 보정을 할 수 없으므로 처음으로
     encode = c == VideoCodecChoice.copy
         ? encode.resetAdjust().copyWith(codec: c, resolution: ResolutionChoice.original)
@@ -200,7 +229,13 @@ class AppController extends ChangeNotifier {
 
   /// 화면 비율 · 회전 · 색 보정 바꾸기 (재인코딩이 필요하면 기본 H.264 로)
   void setAdjust(EncodeSettings e) {
-    encode = e.adjusts && e.codec == VideoCodecChoice.copy ? e.copyWith(codec: VideoCodecChoice.h264) : e;
+    if (e.adjusts && e.codec == VideoCodecChoice.copy) {
+      _autoCodec = true;
+      encodeNotice = tr('보정은 다시 인코딩해야 해서 코덱을 "원본 유지" 에서 H.264 로 바꿨습니다.');
+      encode = e.copyWith(codec: VideoCodecChoice.h264);
+    } else {
+      encode = _maybeRestoreCodec(e);
+    }
     _encodeChanged();
   }
 
@@ -214,8 +249,11 @@ class AppController extends ChangeNotifier {
     // 크기를 바꾸려면 재인코딩이 필요하므로 기본 H.264 로
     final needCodec =
         r != ResolutionChoice.original && encode.codec == VideoCodecChoice.copy;
-    encode = encode.copyWith(
-        resolution: r, codec: needCodec ? VideoCodecChoice.h264 : null);
+    if (needCodec) {
+      _autoCodec = true;
+      encodeNotice = tr('크기를 바꾸면 다시 인코딩해야 해서 코덱을 "원본 유지" 에서 H.264 로 바꿨습니다.');
+    }
+    encode = _maybeRestoreCodec(encode.copyWith(resolution: r, codec: needCodec ? VideoCodecChoice.h264 : null));
     _encodeChanged();
   }
 
@@ -233,7 +271,8 @@ class AppController extends ChangeNotifier {
 
   Future<void> pickVideos() async {
     final paths = await services.storage.pickVideos();
-    await addVideos(paths);
+    // 33: 사용자가 직접 고른 파일은 jj_mkv 폴더 안에 있어도 넣는다
+    await addVideos(paths, allowOutputFolder: true);
   }
 
   /// [allowOutputFolder]: 탐색기에서 직접 연 파일은 jj_mkv 폴더 안에 있어도 넣는다
@@ -324,6 +363,33 @@ class AppController extends ChangeNotifier {
     }
   }
 
+  /// 116 (Android): 저장소 전체 접근 권한이 있는지 (null = 묻지 않음 - Windows)
+  Future<bool> Function()? fileAccess;
+
+  static String get accessNeededMessage =>
+      tr('"모든 파일에 대한 접근" 권한이 없어 읽을 수 없습니다. 허용하면 저절로 다시 분석합니다.');
+
+  static bool isPermissionDenied(String message) {
+    final m = message.toLowerCase();
+    return m.contains('permission denied') || m.contains('eacces') || m.contains('operation not permitted');
+  }
+
+  /// 116: 분석에 실패했던 동영상을 다시 분석한다 (권한을 허용하고 돌아왔을 때). 다시 분석한 수
+  Future<int> reanalyzeFailed() async {
+    var n = 0;
+    for (final v in [...videos]) {
+      if (v.info != null || v.message == null || v.status == JobStatus.running) continue;
+      if (!videos.contains(v)) continue;
+      v.message = null;
+      v.subtitles.removeWhere((s) => s.kind == SubtitleKind.embedded);
+      notifyListeners();
+      await _loadVideo(v);
+      n++;
+    }
+    if (n > 0) _log(trf('분석에 실패했던 동영상 {0}개를 다시 분석했습니다', [n]));
+    return n;
+  }
+
   Future<void> _loadVideo(VideoItem v) async {
     try {
       v.info = await _tool.probe(v.path);
@@ -337,14 +403,20 @@ class AppController extends ChangeNotifier {
         ));
       }
     } on MediaToolException catch (e) {
-      v.message = e.message;
+      // 116: 권한이 없어 못 읽은 것이면 빨간 Permission denied 대신 알아볼 수 있게 (허용하면 다시 분석)
+      final denied = isPermissionDenied(e.message) && fileAccess != null && !await fileAccess!();
+      v.message = denied ? accessNeededMessage : e.message;
       _log(trf('분석 실패: {0} - {1}', [v.fileName, e.message]));
     }
 
-    // 같은 폴더의 자막 자동 추가 (기능 4)
-    final siblings = findSiblingSubtitles(
-        v.path, await services.storage.listFiles(v.directory));
+    // 같은 폴더의 자막 자동 추가 (기능 4) - 다시 분석할 때 이미 있는 것은 그대로
+    List<String> folder = const [];
+    try {
+      folder = await services.storage.listFiles(v.directory);
+    } catch (_) {}
+    final siblings = findSiblingSubtitles(v.path, folder);
     for (final d in siblings) {
+      if (v.subtitles.any((s) => s.path != null && p.equals(s.path!, d.path))) continue;
       await _addExternal(v, d.path, d.language);
     }
     // 전에 만든 자막 (jj_mkv 의 파일명_ko.srt 등: AI 자막 · 번역 · 인터넷 자막) 도 다시 연결
@@ -1122,15 +1194,23 @@ class AppController extends ChangeNotifier {
   /// 아니면 내장 플레이어용 (목록, 시작 위치).
   /// [keepOrder]: 여러 개를 줄 때 이름순으로 다시 정렬하지 않고 준 순서대로 재생
   /// [internal]: 외부 프로그램 설정과 상관없이 내장 플레이어로 (파일 탐색기의 "내장 플레이어로 재생")
+  /// [external]: 외부 프로그램으로 열 때 (화면이 WebDAV 로그인 안내 등을 한다 - 55). 없으면 바로 연다
   Future<(List<String>, int)?> preparePlayback(List<String> files,
-      {bool keepOrder = false, bool internal = false}) async {
-    final videos = files.where(isVideoFile).toList();
+      {bool keepOrder = false,
+      bool internal = false,
+      Future<void> Function(String program, List<String> videos)? external}) async {
+    // 29: 음악도 내장 플레이어로 (탐색기 메뉴의 "내장 플레이어로 재생")
+    final videos = files.where((f) => isVideoFile(f) || isAudioFile(f)).toList();
     if (videos.isEmpty) return null;
     final ext = p.extension(videos.first).replaceFirst('.', '').toLowerCase();
     final program = settings.externalPlayers[ext];
     if (!internal && program != null && program.isNotEmpty) {
-      // WebDAV 는 스트리밍 주소 (아이디 포함) 로 넘긴다
-      await services.shell.openExternal(program, videos.map(vPlayable).toList());
+      // WebDAV 는 스트리밍 주소로 넘긴다 (아이디 · 비밀번호는 넣지 않음 - 55)
+      if (external != null) {
+        await external(program, videos);
+      } else {
+        await services.shell.openExternal(program, videos.map(vPlayable).toList());
+      }
       _log(trf('외부 프로그램으로 재생: {0} ← {1}개', [program == 'system' ? tr('기본 연결 프로그램') : p.basename(program), videos.length]));
       return null;
     }
@@ -1211,8 +1291,13 @@ class AppController extends ChangeNotifier {
     return _enqueue(label, () => _runBuildAll(targets));
   }
 
+  /// 지금 MKV 를 만드는 중인지 (32: AI 자막 · 번역만 돌 때는 인코딩 설정을 막지 않는다)
+  bool buildingMkv = false;
+
   Future<void> _runBuildAll([List<VideoItem>? only]) async {
     _buildCancelled = false;
+    buildingMkv = true;
+    notifyListeners();
     try {
       // 동시에 [maxParallelJobs] 개씩 (0 = 무제한). 작업자가 목록에서 하나씩 가져가 처리한다.
       final queue = only?.where(videos.contains).toList() ??
@@ -1232,6 +1317,7 @@ class AppController extends ChangeNotifier {
       final ok = queue.where((v) => v.status == JobStatus.done).length;
       _log(trf('완료: 성공 {0} / 전체 {1}', [ok, queue.length]));
     } finally {
+      buildingMkv = false;
       notifyListeners();
     }
   }
@@ -1305,6 +1391,17 @@ class AppController extends ChangeNotifier {
   /// 지금 작업 중단 + 대기 중인 작업 모두 비우기
   /// 지금 음성인식 (취소하면 멈춘다)
   SpeechRecognizer? _recognizer;
+
+  /// 45: 지금 작업만 멈추고 대기 중인 작업은 이어서 (다음 작업이 시작하면 취소 표시는 다시 꺼진다)
+  void cancelCurrent() {
+    if (!busy) return;
+    _log(trf('지금 작업 취소: {0}', [currentJob ?? '']));
+    _recognizer?.cancel();
+    _buildCancelled = true;
+    _aiCancelled = true;
+    _translator?.cancel();
+    _tool.cancel();
+  }
 
   void cancel() {
     _recognizer?.cancel();

@@ -149,7 +149,7 @@ void main() {
     lf('live/sub/b.txt', 'bb');
     rf('mirror/old.txt', 'o');
     final c = AppController(PlatformServices(mediaTool: ProcessMediaTool('x', 'y'), storage: DesktopStorageService()));
-    final pair = LiveSyncPair(p.join(local.path, 'live'), 'dav://$id/mirror', method: 'rsync', delete: true);
+    final pair = LiveSyncPair(p.join(local.path, 'live'), 'dav://$id/mirror', method: 'rsync', delete: true, deleteConfirmed: true);
     c.settings.liveSyncPairs = [pair];
     final live = LiveSync(c);
     expect(await LiveSync.diff(pair), unorderedEquals(['a.txt', 'sub/b.txt', '− old.txt']));
@@ -169,7 +169,9 @@ void main() {
     final s = davStream('dav://$id/영상/1화.mkv');
     expect(s.url, '${server.url}/${Uri.encodeComponent('영상')}/${Uri.encodeComponent('1화.mkv')}');
     expect(s.headers['Authorization'], startsWith('Basic '));
-    expect(vPlayable('dav://$id/영상/1화.mkv'), startsWith('http://user:pass@127.0.0.1:'));
+    // 55: 다른 앱으로 넘기는 주소에는 아이디 · 비밀번호를 넣지 않는다
+    expect(vPlayable('dav://$id/영상/1화.mkv'), s.url);
+    expect(vPlayable('dav://$id/영상/1화.mkv'), isNot(contains('pass')));
     expect(vPlayable(r'C:\a.mkv'), r'C:\a.mkv');
     // 주소 + 헤더로 실제로 받을 수 있다 (플레이어와 같은 요청)
     final http = HttpClient();

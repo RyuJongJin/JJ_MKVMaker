@@ -122,8 +122,36 @@ void main() {
       await tester.pump(const Duration(milliseconds: 80));
     }
     await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    // 47: 옮기기 전에 묻는다 - [취소] 면 그대로, [옮기기] 면 이동
+    expect(find.text('파일 옮기기'), findsOneWidget);
+    expect(find.textContaining('"b.mp4" 을(를) "완료함" 폴더로 옮길까요?'), findsOneWidget);
+    await tester.tap(find.text('취소'));
+    await tester.pumpAndSettle();
+    await settleIo();
+    expect(File(p.join(dest, 'b.mp4')).existsSync(), isFalse);
+    for (var i = 0; i < 3; i++) {
+      await tester.tap(tile);
+      await tester.pump(const Duration(milliseconds: 80));
+    }
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, '옮기기'));
+    await tester.pump();
     await settleIo();
     expect(File(p.join(dest, 'b.mp4')).existsSync(), isTrue);
+    // 102: 세 번 누르기를 "아무것도 안 함" 으로 하면 묻지도 옮기지도 않는다
+    c.settings.tripleTapAction = 'none';
+    final dTile = find.text('d.mp4').first;
+    for (var i = 0; i < 3; i++) {
+      await tester.tap(dTile);
+      await tester.pump(const Duration(milliseconds: 80));
+    }
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+    expect(find.text('파일 옮기기'), findsNothing);
+    expect(File(p.join(dest, 'd.mp4')).existsSync(), isFalse);
+    c.settings.tripleTapAction = 'move';
     expect(c.videos.map((v) => v.fileName), ['a.mp4', 'd.mp4']);
 
     // 세부 정보 오른쪽 아래: 표시 이름 버튼 두 개 (첫 번째가 아래, 두 번째가 그 위)

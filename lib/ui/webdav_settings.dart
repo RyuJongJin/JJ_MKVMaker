@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../app/app_controller.dart';
 import '../core/webdav.dart';
 import '../l10n/tr.dart';
+import 'confirm.dart';
 import 'theme.dart';
 import 'setting_tile.dart';
 
@@ -20,7 +21,7 @@ class WebDavSettings extends StatelessWidget {
         leading: const Icon(Icons.cloud_outlined),
         title: const Text('WebDAV'),
         subtitle: Text(tr('NAS · 클라우드의 WebDAV 폴더를 파일 탐색기 · Rsync 화면에서 열고 복사 · 동기화합니다 '
-            '(위쪽 "SD 카드" 옆 탭). 비밀번호는 이 기기의 설정 파일에만 저장합니다.')),
+            '(위쪽 "SD 카드" 옆 탭). 비밀번호는 이 기기의 안전 저장소에만 두고 설정 파일에는 쓰지 않습니다. 한 번 넣으면 업데이트 뒤에도 남습니다.')),
         trailing: TextButton.icon(
           onPressed: () => editDavServer(context, c),
           icon: const Icon(Icons.add, size: 18),
@@ -45,7 +46,17 @@ class WebDavSettings extends StatelessWidget {
               IconButton(
                 tooltip: tr('지우기'),
                 icon: const Icon(Icons.delete_outline, size: 18, color: JjColors.textDim),
-                onPressed: () => c.updateSettings((x) => x.webdavServers = [for (final y in x.webdavServers) if (y.id != s.id) y]),
+                // 46: 확인 뒤 (저장된 비밀번호도 함께 지워진다)
+                onPressed: () async {
+                  final ok = await confirmAction(
+                    context,
+                    title: trf('WebDAV 서버 "{0}" 을(를) 지울까요?', [s.label]),
+                    body: tr('서버 설정과 이 기기에 저장된 비밀번호를 지웁니다. 서버의 파일은 그대로입니다. '
+                        '이 서버를 쓰는 동기화 · 복사는 다시 넣을 때까지 연결되지 않습니다.'),
+                    ok: tr('지우기'),
+                  );
+                  if (ok) await c.updateSettings((x) => x.webdavServers = [for (final y in x.webdavServers) if (y.id != s.id) y]);
+                },
               ),
             ]),
           ),
@@ -63,6 +74,7 @@ Future<DavServer?> editDavServer(BuildContext context, AppController c, {DavServ
   var insecure = old?.insecure ?? false;
   var hide = true;
   String? result; // 연결 확인 결과
+  var toHttps = false; // 서버가 https 로 옮기라고 함 → [https 로 바꾸기]
   var passed = false;
   var testing = false;
 
@@ -83,6 +95,7 @@ Future<DavServer?> editDavServer(BuildContext context, AppController c, {DavServ
           set(() {
             testing = true;
             result = null;
+            toHttps = false;
           });
           final client = DavClient(current());
           try {
@@ -92,7 +105,11 @@ Future<DavServer?> editDavServer(BuildContext context, AppController c, {DavServ
             result = trf('연결됨: 항목 {0}개{1}', [items.length, free == null ? '' : ' · ${tr('남은 용량')} ${(free / (1 << 30)).toStringAsFixed(1)}GB']);
           } catch (e) {
             passed = false;
-            result = trf('연결 실패: {0}', [e]);
+            toHttps = e is DavException && e.wantsHttps;
+            final s = '$e'.toLowerCase();
+            result = pass.text.isEmpty && (s.contains('401') || s.contains('아이디 · 비밀번호'))
+                ? tr('저장된 비밀번호가 없습니다. 한 번만 다시 넣어 주세요')
+                : trf('연결 실패: {0}', [e]);
           } finally {
             client.close();
           }
@@ -141,6 +158,19 @@ Future<DavServer?> editDavServer(BuildContext context, AppController c, {DavServ
                   alignment: Alignment.centerLeft,
                   child: Text(result!,
                       style: TextStyle(fontSize: 12, color: passed ? Colors.greenAccent : Colors.redAccent)),
+                ),
+              if (toHttps)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    icon: const Icon(Icons.lock_outline, size: 16),
+                    label: Text(tr('주소를 https 로 바꾸고 다시 확인')),
+                    onPressed: () {
+                      url.text = url.text.trim().replaceFirst(RegExp('^http://', caseSensitive: false), 'https://');
+                      set(() => toHttps = false);
+                      test();
+                    },
+                  ),
                 ),
             ]),
           ),

@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 
 import '../../app/app_controller.dart';
 import '../../app/download_manager.dart';
+import '../../app/copy_center.dart';
 import '../../app/live_sync.dart';
 import '../../services/downloader.dart';
 import '../../l10n/tr.dart';
@@ -28,6 +29,7 @@ class AndroidKeepAlive {
   }
 
   LiveSync? _live;
+  CopyCenter? _copies;
   bool? _background;
 
   /// 진행률 알림은 자주 바뀌므로 1초에 한 번만 보낸다
@@ -53,8 +55,16 @@ class AndroidKeepAlive {
         .where((t) => t.state == DownloadState.downloading || t.state == DownloadState.queued)
         .length;
     final syncs = bg && live != null ? live.watching.length : 0;
+    // 43: 탐색기 · Rsync 화면의 복사 · 이동도 백그라운드에서 살려 둔다
+    final copies = CopyCenter.peekOf(c);
+    if (copies != _copies) {
+      _copies?.removeListener(_changed);
+      _copies = copies?..addListener(_changed);
+    }
+    final copying = copies?.activeCount ?? 0;
     final (text, progress) =
-        status(c.currentJob, c.busy, running, downloads.overallProgress, syncs: syncs, syncing: live?.anyRunning ?? false);
+        status(c.currentJob, c.busy, running, downloads.overallProgress,
+            syncs: syncs, syncing: live?.anyRunning ?? false, copies: copying, stopped: live?.problems.length ?? 0);
     try {
       if (text == null) {
         if (_on) await _ch.invokeMethod<void>('stopKeepAlive');
@@ -75,9 +85,12 @@ class AndroidKeepAlive {
   /// 알림 글과 진행률 (0~100, 모르면 -1). 진행 중인 일이 없으면 글이 null.
   /// [syncs] 백그라운드로 지켜보는 실시간 동기화 수 ([syncing] 지금 맞추는 중)
   static (String?, int) status(String? job, bool busy, int downloads, double? downloadProgress,
-      {int syncs = 0, bool syncing = false}) {
+      {int syncs = 0, bool syncing = false, int copies = 0, int stopped = 0}) {
     final parts = [
+      // 68: 원본을 읽지 못해 멈춘 동기화 (화면을 보지 않아도 알 수 있게 맨 앞에)
+      if (stopped > 0) trf('⚠ 동기화 멈춤 {0}개 · 원본 확인 필요', [stopped]),
       if (busy) job ?? tr('작업 중'),
+      if (copies > 0) trf('복사 · 이동 {0}개', [copies]),
       if (downloads > 0) trf('다운로드 {0}개{1}', [downloads, downloadProgress == null ? '' : ' · ${(downloadProgress * 100).round()}%']),
       if (syncs > 0) syncing ? trf('동기화 {0}개 · 맞추는 중', [syncs]) : trf('동기화 {0}개 지켜보는 중', [syncs]),
     ];

@@ -52,6 +52,8 @@ dependencies:
   path_provider: ^2.1.6
   window_manager: ^0.5.2
   tray_manager: ^0.7.0
+  # Windows 알림 (토스트) - tray_manager 가 이미 쓰는 것
+  nativeapi: ^0.3.0
   hotkey_manager: ^0.2.3
   desktop_drop: ^0.8.0
   screen_retriever: ^0.2.2
@@ -65,7 +67,8 @@ dependencies:
   pdf: ^3.13.1
   archive: ^4.3.0
   image: ^4.10.1
-# Android 빌드 도구 (AGP 9) 에 맞게 고친 사본 (packages/flutter_inappwebview_android/JJ_PATCH.md)
+  # 보기 화면 "계속 보기" 동안 화면이 꺼지지 않게 (media_kit 이 이미 쓰는 것)
+  wakelock_plus: ^1.8.0
 dependency_overrides:
   flutter_inappwebview_android:
     path: packages/flutter_inappwebview_android

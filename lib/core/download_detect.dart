@@ -180,6 +180,15 @@ List<String> ytDlpFormatArgs(YtContainer c, YtQuality q, {bool preferH264 = fals
   };
 }
 
+/// yt-dlp 에 넘기는 로그인 쿠키의 사이트 (YouTube · Google · Instagram · X · 네이버 / 치지직 - 28)
+const loginCookieDomains = ['youtube.com', 'google.com', 'instagram.com', 'x.com', 'twitter.com', 'naver.com'];
+
+/// [d] (".x.com" 등) 가 [loginCookieDomains] 중 하나이거나 그 아래인지 (netflix.com 이 x.com 으로 잡히지 않게)
+bool isLoginCookieDomain(String d) {
+  final h = (d.startsWith('.') ? d.substring(1) : d).toLowerCase();
+  return loginCookieDomains.any((x) => h == x || h.endsWith('.$x'));
+}
+
 /// 앱 안 브라우저(내장 Edge) 의 쿠키를 쓰는 값
 const internalBrowserCookies = '*internal';
 

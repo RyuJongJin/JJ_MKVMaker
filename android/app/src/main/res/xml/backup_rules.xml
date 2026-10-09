@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 6 ~ 11 backup: secrets (jj_secrets) are encrypted with this device's Keystore key and cannot be decrypted elsewhere, so they are not backed up -->
+<full-backup-content>
+    <exclude domain="sharedpref" path="jj_secrets.xml" />
+    <!-- 115: install marker (if missing on first launch, settings came back from Auto Backup) -->
+    <exclude domain="file" path="install_marker" />
+</full-backup-content>

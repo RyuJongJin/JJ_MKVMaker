@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 import '../l10n/tr.dart';
 import 'playlist.dart' show naturalCompare;
 import 'vfs.dart';
+import 'webdav.dart' show DavException;
 
 /// 파일 탐색기 (X-plore 참고) 의 화면과 상관없는 부분: 폴더 읽기 · 정렬 · 복사 / 이동 / 삭제 · 찾기.
 
@@ -191,6 +192,62 @@ class FileOpCancelled implements Exception {
   const FileOpCancelled();
 }
 
+/// 동기화 · 미러: 원본을 읽지 못했거나 (권한 꺼짐 · SD 카드 빠짐 · 네트워크 끊김) 원본이 통째로 비었는데 대상에는 파일이 있다.
+/// "원본에 없는 것을 대상에서 지우기" 가 원본을 빈 것으로 보고 대상을 모두 지우지 않도록, 아무것도 지우지 않고 멈춘다.
+class SourceUnreadableException implements Exception {
+  final String path;
+  final Object? cause;
+
+  /// 읽기는 됐지만 원본이 비어 있음 (대상에는 파일이 있음)
+  final bool empty;
+  const SourceUnreadableException(this.path, {this.cause, this.empty = false});
+
+  /// 원인을 짧게 (예외 원문 대신 - 68)
+  String get detail {
+    final c = cause;
+    if (c == null) return '';
+    if (c is FileSystemException) {
+      if (c.message == '없음' && c.osError == null) return tr('폴더가 없습니다');
+      return c.osError?.message.trim().isNotEmpty == true ? c.osError!.message.trim() : c.message;
+    }
+    if (c is DavException) return c.message;
+    return '$c'.split('\n').first;
+  }
+
+  @override
+  String toString() => empty
+      ? trf('원본 폴더가 비어 있어 멈췄습니다 (대상 파일은 지우지 않음). SD 카드 · 네트워크 · 권한을 확인하세요: {0}', [path])
+      : trf('원본 폴더를 읽을 수 없어 멈췄습니다 (대상 파일은 지우지 않음): {0}{1}', [path, detail.isEmpty ? '' : ' · $detail']);
+}
+
+/// Windows 네트워크 공유 경로의 맨 위 (\\서버\공유). 37
+String uncRoot(String path) {
+  final parts = path.replaceAll('/', r'\').split(r'\').where((s) => s.isNotEmpty).toList();
+  return parts.length < 2 ? path : '\\\\${parts[0]}\\${parts[1]}';
+}
+
+/// 복사 · 동기화가 다 쓴 뒤 이름을 바꾸기 전의 임시 파일 (끊기면 남는다 - 71)
+bool isPartialFile(String name) => name.endsWith('.jjpart') || name.endsWith('.jjsync');
+
+/// "지우기 포함" 으로 맞추기 전에: 원본을 읽을 수 있는지, 원본이 통째로 비었는데 대상에 파일이 있지 않은지.
+/// 문제가 있으면 [SourceUnreadableException] (아무것도 지우지 않게).
+/// [allowEmpty]: 사용자가 지울 목록을 보고 "원본이 비어도 그래도 맞추기" 를 고른 경우 (70) - 읽지 못하는 것은 그래도 막는다
+Future<void> ensureSourceForDelete(String src, String dst, {bool allowEmpty = false}) async {
+  List<({String path, bool isDir, int size, DateTime modified})> items;
+  try {
+    if (!await vExists(src)) throw const FileSystemException('없음');
+    items = await vList(src, strict: true);
+  } catch (e) {
+    throw SourceUnreadableException(src, cause: e);
+  }
+  if (items.isNotEmpty || allowEmpty) return;
+  var dstItems = const <({String path, bool isDir, int size, DateTime modified})>[];
+  try {
+    dstItems = await vList(dst);
+  } catch (_) {}
+  if (dstItems.isNotEmpty) throw SourceUnreadableException(src, empty: true);
+}
+
 /// 복사 · 이동 · 삭제. [cancel] 을 부르면 다음 조각에서 멈춘다.
 class FileOps {
   bool _cancel = false;
@@ -254,8 +311,10 @@ class FileOps {
     final total = await totalSize(sources);
     var done = 0;
     final made = <String>[];
-    Future<void> copyFile(File f, String target) async {
+    // 43: 임시 이름 (.jjpart) 에 다 쓴 뒤 이름을 바꾼다 - 복사 도중 앱이 끝나도 반쯤 쓴 파일이 완성된 이름으로 남지 않게
+    Future<void> copyFile(File f, String finalTarget) async {
       _check();
+      final target = '$finalTarget.jjpart';
       final out = File(target).openWrite();
       try {
         try {
@@ -278,8 +337,9 @@ class FileOps {
         } catch (_) {}
         rethrow;
       }
+      await File(target).rename(finalTarget);
       try {
-        await File(target).setLastModified(await f.lastModified());
+        await File(finalTarget).setLastModified(await f.lastModified());
       } catch (_) {}
       onFileDone?.call(f.path);
     }
@@ -340,14 +400,24 @@ class FileOps {
   /// 크기나 바뀐 시각이 다른 파일만 복사, [delete] 면 원본에 없는 것을 대상에서 지운다. 복사한 파일 수를 돌려준다.
   ///
   /// [update] (rsync -u): 대상이 더 새 파일이면 건너뛴다 (양쪽 ⇄ 을 함께 맞출 때 서로 덮어쓰지 않게).
-  Future<int> mirror(String srcDir, String dstDir, {bool delete = false, bool update = false}) async {
+  Future<int> mirror(String srcDir, String dstDir,
+      {bool delete = false, bool update = false, bool allowEmptySource = false}) async {
+    // 지우기 포함이면 원본을 확실히 읽을 수 있을 때만 (읽지 못하면 원본이 빈 것으로 보여 대상이 모두 지워졌다)
+    if (delete) await ensureSourceForDelete(srcDir, dstDir, allowEmpty: allowEmptySource);
     if (_anyDav([srcDir, dstDir])) return _mirrorV(srcDir, dstDir, delete: delete, update: update);
     var n = 0;
     Future<void> walk(String src, String dst) async {
       _check();
       await Directory(dst).create(recursive: true);
       final names = <String>{};
-      await for (final e in Directory(src).list(followLinks: false).handleError((_) {})) {
+      // 원본 목록을 다 읽은 뒤에 맞춘다: 읽다 실패하면 (그 폴더에서) 아무것도 지우지 않고 멈춘다
+      List<FileSystemEntity> items;
+      try {
+        items = await Directory(src).list(followLinks: false).toList();
+      } catch (e) {
+        throw SourceUnreadableException(src, cause: e);
+      }
+      for (final e in items) {
         final name = p.basename(e.path);
         names.add(name);
         final target = p.join(dst, name);
@@ -486,7 +556,10 @@ class FileOps {
     final pump = () async {
       try {
         await for (final chunk in input) {
-          if (_cancel) break;
+          if (_cancel) {
+            relay.addError(const FileOpCancelled());
+            break;
+          }
           relay.add(chunk);
           onBytes?.call(chunk.length);
           onChunk?.call(chunk.length);
@@ -571,7 +644,13 @@ class FileOps {
       await vMkdirs(dst);
       final there = {for (final e in await vList(dst)) vBasename(e.path): e};
       final names = <String>{};
-      for (final e in await vList(src)) {
+      List<({String path, bool isDir, int size, DateTime modified})> items;
+      try {
+        items = await vList(src, strict: true);
+      } catch (e) {
+        throw SourceUnreadableException(src, cause: e);
+      }
+      for (final e in items) {
         final name = vBasename(e.path);
         names.add(name);
         final target = vJoin(dst, name);
@@ -602,7 +681,9 @@ class FileOps {
 }
 
 /// [root] 아래에서 이름에 [query] 가 들어간 항목 찾기 (대소문자 무시, * ? 사용 가능). 찾는 대로 내보낸다.
-Stream<FileEntry> searchFiles(String root, String query, {bool showHidden = false, int limit = 2000}) async* {
+/// [limit] 개에서 멈춘다. 읽지 못한 폴더는 [onSkipped] 로 알린다 (24: 조용히 빠뜨리지 않게).
+Stream<FileEntry> searchFiles(String root, String query,
+    {bool showHidden = false, int limit = 2000, void Function(String dir, Object error)? onSkipped}) async* {
   final q = query.trim().toLowerCase();
   if (q.isEmpty) return;
   final wild = q.contains('*') || q.contains('?');
@@ -615,8 +696,14 @@ Stream<FileEntry> searchFiles(String root, String query, {bool showHidden = fals
     final dir = pending.removeAt(0);
     List<FileEntry> items;
     try {
-      items = await listEntries(dir, showHidden: showHidden);
-    } catch (_) {
+      // strict: 읽지 못하면 빈 폴더로 치지 않고 알린다 (24)
+      items = [
+        for (final e in await vList(dir, strict: true))
+          if (showHidden || !vBasename(e.path).startsWith('.'))
+            FileEntry(e.path, isDir: e.isDir, size: e.size, modified: e.modified),
+      ];
+    } catch (e) {
+      onSkipped?.call(dir, e);
       continue;
     }
     for (final e in sortEntries(items, SortBy.name)) {

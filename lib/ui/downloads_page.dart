@@ -6,6 +6,7 @@ import '../app/download_manager.dart';
 import '../core/download_detect.dart';
 import '../services/downloader.dart';
 import 'app_actions.dart';
+import 'confirm.dart';
 import 'theme.dart';
 import '../l10n/tr.dart';
 
@@ -58,10 +59,19 @@ class _DownloadsPageState extends State<DownloadsPage> {
   }
 
   void _add() {
-    final t = widget.d.add(_url.text);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+    final text = _url.text.trim();
+    var t = widget.d.add(text);
+    // 26: 직접 넣은 주소는 YouTube 가 아니어도 yt-dlp 로 (지원하는 동영상 사이트). 클립보드 감시는 예전처럼 YouTube · 토렌트만
+    if (t == null) {
+      final url = RegExp(r'https?://[^\s<>"]+', caseSensitive: false).firstMatch(text)?[0];
+      if (url != null) t = widget.d.addPage(url);
+    }
+    // 앞의 알림을 기다리지 않고 이번 결과를 바로
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
         content: Text(t == null
-            ? tr('YouTube 주소 · 마그넷 링크 · .torrent 주소가 아니거나 이미 받는 중입니다.')
+            ? tr('주소 (http · https · 마그넷) 를 찾지 못했거나 이미 받는 중입니다.')
             : trf('다운로드 추가: {0}', [t.source]))));
     if (t != null) _url.clear();
   }
@@ -93,8 +103,8 @@ class _DownloadsPageState extends State<DownloadsPage> {
                       isDense: true,
                       // Android 는 클립보드를 감시하지 않는다
                       hintText: Platform.isAndroid
-                          ? tr('YouTube 주소 · 마그넷 링크 · .torrent 주소 붙여넣기')
-                          : tr('YouTube 주소 · 마그넷 링크 · .torrent 주소 붙여넣기 (Ctrl+C 만 해도 자동 추가)'),
+                          ? tr('동영상 주소 (YouTube 등) · 마그넷 링크 · .torrent 주소 붙여넣기')
+                          : tr('동영상 주소 (YouTube 등) · 마그넷 링크 · .torrent 주소 붙여넣기 (YouTube · 토렌트는 Ctrl+C 만 해도 자동 추가)'),
                       border: OutlineInputBorder(),
                     ),
                     onSubmitted: (_) => _add(),
@@ -156,7 +166,9 @@ class _DownloadsPageState extends State<DownloadsPage> {
                 ],
                 _btn(Icons.pause, tr('일시정지'), hasSel ? d.pauseSelected : null),
                 _btn(Icons.play_arrow, tr('재개'), hasSel ? d.resumeSelected : null),
-                _btn(Icons.stop, tr('취소'), hasSel ? d.cancelSelected : null),
+                // 44: 일시정지 · 재개와 떨어뜨리고 (잘못 누르지 않게), 누르면 확인
+                const SizedBox(width: 16),
+                _btn(Icons.stop, tr('다운로드 취소'), hasSel ? () => _confirmCancel(context) : null),
                 _btn(Icons.delete_outline, tr('삭제'), hasSel ? () => _confirmRemove(context) : null),
                 const SizedBox(width: 12),
                 _btn(Icons.cleaning_services_outlined, tr('완료 정리'),
@@ -199,6 +211,18 @@ class _DownloadsPageState extends State<DownloadsPage> {
         ),
       );
 
+  /// 44: 다운로드 취소 전에 묻는다 (잠깐 멈추려면 일시정지)
+  Future<void> _confirmCancel(BuildContext context) async {
+    final n = widget.d.selected.length;
+    final ok = await confirmAction(
+      context,
+      title: tr('다운로드 취소'),
+      body: trf('선택한 다운로드 {0}개를 취소할까요? 잠깐 멈추려면 [일시정지] 를 쓰세요.', [n]),
+      ok: tr('다운로드 취소'),
+    );
+    if (ok) await widget.d.cancelSelected();
+  }
+
   /// 고른 (다 받은) 동영상을 MKV 만들기의 동영상 목록에 추가
   Future<void> _addToEditList(BuildContext context) async {
     final files = widget.d.selectedVideoFiles;
@@ -236,7 +260,8 @@ class _DownloadRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (label, color) = switch (t.state) {
-      DownloadState.queued => (tr('대기'), JjColors.textDim),
+      DownloadState.queued => (tr('대기 중'), JjColors.textDim),
+      DownloadState.downloading when t.extra['waiting'] == true => (tr('대기 중'), JjColors.textDim),
       DownloadState.downloading => (tr('받는 중'), JjColors.accent),
       DownloadState.paused => (tr('일시정지'), Colors.amber),
       DownloadState.done => (tr('완료'), JjColors.success),
@@ -325,7 +350,7 @@ class DownloadProgressBar extends StatelessWidget {
     // "45.3% · 166MB / 367MB" (크기를 모르면 퍼센트만)
     final size = downloadSizeText(t);
     final text = value == null
-        ? (t.state == DownloadState.queued ? tr('대기') : tr('준비 중…'))
+        ? (t.state == DownloadState.queued || t.extra['waiting'] == true ? tr('대기 중') : tr('준비 중…'))
         : '${(value * 100).toStringAsFixed(1)}%${size.isEmpty ? '' : ' · $size'}';
     return ClipRRect(
       borderRadius: BorderRadius.circular(4),

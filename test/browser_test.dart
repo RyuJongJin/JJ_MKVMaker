@@ -374,8 +374,16 @@ void main() {
     ));
     // 기본 즐겨찾기 표시줄
     expect(find.text('YouTube'), findsOneWidget);
+    // 터치 화면: 즐겨찾기를 길게 누르면 오른쪽 클릭과 같은 메뉴
+    await tester.longPress(find.text('YouTube'));
+    await tester.pumpAndSettle();
+    expect(find.text('수정 · 이동'), findsOneWidget);
+    await tester.tapAt(const Offset(5, 880));
+    await tester.pumpAndSettle();
     FilledButton dl() => tester.widget<FilledButton>(find.ancestor(of: find.text('다운로드'), matching: find.byWidgetPredicate((w) => w is FilledButton)));
-    expect(dl().onPressed, isNull); // 동영상 페이지 아님
+    // 27: 동영상 페이지가 아니어도 받아 볼 수 있다 (덜 눈에 띄는 버튼 · 안내)
+    expect(dl().onPressed, isNotNull);
+    expect(find.byTooltip('다운로드 (이 페이지에서 동영상을 찾지 못했지만 받아 볼 수 있습니다)'), findsOneWidget);
 
     // 주소창 입력 → 이동
     await tester.enterText(find.byType(TextField).first, 'youtube.com/watch?v=abc');

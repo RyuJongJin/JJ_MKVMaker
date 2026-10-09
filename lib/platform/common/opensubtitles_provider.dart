@@ -67,7 +67,11 @@ class OpenSubtitlesProvider implements SubtitleProvider {
       json = {'message': text};
     }
     if (res.statusCode >= 400) {
-      final msg = json['message'] ?? json['errors']?.toString() ?? text;
+      var msg = '${json['message'] ?? json['errors']?.toString() ?? text}';
+      // 54: 아이디는 있는데 비밀번호가 비었으면 (저장된 것이 없음) 알린다
+      if ((res.statusCode == 401 || res.statusCode == 406) && username().trim().isNotEmpty && password().isEmpty) {
+        msg = '$msg · ${tr('저장된 비밀번호가 없습니다. 한 번만 다시 넣어 주세요')}';
+      }
       throw SubtitleProviderException(
           switch (res.statusCode) {
             401 || 403 => trf('OpenSubtitles API 키 또는 로그인 정보가 올바르지 않습니다. ({0})', [msg]),

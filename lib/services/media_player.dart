@@ -50,6 +50,9 @@ class PlayerState {
 
 /// 동영상 플레이어 경계 (재생 목록 · 트랙 · 음량)
 /// 구현: platform/common/media_kit_full_player.dart (mpv, Windows·Android 공용)
+/// 내장 플레이어 자막 글자 크기 배율 (환경 설정 값, 1.0 = 기본). 플레이어 화면이 따라 바꾼다
+final playerSubtitleScale = ValueNotifier<double>(1.0);
+
 abstract class MediaPlayer {
   /// 상태가 바뀔 때마다 알림
   ValueNotifier<PlayerState> get state;
