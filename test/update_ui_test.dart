@@ -210,10 +210,11 @@ void main() {
         }
         expect(find.text('지금'), findsOneWidget);
         expect(find.text('최신'), findsOneWidget);
-        expect(find.text('다시 설치'), findsOneWidget); // 처음엔 지금 버전이 골라져 있음
-        await tester.tap(find.text('v1.0.2').first);
-        await tester.pumpAndSettle();
+        // 169: 처음엔 최신 버전이 골라져 있음 (이 창을 여는 사람은 대개 업데이트하려는 것)
         expect(find.text('이 버전으로 업데이트'), findsOneWidget);
+        await tester.tap(find.text('v1.0.1').first);
+        await tester.pumpAndSettle();
+        expect(find.text('다시 설치'), findsOneWidget);
         await tester.tap(find.text('v1.0.0').first);
         await tester.pumpAndSettle();
         expect(find.text('이 버전으로 되돌리기'), findsOneWidget);

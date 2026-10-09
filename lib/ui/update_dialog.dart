@@ -117,6 +117,10 @@ Future<void> chooseVersion(BuildContext context, AppController c) async {
   await installRelease(context, c, picked, current);
 }
 
+/// 169: 버전 고르기 창에서 처음 고를 버전: 이 기기용 파일이 있는 것 중 가장 새것, 없으면 지금 버전 (목록은 새것이 앞)
+ReleaseInfo initialVersionPick(List<ReleaseInfo> all, String current) =>
+    all.firstWhere((r) => r.zipUrl != null, orElse: () => all.firstWhere((r) => r.version == current, orElse: () => all.first));
+
 /// 버전 고르기 창
 class _VersionPicker extends StatefulWidget {
   final Updater up;
@@ -134,10 +138,11 @@ class _VersionPickerState extends State<_VersionPicker> {
   @override
   void initState() {
     super.initState();
-    // 처음엔 지금 쓰는 버전을 골라 둔다 (목록을 다 읽은 뒤 버튼 글도 맞게)
+    // 169: 처음엔 최신 버전 (이 기기용 파일이 있는 것 중 가장 새것) 을 골라 둔다 - 이 창을 여는 사람은 대개 업데이트하려는 것.
+    // 이 기기용 파일이 하나도 없으면 지금 쓰는 버전. (목록을 다 읽은 뒤 버튼 글도 맞게)
     _list.then((all) {
       if (!mounted || _sel != null || all.isEmpty) return;
-      setState(() => _sel = all.firstWhere((r) => r.version == widget.current, orElse: () => all.first));
+      setState(() => _sel = initialVersionPick(all, widget.current));
     }, onError: (_) {});
   }
 
