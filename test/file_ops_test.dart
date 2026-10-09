@@ -200,4 +200,13 @@ void main() {
       expect(File(p.join(b.path, 'k')).readAsStringSync(), 'file');
     });
   });
+
+  test('E10: 폴더를 읽지 못하면 빈 목록이 아니라 오류 (권한 없음 · 없는 폴더) · 빈 폴더는 그대로 빈 목록', () async {
+    final empty = Directory(p.join(tmp.path, 'empty'))..createSync();
+    expect(await listEntries(empty.path), isEmpty);
+    await expectLater(listEntries(p.join(tmp.path, 'gone')), throwsA(isA<FileSystemException>()));
+    if (Platform.isWindows && Directory(r'C:\System Volume Information').existsSync()) {
+      await expectLater(listEntries(r'C:\System Volume Information'), throwsA(isA<FileSystemException>()));
+    }
+  });
 }

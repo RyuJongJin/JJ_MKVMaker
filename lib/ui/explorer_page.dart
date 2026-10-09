@@ -909,7 +909,13 @@ class _ExplorerPageState extends State<ExplorerPage> {
   /// 그림 보기: 같은 폴더의 그림을 지금 정렬 순서대로 넘겨 본다
   Future<void> _viewImages(String path, _Pane? pane) async {
     final dir = vDirname(path);
-    final list = pane?.cache[dir] ?? _sorted(await listEntries(dir, showHidden: c.settings.explorerShowHidden));
+    // 폴더를 읽지 못하면 (E10: 이제 오류로 알림) 고른 그림 하나만
+    List<FileEntry> list;
+    try {
+      list = pane?.cache[dir] ?? _sorted(await listEntries(dir, showHidden: c.settings.explorerShowHidden));
+    } catch (_) {
+      list = const [];
+    }
     final images = [
       for (final e in list)
         if (!e.isDir && c.settings.imageExts.contains(extOf(e.path))) e.path,
@@ -1252,7 +1258,13 @@ class _ExplorerPageState extends State<ExplorerPage> {
   }
 
   Future<void> _playFolder(String dir) async {
-    final list = (await listEntries(dir)).where((e) => !e.isDir && isVideoFile(e.path)).map((e) => e.path).toList();
+    final List<String> list;
+    try {
+      list = (await listEntries(dir)).where((e) => !e.isDir && isVideoFile(e.path)).map((e) => e.path).toList();
+    } catch (e) {
+      _snack(trf('읽을 수 없습니다: {0}', [explainFileError('$e', dav: isDav(dir)).$1]));
+      return;
+    }
     if (list.isEmpty) {
       _snack(tr('이 폴더에 동영상이 없습니다.'));
       return;
@@ -1267,15 +1279,21 @@ class _ExplorerPageState extends State<ExplorerPage> {
       return;
     }
     final videos = <String>[];
+    final unreadable = <String>[];
     for (final x in paths) {
       if (vIsDirSync(x)) {
-        videos.addAll((await listEntries(x)).where((e) => !e.isDir && isVideoFile(e.path)).map((e) => e.path));
+        try {
+          videos.addAll((await listEntries(x)).where((e) => !e.isDir && isVideoFile(e.path)).map((e) => e.path));
+        } catch (_) {
+          unreadable.add(vBasename(x)); // 읽지 못한 폴더는 건너뛰고 알린다
+        }
       } else if (isVideoFile(x)) {
         videos.add(x);
       }
     }
+    if (unreadable.isNotEmpty) _snack(trf('읽을 수 없어 건너뛴 폴더: {0}', [unreadable.take(3).join(', ')]));
     if (videos.isEmpty) {
-      _snack(tr('추가할 동영상이 없습니다.'));
+      if (unreadable.isEmpty) _snack(tr('추가할 동영상이 없습니다.'));
       return;
     }
     await c.addVideos(videos, allowOutputFolder: true);

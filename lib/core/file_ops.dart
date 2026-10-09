@@ -57,7 +57,10 @@ Future<List<FileEntry>> listEntries(String dir, {bool showHidden = false}) async
     ];
   }
   final out = <FileEntry>[];
-  await for (final e in Directory(dir).list(followLinks: false).handleError((_) {})) {
+  // E10: 폴더를 읽지 못하면 (권한 없음 · 빠진 USB 등) 빈 폴더로 보이지 않게 던진다 (화면이 "읽을 수 없습니다: 이유" 와 [다시 시도]).
+  // 일부를 읽은 뒤의 오류는 읽은 것까지 보여 준다
+  Object? failed;
+  await for (final e in Directory(dir).list(followLinks: false).handleError((Object err) => failed ??= err)) {
     try {
       final st = await e.stat();
       final isDir = st.type == FileSystemEntityType.directory;
@@ -66,6 +69,7 @@ Future<List<FileEntry>> listEntries(String dir, {bool showHidden = false}) async
       out.add(entry);
     } catch (_) {}
   }
+  if (failed != null && out.isEmpty) throw failed!;
   return out;
 }
 

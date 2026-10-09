@@ -243,6 +243,20 @@ void main() {
     expect(find.text('앞 화면'), findsOneWidget);
   });
 
+  testWidgets('E10: 권한 없는 폴더는 빈 폴더가 아니라 "읽을 수 없음 · 이유" 와 [다시 시도]', (tester) async {
+    const locked = r'C:\System Volume Information';
+    if (!Platform.isWindows || !Directory(locked).existsSync()) return;
+    c.settings.explorerPaths = [locked, right];
+    ExplorerPage.debugVolumes = () => [(r'C:\', 'C:'), (p.rootPrefix(tmp.path), p.rootPrefix(tmp.path).substring(0, 2))];
+    tester.view.physicalSize = const Size(1600, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.runAsync(() => tester.pumpWidget(MaterialApp(home: ExplorerPage(c: c))));
+    await settle(tester, () => find.textContaining('이 폴더를 읽을 권한이 없습니다').evaluate().isNotEmpty);
+    expect(find.textContaining('이 폴더를 읽을 권한이 없습니다'), findsOneWidget);
+    expect(find.text('다시 시도'), findsOneWidget);
+  });
+
   testWidgets('48: 건너뛰기를 고르면 그대로 두고 건너뛴 것을 알린다', (tester) async {
     await startCopy(tester);
     await tester.tap(find.text('건너뛰기'));

@@ -1400,6 +1400,8 @@
  "일시정지": "Pause",
  "읽기 전용 매체입니다": "Read-only media",
  "읽을 수 없습니다": "Cannot read",
+ "읽을 수 없습니다: {0}": "Cannot read: {0}",
+ "읽을 수 없어 건너뛴 폴더: {0}": "Skipped folders that could not be read: {0}",
  "읽을 수 없음": "Cannot read",
  "읽지 못한 원래 파일은 지우지 않고 아래에 보관했습니다:": "The original file that could not be read was not deleted; it is kept here:",
  "읽지 못한 폴더 {0}개 (권한 · 연결 문제) - 그 안은 찾지 못했습니다": "{0} unreadable folders (permission or connection problem) - not searched inside",
