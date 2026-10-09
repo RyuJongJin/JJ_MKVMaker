@@ -86,20 +86,23 @@ List<(String path, String label)> windowsDrives() {
   ];
 }
 
-/// 165: 네트워크 드라이브인지 (GetDriveTypeW = DRIVE_REMOTE). 드라이브를 열어 보지 않는다
-bool isNetworkDrive(String root) {
-  if (!Platform.isWindows) return false;
+/// 165: 드라이브 종류 (GetDriveTypeW: 2 꺼내는 장치 (카드 리더 · USB) · 3 고정 · 4 네트워크 · 5 CD). 드라이브를 열어 보지 않는다. 모르면 0
+int driveType(String root) {
+  if (!Platform.isWindows) return 0;
   final w = root.toNativeUtf16();
   try {
     final f = DynamicLibrary.open('kernel32.dll')
         .lookupFunction<Uint32 Function(Pointer<Utf16>), int Function(Pointer<Utf16>)>('GetDriveTypeW');
-    return f(w) == 4;
+    return f(w);
   } catch (_) {
-    return false;
+    return 0;
   } finally {
     calloc.free(w);
   }
 }
+
+/// 네트워크 드라이브인지
+bool isNetworkDrive(String root) => driveType(root) == 4;
 
 /// 48: 받는 폴더에 같은 이름이 있을 때
 enum NameConflict {

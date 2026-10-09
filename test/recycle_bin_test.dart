@@ -4,6 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:jj_mkvmaker/platform/windows/recycle_bin.dart';
 import 'package:path/path.dart' as p;
 
+import 'support/recycle_leftovers.dart';
+
 /// 시험이 휴지통에 넣은 것만 (원래 위치가 이 시험의 임시 폴더인 항목) 휴지통에서 지운다. 사용자 항목은 건드리지 않는다.
 Future<int> _purgeFromRecycleBin(String fromDir) async {
   final dir = fromDir.replaceAll("'", "''");
@@ -33,6 +35,7 @@ void main() {
   test('파일 · 폴더를 휴지통으로 (실제로 들어갔는지까지) · 없는 것은 그냥 성공', () async {
     final tmp = Directory.systemTemp.createTempSync('jj_recycle_');
     addTearDown(() async {
+      expect(await recycleLeftovers(tmp.path), 0, reason: '사용자 휴지통에 시험 흔적 없음 (하위 폴더 포함)');
       if (tmp.existsSync()) tmp.deleteSync(recursive: true);
     });
     final f = File(p.join(tmp.path, 'jj_recycle_test.txt'))..writeAsStringSync('x');
@@ -57,6 +60,7 @@ void main() {
     final tmp = Directory.systemTemp.createTempSync('jj_undo_');
     addTearDown(() async {
       await _purgeFromRecycleBin(tmp.absolute.path); // 실패해 남은 것이 있으면 사용자 휴지통에서 지운다
+      expect(await recycleLeftovers(tmp.path), 0, reason: '사용자 휴지통에 시험 흔적 없음 (하위 폴더 포함)');
       if (tmp.existsSync()) tmp.deleteSync(recursive: true);
     });
     final since = DateTime.now().subtract(const Duration(seconds: 2));
@@ -88,6 +92,7 @@ void main() {
     addTearDown(() async {
       // 휴지통에 남긴 x.txt 의 원래 위치는 gone 폴더 (정확히 그 폴더로 찾아 지운다)
       expect(await _purgeFromRecycleBin(folder.path), 1);
+      expect(await recycleLeftovers(tmp.path), 0, reason: '사용자 휴지통에 시험 흔적 없음 (하위 폴더 포함)');
       if (tmp.existsSync()) tmp.deleteSync(recursive: true);
     });
     final since = DateTime.now().subtract(const Duration(seconds: 2));

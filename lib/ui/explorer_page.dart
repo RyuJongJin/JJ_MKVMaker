@@ -200,6 +200,9 @@ class _ExplorerPageState extends State<ExplorerPage> {
   final Map<String, bool?> _driveOk = {};
   final Set<String> _networkDrives = {};
 
+  /// 꺼내는 장치 · CD (카드 리더 · USB): 열 수 없으면 "비어 있음" (연결 안 됨이 아니라 매체가 없는 것)
+  final Set<String> _removableDrives = {};
+
   Future<void> _probeDrive(String path) async {
     if (mounted) setState(() => _driveOk[path] = null);
     bool ok;
@@ -219,7 +222,9 @@ class _ExplorerPageState extends State<ExplorerPage> {
       pane.cache.remove(path);
       await _goTo(pane, path);
     } else {
-      _snack(trf('{0} 에 연결할 수 없습니다. 네트워크 · NAS 가 켜져 있는지 확인하세요.', [path]));
+      _snack(_removableDrives.contains(path)
+          ? trf('{0} 이 비어 있습니다 (카드 · USB · 디스크를 넣은 뒤 다시 누르세요).', [path])
+          : trf('{0} 에 연결할 수 없습니다. 네트워크 · NAS 가 켜져 있는지 확인하세요.', [path]));
     }
   }
 
@@ -295,7 +300,9 @@ class _ExplorerPageState extends State<ExplorerPage> {
     // 165: 드라이브 종류 · 연결은 드라이브마다 따로 뒤에서 (느린 드라이브가 있어도 다른 드라이브 · 창은 바로)
     if (Platform.isWindows) {
       for (final (path, _) in _local) {
-        if (isNetworkDrive(path)) _networkDrives.add(path);
+        final type = driveType(path);
+        if (type == 4) _networkDrives.add(path);
+        if (type == 2 || type == 5) _removableDrives.add(path);
         unawaited(_probeDrive(path));
       }
     }
@@ -2620,7 +2627,8 @@ class _ExplorerPageState extends State<ExplorerPage> {
                       size: 16),
                   // 165: 열 수 없는 드라이브는 숨기지 않고 "연결 안 됨" - 누르면 다시 연결 (다시 읽기)
                   label: _driveOk[path] == false
-                      ? Text('$label · ${tr('연결 안 됨')} ⟳', style: const TextStyle(color: Colors.orangeAccent))
+                      ? Text('$label · ${_removableDrives.contains(path) ? tr('비어 있음') : tr('연결 안 됨')} ⟳',
+                          style: TextStyle(color: _removableDrives.contains(path) ? JjColors.textDim : Colors.orangeAccent))
                       : Text(label),
                   onPressed: () {
                     setState(() => _active = _panes.indexOf(pane));

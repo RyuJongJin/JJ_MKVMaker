@@ -9,6 +9,8 @@ import 'package:jj_mkvmaker/services/platform_services.dart';
 import 'package:jj_mkvmaker/ui/explorer_page.dart';
 import 'package:path/path.dart' as p;
 
+import 'support/recycle_leftovers.dart';
+
 /// 48 · 154 · 155: 같은 이름이 있으면 덮어쓰기 · 건너뛰기 · 이름 바꾸기를 고르고, 확인 창에 항목 이름이 보인다
 void main() {
   late Directory tmp;
@@ -30,8 +32,10 @@ void main() {
     final root = p.rootPrefix(tmp.path);
     ExplorerPage.debugVolumes = () => [(root, root.replaceAll(RegExp(r'[\\/]+$'), ''))];
   });
-  tearDown(() {
+  tearDown(() async {
     ExplorerPage.debugVolumes = null;
+    // 휴지통을 건드리는 시험 (148 · 144): 사용자 휴지통에 이 시험 폴더 아래의 흔적이 없는지 스스로 확인
+    expect(await recycleLeftovers(tmp.path), 0, reason: '사용자 휴지통에 시험 흔적 없음 (하위 폴더 포함)');
     tmp.deleteSync(recursive: true);
   });
 

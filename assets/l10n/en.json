@@ -301,6 +301,7 @@
  "{0} 을 담았습니다. 넣을 폴더에서 [붙여넣기] 를 누르세요 ({1}).": "Picked up {0}. Open the target folder and tap [Paste] ({1}).",
  "{0} 을(를) 설치했습니다.": "Installed {0}.",
  "{0} 을(를) 지울까요?": "Delete {0}?",
+ "{0} 이 비어 있습니다 (카드 · USB · 디스크를 넣은 뒤 다시 누르세요).": "{0} is empty (insert a card, USB drive or disc and tap again).",
  "{0} 인코더가 FFmpeg 에 없습니다.": "FFmpeg does not have the {0} encoder.",
  "{0} 전체": "All of {0}",
  "{0} 제거": "Remove {0}",
