@@ -141,12 +141,17 @@ class MainActivity : FlutterActivity() {
                 "installApk" -> try {
                     installApk(call.argument<String>("path") ?: "")
                     result.success(null)
-                } catch (e: IllegalStateException) {
+                } catch (e: InstallPermissionNeededException) {
                     // 설치 허용 설정 화면을 열었다: 앱이 받은 파일로 다시 설치하게 따로 알린다
                     result.error("PERMISSION", e.message ?: e.toString(), null)
                 } catch (e: Exception) {
-                    result.error("INSTALL", e.message ?: e.toString(), null)
+                    // 170: 다른 오류를 "설치 허용 필요" 로 오해하지 않게 (예전에는 IllegalStateException 이면 모두 허용 필요로 보았다)
+                    result.error("INSTALL", "${e.javaClass.simpleName}: ${e.message ?: ""}", null)
                 }
+                // 170: 지금 이 앱이 다른 앱 (APK) 을 설치할 수 있는지
+                "canInstallPackages" -> result.success(
+                    Build.VERSION.SDK_INT < Build.VERSION_CODES.O || packageManager.canRequestPackageInstalls()
+                )
                 "openFolder" -> result.success(openFolder(call.argument<String>("path") ?: ""))
                 // 예전 버전으로 되돌리기: Android 는 낮은 버전을 위에 설치하지 못해 앱을 지우는 확인 창을 연다
                 "uninstallSelf" -> {
@@ -205,7 +210,7 @@ class MainActivity : FlutterActivity() {
                 Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName"))
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             )
-            throw IllegalStateException("\"이 출처의 앱 설치 허용\" 을 켠 뒤 다시 [업데이트] 를 누르세요")
+            throw InstallPermissionNeededException("\"이 출처의 앱 설치 허용\" 을 켠 뒤 다시 [업데이트] 를 누르세요")
         }
         // FileProvider 가 내보내는 폴더 (cache/updates) 로 옮긴다
         val dir = File(cacheDir, "updates").apply { mkdirs() }
@@ -224,6 +229,9 @@ class MainActivity : FlutterActivity() {
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
         )
     }
+
+    /// 170: 설치 허용이 꺼져 있어 설정 화면을 연 경우만 (다른 오류와 구별)
+    class InstallPermissionNeededException(message: String) : Exception(message)
 
     /// 앱이 켜져 있을 때 다른 앱에서 동영상을 열면 (launchMode singleTop)
     override fun onNewIntent(intent: Intent) {

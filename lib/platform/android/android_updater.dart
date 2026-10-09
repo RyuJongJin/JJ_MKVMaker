@@ -104,11 +104,25 @@ class AndroidUpdater implements Updater {
   /// Android 설치 화면 열기 ([downloaded] 는 APK 파일 경로)
   @override
   Future<void> scheduleInstall(String downloaded) async {
+    for (var attempt = 0;; attempt++) {
+      try {
+        await _ch.invokeMethod<void>('installApk', {'path': downloaded});
+        return;
+      } on PlatformException catch (e) {
+        if (e.code != 'PERMISSION') throw UpdateException(e.message ?? '$e');
+        // 170: 허용돼 있는데도 "설치 허용 필요" 창이 뜬 일 (폴드) - 한 번 더 물어 허용돼 있으면 창 없이 다시 연다
+        if (attempt == 0 && await canInstallPackages()) continue;
+        throw InstallPermissionNeeded(e.message ?? '$e');
+      }
+    }
+  }
+
+  /// 170: 이 앱이 APK 를 설치할 수 있는지 (Android 의 "이 출처의 앱 설치 허용"). 모르면 false
+  Future<bool> canInstallPackages() async {
     try {
-      await _ch.invokeMethod<void>('installApk', {'path': downloaded});
-    } on PlatformException catch (e) {
-      if (e.code == 'PERMISSION') throw InstallPermissionNeeded(e.message ?? '$e');
-      throw UpdateException(e.message ?? '$e');
+      return await _ch.invokeMethod<bool>('canInstallPackages') ?? false;
+    } catch (_) {
+      return false;
     }
   }
 
