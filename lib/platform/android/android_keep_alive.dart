@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 
 import '../../app/app_controller.dart';
+import '../../app/i18n_controller.dart';
 import '../../app/ai_local.dart';
 import '../../app/download_manager.dart';
 import '../../app/copy_center.dart';
@@ -27,6 +28,7 @@ class AndroidKeepAlive {
     c.addListener(_changed);
     downloads.addListener(_changed);
     AiJobs.instance.addListener(_changed); // 123: AI 그림도 화면을 닫아도 계속
+    i18n.addListener(_changed); // 57: 알림 글 · 채널 이름도 화면 언어로
     _changed();
   }
 
@@ -34,6 +36,19 @@ class AndroidKeepAlive {
   CopyCenter? _copies;
   AiStore? _ai;
   bool? _background;
+  String? _textsKey;
+
+  /// 57: 알림 제목 · "작업 멈춤" 알림 · 알림 채널 이름 (Android 설정 > 알림 에 보이는 이름) 을 화면 언어로
+  static Map<String, String> notificationTexts() => {
+        'working': tr('JJ_MKVMaker 작업 중'),
+        'stoppedTitle': tr('JJ_MKVMaker 작업이 멈췄습니다'),
+        'stoppedText': tr("앱을 닫아 진행 중이던 작업이 멈췄습니다. 닫아도 계속하려면 환경 설정에서 '백그라운드로 실행' 을 켜세요."),
+        'stoppedLong': tr("앱을 닫아 진행 중이던 작업 (MKV · 다운로드 · 동기화) 이 멈췄습니다. 앱을 닫아도 계속하려면 환경 설정 > Rsync > '백그라운드로 실행' 을 켜세요."),
+        'jobsChannel': tr('작업 진행'),
+        'jobsChannelDesc': tr('다운로드 · MKV 만들기 · AI 자막 · 동기화 진행 상황'),
+        'doneChannel': tr('끝난 작업'),
+        'doneChannelDesc': tr('AI 해상도 올리기 등 오래 걸린 작업이 끝났을 때'),
+      };
 
   /// 진행률 알림은 자주 바뀌므로 1초에 한 번만 보낸다
   void _changed() => _timer ??= Timer(const Duration(seconds: 1), _apply);
@@ -45,6 +60,14 @@ class AndroidKeepAlive {
     if (live != _live) {
       _live?.removeListener(_changed);
       _live = live?..addListener(_changed);
+    }
+    final texts = notificationTexts();
+    final textsKey = texts.values.join('\u0000');
+    if (textsKey != _textsKey) {
+      try {
+        await _ch.invokeMethod<void>('notificationTexts', texts);
+        _textsKey = textsKey;
+      } catch (_) {}
     }
     final bg = c.settings.runInBackground;
     if (bg != _background) {

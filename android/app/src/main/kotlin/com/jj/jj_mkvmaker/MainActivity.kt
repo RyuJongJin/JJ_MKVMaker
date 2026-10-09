@@ -170,6 +170,13 @@ class MainActivity : FlutterActivity() {
                         call.argument<String>("icon") ?: "")
                     result.success(null)
                 }
+                "notificationTexts" -> {
+                    // 57: 알림 글 · 채널 이름 (앱 화면 언어)
+                    val m = call.arguments as? Map<*, *> ?: emptyMap<Any, Any>()
+                    KeepAliveService.setTexts(applicationContext,
+                        m.entries.mapNotNull { (k, v) -> if (k is String && v is String) k to v else null }.toMap())
+                    result.success(null)
+                }
                 "notifyDone" -> {
                     KeepAliveService.notifyDone(applicationContext, call.argument<String>("title") ?: "",
                         call.argument<String>("text") ?: "")

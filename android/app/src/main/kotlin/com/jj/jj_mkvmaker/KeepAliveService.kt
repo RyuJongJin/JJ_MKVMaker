@@ -85,17 +85,65 @@ class KeepAliveService : Service() {
 
         const val DONE_CHANNEL_ID = "done"
 
+        /// 57: 알림 글 · 채널 이름을 앱 화면 언어로 (앱이 고른 언어라 Android 의 values-xx 로는 맞출 수 없다).
+        /// 앱 (Dart) 이 언어를 바꿀 때마다 보내 오고, 다음에 켤 때도 쓰게 저장해 둔다. 없으면 한국어.
+        private const val PREFS = "jj_notify_texts"
+        private val defaults = mapOf(
+            "working" to "JJ_MKVMaker 작업 중",
+            "stoppedTitle" to "JJ_MKVMaker 작업이 멈췄습니다",
+            "stoppedText" to "앱을 닫아 진행 중이던 작업이 멈췄습니다. 닫아도 계속하려면 환경 설정에서 '백그라운드로 실행' 을 켜세요.",
+            "stoppedLong" to "앱을 닫아 진행 중이던 작업 (MKV · 다운로드 · 동기화) 이 멈췄습니다. 앱을 닫아도 계속하려면 환경 설정 > Rsync > '백그라운드로 실행' 을 켜세요.",
+            "jobsChannel" to "작업 진행",
+            "jobsChannelDesc" to "다운로드 · MKV 만들기 · AI 자막 · 동기화 진행 상황",
+            "doneChannel" to "끝난 작업",
+            "doneChannelDesc" to "AI 해상도 올리기 등 오래 걸린 작업이 끝났을 때",
+        )
+
+        private fun t(context: Context, key: String): String =
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(key, null)?.takeIf { it.isNotEmpty() }
+                ?: defaults.getValue(key)
+
+        /// 앱이 보낸 글을 저장하고, 이미 만든 채널은 이름 · 설명을 바꾼다 (같은 ID 로 다시 만들면 이름만 바뀐다)
+        fun setTexts(context: Context, texts: Map<String, String>) {
+            val e = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            for ((k, v) in texts) if (k in defaults) e.putString(k, v)
+            e.apply()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                if (nm.getNotificationChannel(CHANNEL_ID) != null) createJobsChannel(context, nm, texts)
+                if (nm.getNotificationChannel(DONE_CHANNEL_ID) != null) createDoneChannel(context, nm, texts)
+            }
+        }
+
+        private fun pick(context: Context, texts: Map<String, String>?, key: String) =
+            texts?.get(key)?.takeIf { it.isNotEmpty() } ?: t(context, key)
+
+        private fun createJobsChannel(context: Context, nm: NotificationManager, texts: Map<String, String>? = null) {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+            nm.createNotificationChannel(
+                NotificationChannel(CHANNEL_ID, pick(context, texts, "jobsChannel"), NotificationManager.IMPORTANCE_LOW).apply {
+                    description = pick(context, texts, "jobsChannelDesc")
+                    setShowBadge(false)
+                }
+            )
+        }
+
+        private fun createDoneChannel(context: Context, nm: NotificationManager, texts: Map<String, String>? = null) {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+            nm.createNotificationChannel(
+                NotificationChannel(DONE_CHANNEL_ID, pick(context, texts, "doneChannel"), NotificationManager.IMPORTANCE_DEFAULT).apply {
+                    description = pick(context, texts, "doneChannelDesc")
+                    setSound(null, null)
+                }
+            )
+        }
+
         /// 157: 끝난 작업 알림 (예: "4장 저장: 폴더"). 누르면 작업 현황으로.
         /// 진행 알림 채널 (조용히, 낮은 중요도) 과 따로 두어 알림 창의 "조용한 알림" 칸에 묻히지 않게 (보통 중요도, 소리 없음)
         fun notifyDone(context: Context, title: String, text: String) {
             val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && nm.getNotificationChannel(DONE_CHANNEL_ID) == null) {
-                nm.createNotificationChannel(
-                    NotificationChannel(DONE_CHANNEL_ID, "끝난 작업", NotificationManager.IMPORTANCE_DEFAULT).apply {
-                        description = "AI 해상도 올리기 등 오래 걸린 작업이 끝났을 때"
-                        setSound(null, null)
-                    }
-                )
+                createDoneChannel(context, nm)
             }
             val open = PendingIntent.getActivity(
                 context, 3,
@@ -134,10 +182,9 @@ class KeepAliveService : Service() {
                 @Suppress("DEPRECATION") Notification.Builder(context)
             }
             b.setSmallIcon(android.R.drawable.stat_notify_error)
-                .setContentTitle("JJ_MKVMaker 작업이 멈췄습니다")
-                .setContentText("앱을 닫아 진행 중이던 작업이 멈췄습니다. 닫아도 계속하려면 환경 설정에서 '백그라운드로 실행' 을 켜세요.")
-                .setStyle(Notification.BigTextStyle().bigText(
-                    "앱을 닫아 진행 중이던 작업 (MKV · 다운로드 · 동기화) 이 멈췄습니다. 앱을 닫아도 계속하려면 환경 설정 > Rsync > '백그라운드로 실행' 을 켜세요."))
+                .setContentTitle(t(context, "stoppedTitle"))
+                .setContentText(t(context, "stoppedText"))
+                .setStyle(Notification.BigTextStyle().bigText(t(context, "stoppedLong")))
                 .setContentIntent(open)
                 .setAutoCancel(true)
             nm.notify(STOPPED_ID, b.build())
@@ -158,12 +205,7 @@ class KeepAliveService : Service() {
         private fun notification(context: Context, text: String, progress: Int, icon: String): Notification {
             val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && nm.getNotificationChannel(CHANNEL_ID) == null) {
-                nm.createNotificationChannel(
-                    NotificationChannel(CHANNEL_ID, "작업 진행", NotificationManager.IMPORTANCE_LOW).apply {
-                        description = "다운로드 · MKV 만들기 · AI 자막 · 동기화 진행 상황"
-                        setShowBadge(false)
-                    }
-                )
+                createJobsChannel(context, nm)
             }
             val open = PendingIntent.getActivity(
                 context, 0,
@@ -180,7 +222,7 @@ class KeepAliveService : Service() {
             }
             // 다운로드 중이면 내려받기 아이콘, 그 밖 (실시간 동기화 · MKV · AI 자막) 은 좌우로 오가는 화살표
             b.setSmallIcon(if (icon == "download") android.R.drawable.stat_sys_download else R.drawable.ic_stat_sync_anim)
-                .setContentTitle("JJ_MKVMaker 작업 중")
+                .setContentTitle(t(context, "working"))
                 .setContentText(text)
                 .setContentIntent(open)
                 .setOngoing(true)
