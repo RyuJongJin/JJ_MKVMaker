@@ -35,6 +35,12 @@ class TransferJob extends ChangeNotifier {
   /// 이동 뒤 원본 정리: '' 안 함 · 'keep' 빈 폴더 지움 (원본 폴더는 남김) · 'all' 원본 폴더까지
   final String prune;
 
+  /// 48: 같은 이름이 있을 때 (앱이 직접 복사 · 이동할 때만 - robocopy · rsync 는 그 프로그램의 규칙)
+  final NameConflict conflict;
+
+  /// 같은 이름이라 건너뛴 항목 (원본 경로)
+  final skipped = <String>[];
+
   TransferJob({
     required this.sources,
     required this.dest,
@@ -46,6 +52,7 @@ class TransferJob extends ChangeNotifier {
     this.rsyncExe,
     this.contents = false,
     this.prune = '',
+    this.conflict = NameConflict.rename,
   });
 
   /// 지금 복사하는 파일 (원본 기준 상대 경로, rsync 는 이름을 먼저 알리고 그 파일의 진행률을 알린다)
@@ -205,6 +212,7 @@ class TransferJob extends ChangeNotifier {
         },
         // 보낸 양으로 전송 속도 (WebDAV 포함)
         onBytes: _addBytes,
+        conflict: conflict,
       );
       _tick();
       if (contents && (isDav(sources[i]) || FileSystemEntity.isDirectorySync(sources[i]))) {
@@ -215,6 +223,7 @@ class TransferJob extends ChangeNotifier {
       } else {
         final r = move ? await _ops!.move([sources[i]], dest) : await _ops!.copy([sources[i]], dest);
         made.addAll(r);
+        skipped.addAll(_ops!.skipped);
       }
       filesDone[i] = filesTotal[i]; // 이름 바꾸기로 옮긴 경우
     }

@@ -46,10 +46,14 @@ void main() {
     server = TestDavServer(remote);
     await server.start();
     shell = _Shell();
+    // 이 PC 의 드라이브 (네트워크 드라이브 등) 가 많으면 탭이 밀려 "WebDAV" 탭이 화면 밖으로 간다 - 시험 폴더의 드라이브만
+    final root = p.rootPrefix(tmp.path);
+    ExplorerPage.debugVolumes = () => [(root, root.replaceAll(RegExp(r'[\\/]+$'), ''))];
     c = AppController(PlatformServices(
         mediaTool: ProcessMediaTool('x', 'y'), storage: DesktopStorageService(), shell: shell));
   });
   tearDown(() async {
+    ExplorerPage.debugVolumes = null;
     DavRegistry.configure([]);
     await server.stop();
     tmp.deleteSync(recursive: true);

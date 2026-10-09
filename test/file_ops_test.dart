@@ -138,4 +138,66 @@ void main() {
     expect(formatSize(5 * 1024 * 1024), '5.0MB');
     expect(formatSize(3 * 1024 * 1024 * 1024), '3.0GB');
   });
+
+  group('48 같은 이름', () {
+    late Directory a, b;
+    setUp(() {
+      a = Directory(p.join(tmp.path, 'a'))..createSync();
+      b = Directory(p.join(tmp.path, 'b'))..createSync();
+      File(p.join(a.path, 'same.txt')).writeAsStringSync('new');
+      File(p.join(b.path, 'same.txt')).writeAsStringSync('old');
+    });
+
+    test('이름 바꾸기 (기본): same (2).txt', () async {
+      final made = await FileOps().copy([p.join(a.path, 'same.txt')], b.path);
+      expect(p.basename(made.single), 'same (2).txt');
+      expect(File(p.join(b.path, 'same.txt')).readAsStringSync(), 'old');
+    });
+
+    test('덮어쓰기: 복사 · 이동', () async {
+      await FileOps(conflict: NameConflict.overwrite).copy([p.join(a.path, 'same.txt')], b.path);
+      expect(File(p.join(b.path, 'same.txt')).readAsStringSync(), 'new');
+      expect(Directory(b.path).listSync().length, 1);
+      File(p.join(a.path, 'same.txt')).writeAsStringSync('newer');
+      await FileOps(conflict: NameConflict.overwrite).move([p.join(a.path, 'same.txt')], b.path);
+      expect(File(p.join(b.path, 'same.txt')).readAsStringSync(), 'newer');
+      expect(File(p.join(a.path, 'same.txt')).existsSync(), false);
+    });
+
+    test('건너뛰기: 그대로 두고 건너뛴 것을 알림', () async {
+      final ops = FileOps(conflict: NameConflict.skip);
+      File(p.join(a.path, 'other.txt')).writeAsStringSync('x');
+      final made = await ops.move([p.join(a.path, 'same.txt'), p.join(a.path, 'other.txt')], b.path);
+      expect(made.map(p.basename), ['other.txt']);
+      expect(ops.skipped.map(p.basename), ['same.txt']);
+      expect(File(p.join(b.path, 'same.txt')).readAsStringSync(), 'old');
+      expect(File(p.join(a.path, 'same.txt')).existsSync(), true);
+    });
+
+    test('덮어쓰기: 폴더는 합친다 (이동)', () async {
+      Directory(p.join(a.path, 'd')).createSync();
+      Directory(p.join(b.path, 'd')).createSync();
+      File(p.join(a.path, 'd', 'x.txt')).writeAsStringSync('new');
+      File(p.join(b.path, 'd', 'x.txt')).writeAsStringSync('old');
+      File(p.join(b.path, 'd', 'keep.txt')).writeAsStringSync('k');
+      await FileOps(conflict: NameConflict.overwrite).move([p.join(a.path, 'd')], b.path);
+      expect(File(p.join(b.path, 'd', 'x.txt')).readAsStringSync(), 'new');
+      expect(File(p.join(b.path, 'd', 'keep.txt')).existsSync(), true);
+      expect(Directory(p.join(a.path, 'd')).existsSync(), false);
+    });
+
+    test('같은 폴더로 복사는 덮어쓰기여도 새 이름', () async {
+      final made = await FileOps(conflict: NameConflict.overwrite).copy([p.join(b.path, 'same.txt')], b.path);
+      expect(p.basename(made.single), 'same (2).txt');
+      expect(File(p.join(b.path, 'same.txt')).readAsStringSync(), 'old');
+    });
+
+    test('파일 ↔ 폴더처럼 종류가 다르면 덮어쓰지 않고 새 이름', () async {
+      Directory(p.join(a.path, 'k')).createSync();
+      File(p.join(b.path, 'k')).writeAsStringSync('file');
+      final made = await FileOps(conflict: NameConflict.overwrite).copy([p.join(a.path, 'k')], b.path);
+      expect(p.basename(made.single), 'k (2)');
+      expect(File(p.join(b.path, 'k')).readAsStringSync(), 'file');
+    });
+  });
 }

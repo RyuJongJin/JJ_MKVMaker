@@ -93,7 +93,7 @@ class CopyCenter extends ChangeNotifier {
 
   /// 실행을 시작하고 그 작업을 바로 돌려준다 (rsync 가 없으면 null). 끝나면 결과를 기억한다 ([TransferJob.done]).
   /// 실행 · 재개. 원본 · 대상이 없거나 폴더를 자기 안으로 넣는 것이면 시작하지 않고 실패로 남긴다 (null).
-  Future<TransferJob?> start(CopyTask t, {String? rsyncExe}) async {
+  Future<TransferJob?> start(CopyTask t, {String? rsyncExe, NameConflict conflict = NameConflict.rename}) async {
     if (isRunning(t.id)) return jobs[t.id];
     final problem = transferProblem(t.sources, t.dest, move: t.move);
     if (problem != null) {
@@ -118,6 +118,7 @@ class CopyCenter extends ChangeNotifier {
       rsyncExe: exe,
       contents: t.contents,
       prune: t.move ? t.prune : '',
+      conflict: conflict,
     );
     jobs[t.id] = job;
     job.addListener(notifyListeners);

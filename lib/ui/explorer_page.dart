@@ -1009,9 +1009,9 @@ class _ExplorerPageState extends State<ExplorerPage> {
       case 'rename':
         await _rename(pane, e.path);
       case 'copy':
-        await _transfer(pane, [e.path], move: false);
+        await _transfer(pane, _isMarked(pane, e.path) ? pane.marked.toList() : [e.path], move: false);
       case 'move':
-        await _transfer(pane, [e.path], move: true);
+        await _transfer(pane, _isMarked(pane, e.path) ? pane.marked.toList() : [e.path], move: true);
       case 'clipCopy':
         _toClipboard(_isMarked(pane, e.path) ? pane.marked.toList() : [e.path], move: false);
       case 'clipMove':
@@ -1339,17 +1339,40 @@ class _ExplorerPageState extends State<ExplorerPage> {
   List<String> _clip = [];
   bool _clipMove = false;
 
+  /// 154: 고른 것이 없을 때 (복사 · 이동이 같은 말)
+  String _pickFirst(bool move) => move
+      ? tr('옮길 항목을 고르세요 (누르거나 오른쪽 동그라미로 표시).')
+      : tr('복사할 항목을 고르세요 (누르거나 오른쪽 동그라미로 표시).');
+
+  /// 154: 항목 이름 (앞의 3개 + "외 n개")
+  /// 48: 받는 폴더에 같은 이름이 있는 원본 (같은 폴더로 복사는 늘 새 이름이라 빼고)
+  static Future<List<String>> _findClashes(List<String> sources, String dest) async {
+    final out = <String>[];
+    for (final s in sources) {
+      if (samePath(vDirname(s), dest)) continue;
+      try {
+        if (await vExists(vJoin(dest, vBasename(s)))) out.add(s);
+      } catch (_) {}
+    }
+    return out;
+  }
+
+  static String _namesOf(List<String> paths) {
+    final names = [for (final x in paths.take(3)) vBasename(x)].join(', ');
+    return paths.length > 3 ? trf('{0} 외 {1}개', [names, paths.length - 3]) : names;
+  }
+
   void _toClipboard(List<String> sources, {required bool move}) {
     if (sources.isEmpty) {
-      _snack(tr('복사 · 이동할 항목을 고르세요 (누르거나 오른쪽 동그라미로 표시).'));
+      _snack(_pickFirst(move));
       return;
     }
     setState(() {
       _clip = [...sources];
       _clipMove = move;
     });
-    _snack(trf('{0}개 항목을 담았습니다. 넣을 폴더에서 [붙여넣기] 를 누르세요 ({1}).',
-        [sources.length, move ? tr('이동') : tr('복사')]));
+    _snack(trf('{0} 을 담았습니다. 넣을 폴더에서 [붙여넣기] 를 누르세요 ({1}).',
+        [_namesOf(sources), move ? tr('이동') : tr('복사')]));
   }
 
   Future<void> _paste(_Pane pane, String dest) async {
@@ -1386,7 +1409,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
   /// [dest] 로 복사 · 이동 (확인 · 아래 진행 막대 · 취소). 끝까지 했으면 true.
   Future<bool> _runTransfer(_Pane pane, List<String> sources, String dest, {required bool move}) async {
     if (sources.isEmpty) {
-      _snack(tr('복사 · 이동할 항목을 고르세요 (누르거나 오른쪽 동그라미로 표시).'));
+      _snack(_pickFirst(move));
       return false;
     }
     // 23: 앞의 복사 · 이동이 끝나지 않아도 함께 시작한다 (아래 진행 막대에 하나씩). 같은 것을 같은 곳으로만 막는다
@@ -1409,20 +1432,61 @@ class _ExplorerPageState extends State<ExplorerPage> {
     final center = CopyCenter.of(c);
     final task = center.fresh(sources, dest, move: move);
     final method = CopyMethod.of(task.method);
-    if (!mounted) return false;
+    // 48: 받는 폴더에 같은 이름이 있으면 덮어쓰기 · 건너뛰기 · 이름 바꾸기를 고른다
+    // (앱이 직접 할 때만 - robocopy · rsync 는 그 프로그램의 규칙. 같은 폴더로 복사는 늘 새 이름)
+    final builtin = method == CopyMethod.builtin || _viaDav([...sources, dest]);
+    // 확인 창은 바로 띄우고, 같은 이름은 창 안에서 뒤에서 찾는다 (느린 네트워크 · WebDAV 폴더라도 창이 늦게 뜨지 않게).
+    // 다 찾기 전에 누르면 이름 바꾸기 (원래 파일을 건드리지 않는 쪽)
+    final clashesFuture = builtin ? _findClashes(sources, dest) : Future.value(const <String>[]);
+    var conflict = NameConflict.rename;
     final go = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        scrollable: true,
-        title: Text(move ? tr('이동') : tr('복사')),
-        content: Text('${trf('{0}개 항목을 다음 폴더로 {1}\n{2}', [sources.length, move ? tr('옮길까요?') : tr('복사할까요?'), vDisplay(dest)])}'
-            '\n\n${trf('방법: {0}', [tr(method.label)])}'
-            '${method == CopyMethod.builtin ? '' : ' · ${task.options}'}'
-            '${task.bandwidthKBps > 0 ? ' · ${trf('속도 제한 {0} KB/s', [task.bandwidthKBps])}' : ''}'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('취소'))),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(move ? tr('이동') : tr('복사'))),
-        ],
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setInner) => AlertDialog(
+          scrollable: true,
+          title: Text(move ? tr('이동') : tr('복사')),
+          content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('${trf('{0}개 항목을 다음 폴더로 {1}\n{2}', [sources.length, move ? tr('옮길까요?') : tr('복사할까요?'), vDisplay(dest)])}'
+                '\n${_namesOf(sources)}'
+                '\n\n${trf('방법: {0}', [tr(method.label)])}'
+                '${method == CopyMethod.builtin ? '' : ' · ${task.options}'}'
+                '${task.bandwidthKBps > 0 ? ' · ${trf('속도 제한 {0} KB/s', [task.bandwidthKBps])}' : ''}'),
+            FutureBuilder<List<String>>(
+              future: clashesFuture,
+              builder: (ctx, snap) {
+                if (snap.connectionState != ConnectionState.done) {
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: Text(tr('같은 이름이 있는지 확인하는 중 …'), style: const TextStyle(fontSize: 12, color: JjColors.textDim)),
+                  );
+                }
+                final clashes = snap.data ?? const <String>[];
+                if (clashes.isEmpty) return const SizedBox.shrink();
+                return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const SizedBox(height: 12),
+                  Text(trf('같은 이름이 이미 있습니다: {0}', [_namesOf(clashes)]),
+                      style: const TextStyle(color: Colors.orangeAccent)),
+                  RadioGroup<NameConflict>(
+                    groupValue: conflict,
+                    onChanged: (x) => setInner(() => conflict = x ?? conflict),
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      for (final (v, label) in [
+                        (NameConflict.rename, tr('이름 바꾸기 (예: 이름 (2))')),
+                        (NameConflict.overwrite, tr('덮어쓰기 (원래 파일은 없어집니다)')),
+                        (NameConflict.skip, tr('건너뛰기')),
+                      ])
+                        RadioListTile<NameConflict>(dense: true, contentPadding: EdgeInsets.zero, value: v, title: Text(label)),
+                    ]),
+                  ),
+                ]);
+              },
+            ),
+          ]),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('취소'))),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(move ? tr('이동') : tr('복사'))),
+          ],
+        ),
       ),
     );
     if (go != true || !mounted) return false;
@@ -1433,7 +1497,7 @@ class _ExplorerPageState extends State<ExplorerPage> {
       rsync = await _ensureRsync();
       if (rsync == null || !mounted) return false;
     }
-    final job = await center.start(task, rsyncExe: rsync);
+    final job = await center.start(task, rsyncExe: rsync, conflict: conflict);
     if (job == null || !mounted) return false;
     setState(() => _jobs = [..._jobs.where((j) => !j.finished), job]);
     await job.done;
@@ -1454,7 +1518,10 @@ class _ExplorerPageState extends State<ExplorerPage> {
         ? tr('취소했습니다.')
         : error != null
             ? trf('끝나지 못했습니다: {0}', [error])
-            : trf('{0}개 항목을 {1}', [job.made.length, move ? tr('옮겼습니다.') : tr('복사했습니다.')]));
+            : [
+                trf('{0}개 항목을 {1}', [job.made.length, move ? tr('옮겼습니다.') : tr('복사했습니다.')]),
+                if (job.skipped.isNotEmpty) trf('같은 이름이라 건너뜀: {0}', [_namesOf(job.skipped)]),
+              ].join(' · '));
     // 다 되면 진행 막대가 잠깐 100% 를 보인 뒤 내려간다
     await Future<void>.delayed(const Duration(milliseconds: 1200));
     if (mounted && _jobs.contains(job)) setState(() => _jobs = [for (final j in _jobs) if (j != job) j]);

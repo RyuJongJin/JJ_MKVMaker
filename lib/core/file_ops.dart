@@ -73,6 +73,18 @@ List<(String path, String label)> windowsDrives() => [
         if (FileSystemEntity.isDirectorySync('$c:\\')) ('$c:\\', '$c:'),
     ];
 
+/// 48: 받는 폴더에 같은 이름이 있을 때
+enum NameConflict {
+  /// "이름 (2).확장자" 로 (예전 동작)
+  rename,
+
+  /// 덮어쓰기 (폴더는 합치고 안의 같은 이름 파일을 덮어씀)
+  overwrite,
+
+  /// 건너뛰기 (그 항목은 복사 · 이동하지 않음)
+  skip,
+}
+
 /// 같은 이름이 있으면 "이름 (2).확장자" 로
 String uniqueTarget(String dir, String name) {
   var target = p.join(dir, name);
@@ -265,7 +277,28 @@ class FileOps {
   /// 조각을 보낼 때마다 (바이트) - 전송 속도 계산용
   final void Function(int bytes)? onBytes;
 
-  FileOps({this.bandwidthKBps = 0, this.onFileDone, this.onBytes});
+  /// 48: 같은 이름이 있을 때 (맨 위 항목 기준 - 덮어쓰기면 폴더 안의 같은 이름 파일도 덮어씀)
+  final NameConflict conflict;
+
+  /// 건너뛴 항목 (원본 경로)
+  final skipped = <String>[];
+
+  FileOps({this.bandwidthKBps = 0, this.onFileDone, this.onBytes, this.conflict = NameConflict.rename});
+
+  /// [conflict] 에 따라 [destDir] 안의 대상 경로 (null = 건너뜀).
+  /// 같은 자리 (같은 폴더로 복사) 이거나 파일 ↔ 폴더처럼 종류가 다르면 덮어쓰지 않고 새 이름으로.
+  Future<String?> _targetFor(String src, String destDir) async {
+    final name = vBasename(src);
+    final plain = vJoin(destDir, name);
+    if (conflict == NameConflict.rename || !await vExists(plain)) return vUniqueTarget(destDir, name);
+    if (samePath(src, plain)) return vUniqueTarget(destDir, name);
+    if (conflict == NameConflict.skip) {
+      skipped.add(src);
+      return null;
+    }
+    if (await vIsDir(src) != await vIsDir(plain)) return vUniqueTarget(destDir, name);
+    return plain;
+  }
 
   /// 한쪽이라도 WebDAV 면 아래의 "V" (어느 저장소든) 판으로
   static bool _anyDav(Iterable<String> paths) => paths.any(isDav);
@@ -340,6 +373,8 @@ class FileOps {
         } catch (_) {}
         rethrow;
       }
+      // 덮어쓰기: 새 파일을 다 쓴 뒤에야 옛 파일을 지운다 (도중에 실패하면 옛 파일이 남게)
+      if (File(finalTarget).existsSync()) await File(finalTarget).delete();
       await File(target).rename(finalTarget);
       try {
         await File(finalTarget).setLastModified(await f.lastModified());
@@ -362,7 +397,8 @@ class FileOps {
       if (FileSystemEntity.isDirectorySync(s) && isSameOrInside(destDir, s)) {
         throw FileSystemException('폴더를 자기 안으로 복사할 수 없습니다', s);
       }
-      final target = uniqueTarget(destDir, p.basename(s));
+      final target = await _targetFor(s, destDir);
+      if (target == null) continue;
       await copyAny(s, target);
       made.add(target);
     }
@@ -380,9 +416,19 @@ class FileOps {
         made.add(s); // 이미 그 폴더에 있음
         continue;
       }
-      final target = uniqueTarget(destDir, p.basename(s));
+      final target = await _targetFor(s, destDir);
+      if (target == null) continue;
+      final exists = FileSystemEntity.typeSync(target) != FileSystemEntityType.notFound;
+      if (exists && FileSystemEntity.isDirectorySync(s)) {
+        // 덮어쓰기로 폴더를 합친다: 복사 (안의 같은 이름은 덮어씀) 뒤 원본 삭제
+        made.addAll(await copy([s], destDir, onProgress: onProgress));
+        _check();
+        await delete([s]);
+        continue;
+      }
       try {
         final t = FileSystemEntity.typeSync(s);
+        // 덮어쓰기 (파일): 이름 바꾸기가 옛 파일을 바로 바꿔 놓는다 (다른 드라이브면 아래 복사가 덮어씀)
         if (t == FileSystemEntityType.directory) {
           await Directory(s).rename(target);
         } else {
@@ -611,7 +657,8 @@ class FileOps {
 
     for (final s in sources) {
       if (isSameOrInside(destDir, s) && await vIsDir(s)) throw FileSystemException('폴더를 자기 안으로 복사할 수 없습니다', s);
-      final target = await vUniqueTarget(destDir, vBasename(s));
+      final target = await _targetFor(s, destDir);
+      if (target == null) continue;
       await copyAny(s, target);
       made.add(target);
     }
@@ -627,9 +674,12 @@ class FileOps {
         made.add(s);
         continue;
       }
-      final target = await vUniqueTarget(destDir, vBasename(s));
-      // 같은 WebDAV 서버 안이면 서버가 옮긴다 (빠름)
-      if (isDav(s) && isDav(destDir) && DavPath.parse(s).server == DavPath.parse(destDir).server) {
+      final target = await _targetFor(s, destDir);
+      if (target == null) continue;
+      final exists = await vExists(target);
+      // 같은 WebDAV 서버 안이면 서버가 옮긴다 (빠름) - 덮어쓸 폴더는 합쳐야 하니 복사로
+      if (isDav(s) && isDav(destDir) && DavPath.parse(s).server == DavPath.parse(destDir).server && !(exists && await vIsDir(s))) {
+        if (exists) await vDelete(target);
         await vRename(s, target);
         made.add(target);
         continue;
